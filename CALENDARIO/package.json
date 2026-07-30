@@ -7,9 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "server": "node server.js",
-    "init:whatsapp-crm": "node scripts/init-whatsapp-crm.js",
-    "drop:whatsapp-crm": "node scripts/drop-whatsapp-crm.js"
+    "server": "node server.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

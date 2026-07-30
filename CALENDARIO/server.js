@@ -32,10 +32,9 @@ const DEFAULT_AGENDA = {
 };
 
 const PORT = process.env.PORT || 3333;
+// So a porta do painel do calendario. A 3001 saiu junto com o site publico.
 const DEFAULT_CORS_ORIGINS = [
-  "http://localhost:3001",
   "http://localhost:3002",
-  "http://127.0.0.1:3001",
   "http://127.0.0.1:3002",
 ];
 const ALLOWED_CORS_ORIGINS = new Set(
@@ -45,13 +44,6 @@ const ALLOWED_CORS_ORIGINS = new Set(
     .filter(Boolean)
     .concat(process.env.CORS_ORIGINS ? [] : DEFAULT_CORS_ORIGINS),
 );
-const whatsappMemory = {
-  contacts: new Map(),
-  conversations: new Map(),
-  messages: new Map(),
-  nextConversationId: 1,
-  nextMessageId: 1,
-};
 const rateLimitBuckets = new Map();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -371,20 +363,6 @@ function normalizeWhatsAppPhone(value) {
   return digits.startsWith("55") ? digits : `55${digits}`;
 }
 
-function normalizeWhatsAppJid(value) {
-  const phone = normalizeWhatsAppPhone(value);
-  return phone ? `${phone}@s.whatsapp.net` : "";
-}
-
-function firstNameFromFullName(value) {
-  return (
-    String(value ?? "")
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)[0] ?? ""
-  );
-}
-
 function parseWhatsAppTimestamp(value) {
   if (!value) return new Date();
   const numeric = Number(value);
@@ -533,152 +511,6 @@ function mapWhatsAppConversation(row) {
   };
 }
 
-function upsertWhatsAppMemoryEvent(event) {
-  const now = new Date();
-  const serviceWindowUntil =
-    event.direction === "inbound"
-      ? new Date(
-          event.occurred_at.getTime() + 24 * 60 * 60 * 1000,
-        ).toISOString()
-      : undefined;
-
-  const contact = {
-    ...(whatsappMemory.contacts.get(event.phone) ?? {}),
-    id:
-      whatsappMemory.contacts.get(event.phone)?.id ??
-      whatsappMemory.contacts.size + 1,
-    phone: event.phone,
-    wa_id: event.wa_id ?? event.phone,
-    name:
-      event.name ??
-      whatsappMemory.contacts.get(event.phone)?.name ??
-      event.phone,
-    last_message_at: event.occurred_at.toISOString(),
-    service_window_until:
-      serviceWindowUntil ??
-      whatsappMemory.contacts.get(event.phone)?.service_window_until ??
-      null,
-    updated_at: now.toISOString(),
-  };
-  whatsappMemory.contacts.set(event.phone, contact);
-
-  let conversation = [...whatsappMemory.conversations.values()].find(
-    (item) => item.contact.phone === event.phone && item.status !== "closed",
-  );
-
-  if (!conversation) {
-    conversation = {
-      id: whatsappMemory.nextConversationId++,
-      status: "open",
-      assigned_to: null,
-      last_message_at: event.occurred_at.toISOString(),
-      contact,
-      last_message: null,
-    };
-    whatsappMemory.conversations.set(conversation.id, conversation);
-    whatsappMemory.messages.set(conversation.id, []);
-  }
-
-  const message = {
-    id: whatsappMemory.nextMessageId++,
-    conversation_id: conversation.id,
-    contact_id: contact.id,
-    direction: event.direction,
-    sender_type: event.sender_type,
-    whatsapp_message_id: event.whatsapp_message_id,
-    message_type: event.message_type,
-    body: event.body,
-    media_id: null,
-    status: null,
-    created_at: event.occurred_at.toISOString(),
-    received_at: now.toISOString(),
-  };
-
-  const messages = whatsappMemory.messages.get(conversation.id) ?? [];
-  const alreadyExists =
-    event.whatsapp_message_id &&
-    messages.some(
-      (item) => item.whatsapp_message_id === event.whatsapp_message_id,
-    );
-
-  if (!alreadyExists) {
-    messages.push(message);
-    whatsappMemory.messages.set(conversation.id, messages);
-  }
-
-  conversation.contact = contact;
-  conversation.last_message_at = event.occurred_at.toISOString();
-  conversation.last_message = {
-    direction: event.direction,
-    sender_type: event.sender_type,
-    message_type: event.message_type,
-    body: event.body,
-    created_at: event.occurred_at.toISOString(),
-  };
-  whatsappMemory.conversations.set(conversation.id, conversation);
-
-  return { contact, conversation, message };
-}
-
-function listWhatsAppMemoryConversations(limit = 50) {
-  return [...whatsappMemory.conversations.values()]
-    .sort((a, b) =>
-      String(b.last_message_at).localeCompare(String(a.last_message_at)),
-    )
-    .slice(0, limit);
-}
-
-function listWhatsAppMemoryMessages(conversationId) {
-  return whatsappMemory.messages.get(Number(conversationId)) ?? [];
-}
-
-function isMissingTableError(err) {
-  return err?.code === "42P01";
-}
-
-async function getConfigValue(chave) {
-  const { rows } = await pool.query(
-    "SELECT valor FROM public.configuracao WHERE chave = $1",
-    [chave],
-  );
-  return rows[0]?.valor ?? null;
-}
-
-function normalizeCategoryConfig(value) {
-  if (Array.isArray(value)) return { filtersEnabled: false, items: value };
-  return {
-    filtersEnabled: Boolean(value?.filtersEnabled),
-    items: Array.isArray(value?.items) ? value.items : [],
-  };
-}
-
-function normalizeServiceCatalog(items) {
-  if (!Array.isArray(items)) return [];
-  return items
-    .filter((item) => item && typeof item === "object")
-    .map((item) => ({
-      id: Number(item.id ?? 0),
-      slug: String(item.slug ?? "").trim(),
-      name: String(item.name ?? "").trim(),
-      desc: String(item.desc ?? "").trim(),
-      price: String(item.price ?? "").trim(),
-      category: String(item.category ?? "").trim(),
-    }))
-    .filter((item) => item.slug && item.name);
-}
-
-function normalizeServicesForSave(items) {
-  if (!Array.isArray(items)) return null;
-  return items.map((item) => ({
-    id: Number(item?.id ?? 0),
-    slug: String(item?.slug ?? "").trim(),
-    name: String(item?.name ?? "").trim(),
-    desc: String(item?.desc ?? "").trim(),
-    price: String(item?.price ?? "").trim(),
-    category: String(item?.category ?? "").trim(),
-  }));
-}
-
 function mapServiceRow(row) {
   return {
     id: Number(row.id),
@@ -687,23 +519,6 @@ function mapServiceRow(row) {
     name: row.nome,
     desc: row.descricao ?? "",
     price: row.preco ?? "",
-  };
-}
-
-async function getServiceCategoriesFromTables() {
-  const config = normalizeCategoryConfig(await getConfigValue("categorias"));
-  const { rows } = await pool.query(
-    `SELECT id, nome, ativo
-     FROM public.categorias_servicos
-     ORDER BY ordem ASC, nome ASC`,
-  );
-  return {
-    filtersEnabled: config.filtersEnabled,
-    items: rows.map((row) => ({
-      id: row.id,
-      label: row.nome,
-      active: row.ativo,
-    })),
   };
 }
 
@@ -1669,77 +1484,12 @@ function buildServer() {
         ],
       );
 
-      const clientePrimeiroNome = firstNameFromFullName(cliente);
-      const telefoneWhatsApp = normalizeWhatsAppJid(telefone);
-      if (telefoneWhatsApp && clientePrimeiroNome) {
-        const { rowCount } = await pool.query(
-          `UPDATE public.dados_cliente
-           SET nomewpp = COALESCE(NULLIF(nomewpp, ''), $2)
-           WHERE telefone = $1`,
-          [telefoneWhatsApp, clientePrimeiroNome],
-        );
-        if (!rowCount) {
-          await pool.query(
-            `INSERT INTO public.dados_cliente
-               (telefone, nomewpp, atendimento_temporario)
-             VALUES ($1, $2, FALSE)`,
-            [telefoneWhatsApp, clientePrimeiroNome],
-          );
-        }
-      }
-
-      // ─── NOTIFICA O N8N (fire-and-forget) ─────────────────────────────────
-      // Se o n8n estiver fora do ar ou demorar, o agendamento continua valendo.
-      // Falhas são logadas mas não bloqueiam a resposta pro cliente.
-      const webhookUrl = process.env.N8N_AGENDAMENTO_WEBHOOK_URL;
-      if (webhookUrl) {
-        const agendamentoCriado = rows[0];
-        const payload = {
-          event: "agendamento.criado",
-          timestamp: new Date().toISOString(),
-          agendamento: {
-            id: agendamentoCriado.id,
-            cliente: agendamentoCriado.cliente,
-            telefone: agendamentoCriado.telefone,
-            telefone_whatsapp: telefoneWhatsApp || null,
-            profissional: agendamentoCriado.profissional,
-            professional_id: professionalId,
-            servico: agendamentoCriado.servico,
-            dia_marcado: agendamentoCriado.dia_marcado,
-            hora_marcada: agendamentoCriado.hora_marcada,
-            status: agendamentoCriado.status,
-            source: agendamentoCriado.source,
-            created_at: agendamentoCriado.created_at,
-          },
-        };
-
-        // Timeout de 5s pra não segurar o event loop se o n8n travar
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-        fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        })
-          .then((res) => {
-            if (!res.ok) {
-              fastify.log.warn(
-                { status: res.status, webhookUrl },
-                "Webhook n8n respondeu com erro (agendamento criado mesmo assim)",
-              );
-            }
-          })
-          .catch((err) => {
-            fastify.log.warn(
-              { err: err.message, webhookUrl },
-              "Falha ao notificar webhook n8n (agendamento criado mesmo assim)",
-            );
-          })
-          .finally(() => clearTimeout(timeoutId));
-      }
-      // ──────────────────────────────────────────────────────────────────────
+      // Nao escrevemos em `dados_cliente` aqui. Aquela tabela e o cadastro de
+      // contato do bot de WhatsApp, e ele e o dono unico dela: o telefone canonico
+      // do sistema e o `wa_id` em digitos puros (`553384246770`). O codigo antigo
+      // gravava o JID da Evolution (`...@s.whatsapp.net`) na coluna `nomewpp`, que
+      // nem existe mais — criava linha duplicada do mesmo cliente e derrubava esta
+      // rota com 500 DEPOIS de ja ter inserido o agendamento.
 
       return reply.status(201).send({
         message: "Agendamento criado.",
@@ -1888,14 +1638,14 @@ function buildServer() {
 
   // WHATSAPP CRM
 
-  // POST /whatsapp/events - espelha mensagens do N8N para o CRM do calendario
+  // POST /whatsapp/events - porta de entrada de mensagem no CRM do calendario.
+  // Quem alimentava isso era o n8n; agora e a costura pro nosso bot de botoes,
+  // que ainda nao escreve aqui. Protegida por WHATSAPP_WEBHOOK_TOKEN.
   fastify.post(
     "/whatsapp/events",
     { preHandler: requireWebhookToken },
     async (request, reply) => {
       const event = extractInboundEvent(request.body);
-      const shouldPersist =
-        request.query?.persist !== "false" && request.body?.persist !== false;
 
       if (!["inbound", "outbound"].includes(event.direction)) {
         return reply
@@ -1907,27 +1657,6 @@ function buildServer() {
         return reply
           .status(400)
           .send({ error: "phone/Telefone/wa_id e obrigatorio." });
-      }
-
-      if (!shouldPersist) {
-        const stored = upsertWhatsAppMemoryEvent(event);
-        return reply.status(202).send({
-          accepted: true,
-          persisted: false,
-          memory: true,
-          conversation_id: stored.conversation.id,
-          event: {
-            direction: event.direction,
-            sender_type: event.sender_type,
-            phone: event.phone,
-            wa_id: event.wa_id,
-            name: event.name,
-            message_type: event.message_type,
-            body: event.body,
-            whatsapp_message_id: event.whatsapp_message_id,
-            occurred_at: event.occurred_at.toISOString(),
-          },
-        });
       }
 
       const client = await pool.connect();
@@ -2092,8 +1821,6 @@ function buildServer() {
         );
         return rows.map(mapWhatsAppConversation);
       } catch (err) {
-        if (err?.code === "42P01")
-          return listWhatsAppMemoryConversations(limit);
         fastify.log.error(err);
         return reply.status(500).send({ error: "Erro ao buscar conversas." });
       }
@@ -2118,7 +1845,6 @@ function buildServer() {
         );
         return rows.map(mapWhatsAppMessage);
       } catch (err) {
-        if (err?.code === "42P01") return listWhatsAppMemoryMessages(id);
         fastify.log.error(err);
         return reply.status(500).send({ error: "Erro ao buscar mensagens." });
       }
@@ -2143,9 +1869,6 @@ function buildServer() {
         );
         return { conversation_id: Number(id), marked_read: rows.length };
       } catch (err) {
-        if (err?.code === "42P01") {
-          return { conversation_id: Number(id), marked_read: 0, memory: true };
-        }
         fastify.log.error(err);
         return reply
           .status(500)
@@ -2154,400 +1877,46 @@ function buildServer() {
     },
   );
 
-  // POST /whatsapp/conversations/:id/send — atendente responde via n8n → Evolution
+  // POST /whatsapp/conversations/:id/send — o dono responde pelo painel.
+  // Desligada ate a integracao com o bot; ver o comentario dentro da rota.
   fastify.post(
     "/whatsapp/conversations/:id/send",
     { preHandler: requireAdmin },
     async (request, reply) => {
-      const { id } = request.params;
       const text = String(request.body?.body ?? "").trim();
 
       if (!text) return reply.status(400).send({ error: "Mensagem vazia." });
 
-      const webhookUrl = process.env.N8N_SEND_WEBHOOK_URL;
-      if (!webhookUrl) {
-        return reply.status(503).send({
-          error: "Envio não configurado (N8N_SEND_WEBHOOK_URL ausente).",
-        });
-      }
-
-      const client = await pool.connect();
-      try {
-        // Resolve telefone do contato a partir da conversa
-        const { rows: convRows } = await client.query(
-          `SELECT c.id AS conversation_id, c.contact_id, ct.phone, ct.wa_id
-             FROM public.whatsapp_conversations c
-             JOIN public.whatsapp_contacts ct ON ct.id = c.contact_id
-            WHERE c.id = $1`,
-          [id],
-        );
-        if (!convRows.length)
-          return reply.status(404).send({ error: "Conversa não encontrada." });
-        const conv = convRows[0];
-
-        // 1) Dispara o envio no n8n. Só grava se o n8n aceitar (2xx).
-        const waResp = await fetch(webhookUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(process.env.N8N_SEND_TOKEN
-              ? { "x-webhook-token": process.env.N8N_SEND_TOKEN }
-              : {}),
-          },
-          body: JSON.stringify({
-            conversation_id: conv.conversation_id,
-            telefone: conv.phone,
-            wa_id: conv.wa_id,
-            mensagem: text,
-          }),
-        });
-
-        if (!waResp.ok) {
-          const detail = await waResp.text().catch(() => "");
-          fastify.log.error(
-            { status: waResp.status, detail },
-            "Falha no webhook de envio",
-          );
-          return reply
-            .status(502)
-            .send({ error: "Falha ao enviar pelo WhatsApp (n8n/Evolution)." });
-        }
-
-        // 2) Grava como outbound (aparece na thread). raw_payload '{}' por segurança de schema.
-        const { rows: msgRows } = await client.query(
-          `INSERT INTO public.whatsapp_messages
-             (conversation_id, contact_id, direction, sender_type, message_type,
-              body, raw_payload, created_at, received_at, read_at)
-           VALUES ($1, $2, 'outbound', 'human', 'text', $3, '{}'::jsonb, NOW(), NOW(), NOW())
-           RETURNING id, conversation_id, contact_id, direction, sender_type,
-                     whatsapp_message_id, message_type, body, media_id, status,
-                     created_at, received_at`,
-          [conv.conversation_id, conv.contact_id, text],
-        );
-
-        // 3) Mantém a conversa viva (não expira pela janela de 22h)
-        await client.query(
-          `UPDATE public.whatsapp_conversations
-              SET last_message_at = NOW(), updated_at = NOW()
-            WHERE id = $1`,
-          [conv.conversation_id],
-        );
-
-        return reply.status(201).send(mapWhatsAppMessage(msgRows[0]));
-      } catch (err) {
-        fastify.log.error(err);
-        return reply.status(500).send({ error: "Erro ao enviar mensagem." });
-      } finally {
-        client.release();
-      }
+      // ponytail: envio desligado ate a integracao com o bot de botoes.
+      // Gatilho de upgrade: a etapa de integracao, que vai por o bot no lugar do
+      // transporte que saiu daqui.
+      //
+      // O transporte antigo era o n8n (`N8N_SEND_WEBHOOK_URL` -> Evolution API),
+      // aposentado no nosso projeto. A rota fica de pe de proposito: e a costura
+      // pronta pro bot, e o contrato que o painel ja chama nao muda. Responder 501
+      // e deliberado — o painel mostra erro claro em vez de fingir que enviou e
+      // gravar uma mensagem outbound que nunca saiu do servidor.
+      return reply.status(501).send({
+        error:
+          "Envio pelo WhatsApp ainda nao esta ligado. O transporte antigo (n8n) foi removido e a integracao com o bot e a proxima etapa.",
+      });
     },
   );
 
-  // DELETE /whatsapp/memory - limpa somente o buffer temporario de testes
-  fastify.delete("/whatsapp/memory", { preHandler: requireAdmin }, async () => {
-    whatsappMemory.contacts.clear();
-    whatsappMemory.conversations.clear();
-    whatsappMemory.messages.clear();
-    whatsappMemory.nextConversationId = 1;
-    whatsappMemory.nextMessageId = 1;
-    return { message: "Buffer temporario do WhatsApp CRM limpo." };
-  });
-
-  // GET /categorias-servicos - catalogo estruturado com fallback para configuracao
-  fastify.get("/categorias-servicos", async (_request, reply) => {
-    try {
-      return await getServiceCategoriesFromTables();
-    } catch (err) {
-      if (isMissingTableError(err)) {
-        return normalizeCategoryConfig(await getConfigValue("categorias"));
-      }
-      fastify.log.error(err);
-      return reply
-        .status(500)
-        .send({ error: "Erro ao buscar categorias de servicos." });
-    }
-  });
-
-  // PUT /categorias-servicos - substitui catalogo de categorias e espelha filtersEnabled
-  fastify.put(
-    "/categorias-servicos",
-    { preHandler: requireAdmin },
-    async (request, reply) => {
-      const payload = normalizeCategoryConfig(request.body);
-      const items = payload.items
-        .map((item, index) => ({
-          id: String(item.id ?? "").trim(),
-          label: String(item.label ?? "").trim(),
-          active: item.active !== false,
-          ordem: index + 1,
-        }))
-        .filter((item) => item.id && item.label);
-
-      const legacyValue = { filtersEnabled: payload.filtersEnabled, items };
-
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        await client.query(
-          `INSERT INTO public.configuracao (chave, valor, atualizado_em)
-         VALUES ('categorias', $1::jsonb, NOW())
-         ON CONFLICT (chave) DO UPDATE SET valor = $1::jsonb, atualizado_em = NOW()`,
-          [JSON.stringify(legacyValue)],
-        );
-
-        await client.query(
-          `DELETE FROM public.categorias_servicos
-         WHERE NOT (id = ANY($1::text[]))`,
-          [items.map((item) => item.id)],
-        );
-
-        for (const item of items) {
-          await client.query(
-            `INSERT INTO public.categorias_servicos (id, nome, ativo, ordem)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (id) DO UPDATE SET
-             nome = EXCLUDED.nome,
-             ativo = EXCLUDED.ativo,
-             ordem = EXCLUDED.ordem`,
-            [item.id, item.label, item.active, item.ordem],
-          );
-        }
-
-        await client.query("COMMIT");
-        return legacyValue;
-      } catch (err) {
-        await client.query("ROLLBACK").catch(() => {});
-        if (isMissingTableError(err)) {
-          try {
-            await pool.query(
-              `INSERT INTO public.configuracao (chave, valor, atualizado_em)
-             VALUES ('categorias', $1::jsonb, NOW())
-             ON CONFLICT (chave) DO UPDATE SET valor = $1::jsonb, atualizado_em = NOW()`,
-              [JSON.stringify(legacyValue)],
-            );
-            return legacyValue;
-          } catch (fallbackErr) {
-            fastify.log.error(fallbackErr);
-          }
-        }
-        fastify.log.error(err);
-        return reply
-          .status(500)
-          .send({ error: "Erro ao salvar categorias de servicos." });
-      } finally {
-        client.release();
-      }
-    },
-  );
-
-  // GET /servicos - catalogo estruturado com fallback para configuracao
+  // GET /servicos - catalogo de servicos, so leitura.
+  //
+  // O EventModal usa isto pro dropdown de servico. Quem EDITAVA o catalogo era o
+  // AdminDrawer do site publico, que nao existe mais aqui — entao `PUT /servicos`,
+  // `GET/PUT /categorias-servicos` e `GET/PUT /configuracao/:chave` sairam junto
+  // com ele. Ate existir tela nossa, o catalogo se edita pelo painel do Supabase.
   fastify.get("/servicos", async (_request, reply) => {
     try {
       return await getServicesFromTables();
     } catch (err) {
-      if (isMissingTableError(err)) {
-        return normalizeServiceCatalog(await getConfigValue("servicos"));
-      }
       fastify.log.error(err);
       return reply.status(500).send({ error: "Erro ao buscar servicos." });
     }
   });
-
-  // PUT /servicos - substitui catalogo de servicos
-  fastify.put(
-    "/servicos",
-    { preHandler: requireAdmin },
-    async (request, reply) => {
-      const normalized = normalizeServicesForSave(request.body);
-      if (!normalized) {
-        return reply.status(400).send({ error: "Lista de servicos invalida." });
-      }
-
-      const invalidService = normalized.find(
-        (item) => !item.slug || !item.name || !item.desc || !item.category,
-      );
-      if (invalidService) {
-        return reply.status(400).send({
-          error:
-            "Todos os servicos precisam de slug, nome, descricao e categoria.",
-        });
-      }
-
-      const { rows: categoryRows } = await pool.query(
-        `SELECT id FROM public.categorias_servicos`,
-      );
-      const validCategories = new Set(categoryRows.map((row) => row.id));
-      const invalidCategory = normalized.find(
-        (item) => !validCategories.has(item.category),
-      );
-      if (invalidCategory) {
-        return reply.status(400).send({
-          error: `Categoria invalida para o servico "${invalidCategory.name}".`,
-        });
-      }
-
-      const incoming = normalized.map((item, index) => ({
-        ...item,
-        ordem: index + 1,
-      }));
-
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        const saved = [];
-
-        for (const item of incoming) {
-          if (item.id > 0) {
-            const { rows } = await client.query(
-              `INSERT INTO public.servicos
-               (id, slug, nome, descricao, preco, categoria_id, ativo, ordem)
-             VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7)
-             ON CONFLICT (id) DO UPDATE SET
-               slug = EXCLUDED.slug,
-               nome = EXCLUDED.nome,
-               descricao = EXCLUDED.descricao,
-               preco = EXCLUDED.preco,
-               categoria_id = EXCLUDED.categoria_id,
-               ativo = TRUE,
-               ordem = EXCLUDED.ordem
-             RETURNING id, slug, nome, descricao, preco, categoria_id`,
-              [
-                item.id,
-                item.slug,
-                item.name,
-                item.desc,
-                item.price,
-                item.category,
-                item.ordem,
-              ],
-            );
-            saved.push(mapServiceRow(rows[0]));
-          } else {
-            const { rows } = await client.query(
-              `INSERT INTO public.servicos
-               (slug, nome, descricao, preco, categoria_id, ativo, ordem)
-             VALUES ($1, $2, $3, $4, $5, TRUE, $6)
-             ON CONFLICT (slug) DO UPDATE SET
-               nome = EXCLUDED.nome,
-               descricao = EXCLUDED.descricao,
-               preco = EXCLUDED.preco,
-               categoria_id = EXCLUDED.categoria_id,
-               ativo = TRUE,
-               ordem = EXCLUDED.ordem
-             RETURNING id, slug, nome, descricao, preco, categoria_id`,
-              [
-                item.slug,
-                item.name,
-                item.desc,
-                item.price,
-                item.category,
-                item.ordem,
-              ],
-            );
-            saved.push(mapServiceRow(rows[0]));
-          }
-        }
-
-        await client.query(
-          `UPDATE public.servicos
-         SET ativo = FALSE
-         WHERE NOT (id = ANY($1::bigint[]))`,
-          [saved.map((item) => item.id)],
-        );
-        await client.query(
-          `SELECT setval(
-           pg_get_serial_sequence('public.servicos', 'id'),
-           COALESCE((SELECT MAX(id) FROM public.servicos), 1),
-           TRUE
-         )`,
-        );
-        await client.query(
-          `INSERT INTO public.configuracao (chave, valor, atualizado_em)
-         VALUES ('servicos', $1::jsonb, NOW())
-         ON CONFLICT (chave) DO UPDATE SET valor = $1::jsonb, atualizado_em = NOW()`,
-          [JSON.stringify(saved)],
-        );
-
-        await client.query("COMMIT");
-        return saved;
-      } catch (err) {
-        await client.query("ROLLBACK").catch(() => {});
-        if (isMissingTableError(err)) {
-          try {
-            await pool.query(
-              `INSERT INTO public.configuracao (chave, valor, atualizado_em)
-             VALUES ('servicos', $1::jsonb, NOW())
-             ON CONFLICT (chave) DO UPDATE SET valor = $1::jsonb, atualizado_em = NOW()`,
-              [JSON.stringify(incoming.map(({ ordem, ...item }) => item))],
-            );
-            return incoming.map(({ ordem, ...item }) => item);
-          } catch (fallbackErr) {
-            fastify.log.error(fallbackErr);
-          }
-        }
-        fastify.log.error(err);
-        return reply.status(500).send({ error: "Erro ao salvar servicos." });
-      } finally {
-        client.release();
-      }
-    },
-  );
-
-  const VALID_CHAVES = ["home", "categorias", "servicos"];
-
-  // GET /configuracao/:chave
-  fastify.get("/configuracao/:chave", async (request, reply) => {
-    const { chave } = request.params;
-    if (!VALID_CHAVES.includes(chave))
-      return reply.status(400).send({ error: "Chave inválida." });
-
-    try {
-      const { rows } = await pool.query(
-        "SELECT chave, valor, atualizado_em FROM configuracao WHERE chave = $1",
-        [chave],
-      );
-      if (!rows.length)
-        return reply
-          .status(404)
-          .send({ error: "Configuração não encontrada." });
-      return {
-        chave: rows[0].chave,
-        valor: rows[0].valor,
-        atualizado_em: rows[0].atualizado_em,
-      };
-    } catch (err) {
-      fastify.log.error(err);
-      return reply.status(500).send({ error: "Erro ao buscar configuração." });
-    }
-  });
-
-  // PUT /configuracao/:chave
-  fastify.put(
-    "/configuracao/:chave",
-    { preHandler: requireAdmin },
-    async (request, reply) => {
-      const { chave } = request.params;
-      if (!VALID_CHAVES.includes(chave))
-        return reply.status(400).send({ error: "Chave inválida." });
-
-      const valor = request.body;
-      try {
-        const { rows } = await pool.query(
-          `INSERT INTO configuracao (chave, valor, atualizado_em)
-         VALUES ($1, $2::jsonb, NOW())
-         ON CONFLICT (chave) DO UPDATE SET valor = $2::jsonb, atualizado_em = NOW()
-         RETURNING chave, valor, atualizado_em`,
-          [chave, JSON.stringify(valor)],
-        );
-        return rows[0];
-      } catch (err) {
-        fastify.log.error(err);
-        return reply
-          .status(500)
-          .send({ error: "Erro ao salvar configuração." });
-      }
-    },
-  );
 
   return fastify;
 }

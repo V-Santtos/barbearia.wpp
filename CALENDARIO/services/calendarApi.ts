@@ -312,13 +312,6 @@ export async function removeBlockedDay(
 
 // ─── EVENTOS (AGENDAMENTOS) ───────────────────────────────────────────────────
 
-export async function getConfig<T = unknown>(
-  chave: "home" | "categorias" | "servicos",
-): Promise<T> {
-  const data = await api<{ valor: T }>(`configuracao/${chave}`);
-  return data.valor;
-}
-
 export async function getConfiguredServices(): Promise<ConfiguredService[]> {
   const data = await api<unknown>("servicos");
   if (!Array.isArray(data)) return [];

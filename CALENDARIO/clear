@@ -1,9 +1,0 @@
-[33mcommit 50cbc631b7d86e733a63f2b89d34ba7ae21b60a2[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
-Author: Inadequado <agostinho.cnetto@gmail.com>
-Date:   Tue May 26 21:56:33 2026 -0300
-
-    arrumado o titulo Conversas, agora mostra real
-
- CALENDARIO/components/Sidebar.tsx | 975 [32m++++++++++++++++++++++++[m[31m--------------[m
- CLAUDE.md                         | 111 [32m+++[m[31m--[m
- 2 files changed, 676 insertions(+), 410 deletions(-)
