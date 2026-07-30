@@ -5,6 +5,20 @@ import { timingSafeEqual } from "crypto";
 import pkg from "pg";
 
 dotenv.config();
+
+// O relogio do processo, fixado antes de qualquer `new Date()`.
+//
+// `isWithinBookingWindow` e `isAfterMinimumNotice` perguntam a hora ao processo,
+// nao ao banco. Na VPS do sistema antigo isso funcionava porque a maquina era de
+// Brasilia; num host UTC (o padrao em plataforma de deploy) a antecedencia minima
+// de 15 min e a virada do dia ficam 3 horas fora — sem erro e sem log, so
+// oferecendo ou recusando horario errado.
+//
+// Corrigir aqui em vez de nas quatro funcoes de data: elas ja estao certas desde
+// que o relogio esteja. `TZ` do ambiente, quando existir, continua mandando — e
+// a barbearia em outro fuso, um dia, se resolve por ali.
+process.env.TZ = process.env.TZ || "America/Sao_Paulo";
+
 const { Pool } = pkg;
 
 const pool = new Pool({
@@ -31,7 +45,9 @@ const DEFAULT_AGENDA = {
   janela_agendamento_dias: 10,
 };
 
-const PORT = process.env.PORT || 3333;
+// 3334, nao 3333: a 3333 e do bot de WhatsApp (BARBEARIA), e a integracao precisa
+// dos dois servicos no ar ao mesmo tempo.
+const PORT = process.env.PORT || 3334;
 // So a porta do painel do calendario. A 3001 saiu junto com o site publico.
 const DEFAULT_CORS_ORIGINS = [
   "http://localhost:3002",

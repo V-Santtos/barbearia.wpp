@@ -194,6 +194,39 @@ formato escolhido aqui (lista com header/footer) é o molde de todo passo seguin
 fluxo. As duas regras de dado — nome só do cliente, barbeiro só do banco — são o que
 impede o sistema de herdar os dois defeitos que mais custaram no n8n.
 
+## [2026-07-30] O calendário no ambiente: o que a poda decidiu
+
+A pasta `CALENDARIO/` veio de `Aplicativo-FULL` e foi podada para o nosso escopo.
+As decisões que valem daqui pra frente:
+
+- **`dados_cliente` tem um dono só: o bot.** O `POST /agendamentos` do calendário
+  escrevia lá, com telefone em JID (`...@s.whatsapp.net`) e numa coluna
+  (`nomewpp`) que renomeamos. Isso duplicava o cliente sob o `UNIQUE (telefone)` e
+  derrubava a rota com 500 **depois** de já ter criado o agendamento. Bloco
+  removido. Nenhum outro serviço escreve naquela tabela.
+- **`configuracao` e `categorias_servicos` estão mortas de propósito — não apagar.**
+  Nenhum código lê ou escreve mais nelas (eram do site público, sacrificado), mas
+  o usuário tem uso futuro para elas. Tabela sem consumidor aqui **não é sobra**.
+- **O DDL das tabelas não volta pro repositório.** Apagamos `migrations/` e
+  `scripts/init-whatsapp-crm.js`. Se um dia for preciso replicar o ambiente,
+  consulta-se o banco — guardar arquivo dizendo como criar tabela é espelhar o
+  banco no repositório, que é a regra que já temos. O conteúdo antigo continua no
+  commit `4f2294f`, se alguém precisar.
+- **O relógio do processo é fixado no código**, não herdado do host:
+  `process.env.TZ = process.env.TZ || "America/Sao_Paulo"` no topo do `server.js`.
+  As funções de data do calendário perguntam a hora ao processo; na VPS do n8n
+  isso funcionava por acaso (máquina de Brasília), e num host UTC — a Vercel — a
+  antecedência mínima e a virada do dia ficariam 3 horas fora, **sem erro e sem
+  log**. `TZ` do ambiente continua tendo precedência.
+- **Portas: o bot é 3333, o calendário é 3334.** Eram os dois na 3333 e não subiam
+  juntos — o que inviabilizava a própria integração.
+- **O envio de mensagem pelo painel responde 501 até a integração.** A rota fica
+  de pé como a costura pro bot; o transporte antigo era o n8n. Responder erro
+  explícito é melhor que fingir que enviou e gravar mensagem que nunca saiu.
+
+**Por quê importa:** os dois sistemas dividem o mesmo banco, e foi exatamente aí
+que nasceram os defeitos — cada tabela precisa de um dono declarado.
+
 ## [2026-07-29] Processo de curadoria de skills/conhecimento
 - **Regra:** todo repositório, skill ou conhecimento trazido passa por: (1) avaliação
   crítica de encaixe, (2) busca cruzada (find-skills + GitHub) só se fizer sentido,

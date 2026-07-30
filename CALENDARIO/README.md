@@ -31,15 +31,23 @@ Dois processos, e o painel precisa da API no ar:
 
 | Comando | O quê | Porta |
 |---|---|---|
-| `npm run server` | a API | 3333 |
+| `npm run server` | a API | 3334 |
 | `npm run dev` | o painel | 3002 |
+
+**A API é 3334, não 3333.** A 3333 é do bot de WhatsApp (`BARBEARIA/`), e a
+integração precisa dos dois no ar ao mesmo tempo — antes eram os dois na mesma
+porta e não subiam juntos. Mapa desta máquina:
+
+| 3000 | 3002 | 3333 | 3334 |
+|---|---|---|---|
+| portfólio (Vite) | painel do calendário | bot de WhatsApp | esta API |
 
 Copie `.env.example` para `.env`. As variáveis:
 
 | Variável | Para quê |
 |---|---|
 | `DATABASE_URL` | conexão Postgres do Supabase (a mesma do bot) |
-| `PORT` | porta da API (3333) |
+| `PORT` | porta da API (3334) |
 | `ADMIN_API_TOKEN` | destrava as rotas administrativas |
 | `WHATSAPP_WEBHOOK_TOKEN` | destrava `POST /whatsapp/events` |
 | `CORS_ORIGINS` | origens liberadas; padrão é só a 3002 |
@@ -92,13 +100,18 @@ As duas rotas de disponibilidade são o coração para a integração:
 
 O que uma consulta ao banco ou uma leitura rápida do código não entrega.
 
-### Fuso horário — o maior risco silencioso
+### Fuso horário — resolvido, mas saiba por quê
 
-`isWithinBookingWindow` e `isAfterMinimumNotice` usam a hora **local do processo
-Node**, enquanto `dayOfWeekFromISO` força UTC. Num host UTC (o padrão em quase
-toda plataforma de deploy), a antecedência mínima de 15 min e a virada do dia
-ficam **3 horas fora** do horário de Brasília, enquanto o dia da semana continua
-certo. Não estoura erro: só oferece ou recusa horário errado.
+`isWithinBookingWindow` e `isAfterMinimumNotice` perguntam a hora ao **processo
+Node**, não ao banco. Na VPS do sistema antigo isso funcionava porque a máquina
+era de Brasília. Num host UTC — o padrão em plataforma de deploy — a antecedência
+mínima de 15 min e a virada do dia ficariam **3 horas fora**, sem erro e sem log:
+o sistema apenas ofereceria ou recusaria horário errado.
+
+O topo do `server.js` fixa `process.env.TZ = "America/Sao_Paulo"` antes de
+qualquer `new Date()`. As funções de data já estavam certas; faltava o relógio.
+`TZ` vindo do ambiente continua tendo precedência, para o dia em que houver
+barbearia em outro fuso.
 
 ### Manhã/tarde/noite não têm fronteira fixa
 
