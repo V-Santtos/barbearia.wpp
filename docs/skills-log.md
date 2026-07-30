@@ -17,6 +17,23 @@ Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbeari
   `Aplicativo-FULL` (CALENDARIO + SITE-BARB-PROF-UNICO), para mapear aquele
   codebase existente antes de mexer nele.
 
+## [2026-07-29] ruvnet/ruflo (ex-claude-flow)
+- Fonte: https://github.com/ruvnet/ruflo
+- Veredito: ❌ Rejeitado
+- Motivo: Sobrepõe diretamente a orquestração nativa de subagentes do Claude Code
+  (ferramenta `Agent`) e as skills já configuradas para isso (`dispatching-parallel-
+  agents`, `subagent-driven-development`). É um "meta-harness" de agentes de IA —
+  rebrand do `claude-flow` do mesmo autor — com escopo inchado (100+ agentes, memória
+  vetorial própria, workers de background, 35 plugins incluindo trading) e linguagem
+  de marketing pouco substanciada ("SONA neural patterns", "self-learning
+  intelligence"). Números reais verificados via API: 66.503 estrelas, MIT, ativo, mas
+  793 issues abertas e repo de ~527MB. Trazido sem intenção específica do usuário
+  ("terceiro falou que era bom"), avaliado para ambos os usos plausíveis (ferramenta
+  de dev ou motor do bot) e nenhum se justifica — o segundo caso violaria a regra de
+  V1 custo-benefício/sem over-engineering (`REGRAS-APRENDIZADOS/REGRAS.md`).
+- Ação: Não instalado. Não revisitar a menos que surja um caso de uso concreto que
+  as ferramentas nativas não cubram.
+
 ## [2026-07-29] mcollina/skills@fastify-best-practices
 - Fonte: https://skills.sh/mcollina/skills/fastify-best-practices
 - Veredito: ⏸️ Avaliado, adoção pendente
