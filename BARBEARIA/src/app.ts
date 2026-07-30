@@ -28,7 +28,7 @@ export function dependenciasReais(env: Env): Dependencias {
   const pool = obterPool(env.DATABASE_URL);
 
   return {
-    registrar: (evento, acoes) => registrarEDecidir(pool, evento, acoes),
+    registrar: (evento, decidir) => registrarEDecidir(pool, evento, decidir),
     enviar: criarEmissor(env),
   };
 }

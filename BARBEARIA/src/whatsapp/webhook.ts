@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../config/env.js';
-import type { Acao } from '../fluxo/acoes.js';
+import type { Acao, ContextoFluxo } from '../fluxo/acoes.js';
 import { rotear } from '../fluxo/rotear.js';
 import { compararSegredos, verificarAssinatura } from './assinatura.js';
 import type { Emissor } from './enviar.js';
@@ -8,8 +8,15 @@ import { traduzirEnvelope, type EnvelopeWebhook, type EventoRecebido } from './e
 
 /** O que o webhook precisa do mundo externo. Injetado pra o teste nao tocar em rede nem banco. */
 export type Dependencias = {
-  /** Grava o evento e decide o que ainda deve ser enviado (dedupe + anti-repeticao). */
-  registrar: (evento: EventoRecebido, acoes: Acao[]) => Promise<{ novo: boolean; enviar: Acao[] }>;
+  /**
+   * Grava o evento, cadastra o contato e decide o que enviar (dedupe +
+   * anti-repeticao). Recebe o roteamento como funcao porque a resposta depende de
+   * o contato ser novo ou nao — coisa que so se sabe dentro da transacao.
+   */
+  registrar: (
+    evento: EventoRecebido,
+    decidir: (contexto: ContextoFluxo) => Acao[],
+  ) => Promise<{ novo: boolean; enviar: Acao[]; clienteNovo: boolean }>;
   enviar: Emissor;
 };
 
@@ -108,8 +115,7 @@ export function criarRotasWebhook(env: Env, deps: Dependencias): Hono {
 }
 
 async function processar(recebido: EventoRecebido, deps: Dependencias): Promise<void> {
-  const acoes = rotear(recebido);
-  const decisao = await deps.registrar(recebido, acoes);
+  const decisao = await deps.registrar(recebido, (contexto) => rotear(recebido, contexto));
 
   if (!decisao.novo) {
     console.log(
@@ -133,8 +139,8 @@ async function processar(recebido: EventoRecebido, deps: Dependencias): Promise<
       wamid: recebido.wamid,
       tipo: recebido.tipo,
       de: recebido.de,
+      clienteNovo: decisao.clienteNovo,
       enviadas: decisao.enviar.map((acao) => acao.resposta),
-      suprimidas: acoes.length - decisao.enviar.length,
     }),
   );
 }

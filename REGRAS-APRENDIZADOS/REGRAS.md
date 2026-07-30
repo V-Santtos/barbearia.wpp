@@ -96,6 +96,61 @@ pasta), não uma sobrescrita silenciosa.
   que ela tem um teto claro, marcar com esse comentário em vez de só confiar na
   memória do projeto. Rodar `ponytail-debt` periodicamente pra revisar o ledger.
 
+## [2026-07-30] Desenho do motor do bot — decisões travadas ao codar a 1ª interação
+
+Cada item abaixo foi decidido com o usuário, implementado e verificado contra o banco
+real. Substituem o que o fluxo n8n fazia; o anexo do n8n continua não-normativo.
+
+- **Contexto viaja dentro do id do botão, não no banco.** Id versionado, ação
+  minúscula, parâmetros em querystring: `1.agendar`,
+  `1.hora?b=1&d=2026-08-04&h=13:00`. Teto de 200 caracteres (limite de `list_reply`).
+  **Consequência que apaga uma classe de bug:** botão velho chega auto-suficiente,
+  então "clique velho pula etapa" deixa de existir e a validade de 30 minutos do
+  fluxo antigo é desnecessária. O que pode ter mudado é o **dado** (o horário foi
+  tomado), e a defesa é conferir no banco na hora de marcar.
+- **O id decide a rota; o título, nunca.** O antigo comparava `'✅ Confirmar'` — o
+  roteamento quebrava em silêncio ao mudar o emoji.
+- **Vocabulário de ids criado do zero.** Nenhum id do n8n é herdado.
+- **O roteador é função pura e total.** `rotear(evento, contexto) → Acao[]`: devolve
+  intenções, não efeitos, e toda entrada tem resposta. Quem consulta o banco é o
+  chamador, que passa o contexto pronto — é isso que mantém o teste em milissegundos,
+  sem servidor e sem simular a Meta.
+- **Silêncio só existe num lugar:** no último degrau da escada de feedback. Em
+  qualquer outro ponto, silêncio é bug.
+- **Redis não entra**, com motivo verificado uso a uso: estado morreu com o contexto
+  no botão; dedupe virou `UNIQUE (wamid)` (garantia estrutural, sem TTL a calibrar, e
+  a linha fica para replay); rajada virou trava **na saída**.
+- **Trava de rajada é na saída, não na entrada.** Processa e grava todas as
+  mensagens; suprime o envio repetido. O `INCR` do n8n descartava justamente a
+  terceira mensagem — a que costuma trazer a informação boa. Vale só para texto:
+  toque em botão nunca é suprimido.
+- **Estado da conversa é derivado, nunca gravado em coluna.** A fonte é a última
+  resposta que o bot deu (`webhook_eventos.acao`). Gravar em `dados_cliente.fluxo`
+  recriaria o problema do fluxo antigo — estado em Redis *e* em coluna, com validades
+  diferentes, e uma rota de "fallback de estado" só para remendar o desencontro.
+- **Escada de feedback** (regra do usuário, mecanismo redesenhado): texto fora do
+  trilho de botões recebe dica mirada no último estado → insistiu, reenvia o menu e
+  trava respostas a texto → insistiu de novo, silêncio. **Botão sempre funciona,
+  inclusive travado.** Resets: virada do dia (meia-noite de São Paulo) e qualquer
+  toque em botão. Os dois saem de graça porque são recortes da consulta — sem campo
+  de validade, sem rotina de limpeza.
+- **A cobrança da copy é do compilador.** `NomeResposta` é um tipo fechado e o mapa
+  de dicas é `Record<NomeResposta, string>`: estado novo sem a frase correspondente
+  **não compila**. É o que impede um estado futuro de virar silêncio por descuido.
+- **Formato canônico de telefone: o `wa_id` como a Cloud API entrega** (dígitos
+  puros com DDI, ex. `553384246770`). Sem o `9` artificial depois do DDD e sem
+  `@s.whatsapp.net` — os dois vinham da Evolution API e produziram quatro formatos do
+  mesmo número no mesmo banco. Cravado enquanto as tabelas estavam vazias, custo zero.
+- **Drizzle adiado** (revisão explícita da decisão de 2026-07-29): o `drizzle-kit`
+  quer ser dono das migrações e criaria um segundo histórico ao lado da
+  `supabase_migrations.schema_migrations` que o `npm run db:migrar` usa. Gatilho para
+  entrar: schema nosso com relações.
+- **Toda mudança de estrutura é migração versionada** em `BARBEARIA/db/migracoes/`.
+  Nunca DDL avulso, nunca pelo painel.
+
+**Por quê importa:** são as formas que todo passo seguinte do fluxo herda. Mudar
+qualquer uma depois custa reescrever o que veio em cima.
+
 ## [2026-07-29] Processo de curadoria de skills/conhecimento
 - **Regra:** todo repositório, skill ou conhecimento trazido passa por: (1) avaliação
   crítica de encaixe, (2) busca cruzada (find-skills + GitHub) só se fizer sentido,

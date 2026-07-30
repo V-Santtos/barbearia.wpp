@@ -90,29 +90,11 @@ período começa e termina não está no banco** — a regra vive no código do 
 
 ## C. Estado da conversa (o que mais importa pro nosso motor)
 
-### C12. `dados_cliente` está sem contrato nenhum
-**Achado:** sem UNIQUE em `telefone` (há duas linhas do mesmo número criadas no mesmo
-segundo), sem índice além da PK, sem FK, `created_at` sem default (há linha com NULL).
-**Pergunta:** a nossa tabela de estado (`conversas`, já nomeada em `REGRAS.md`) nasce nova
-com contrato próprio, e `dados_cliente` é abandonada? Ou migramos?
-
-### C13. "Sem estado" tem duas representações
-**Achado:** 9 linhas com `fluxo = NULL` e 7 com `fluxo = ''`. Nada impede uma terceira.
-**Pergunta:** o estado vira enum/CHECK no banco, ou fica string validada só no código?
-
 ### C14. `data_hora` é jsonb guardando string JSON duplamente codificada
 **Achado:** `jsonb_typeof` retorna `string` nas 6 linhas preenchidas — nenhuma guarda
 objeto. Foi por isso que o n8n precisava de `JSON.parse` condicional.
 **Pergunta:** o dia/hora escolhidos ficam em colunas tipadas (`date` + `time`, ou
 `timestamptz`) em vez de blob? E se blob, com validação de formato?
-
-### C15. Telefone tem quatro formatos no mesmo sistema
-**Achado:** `dados_cliente.telefone` = `5533…` (com DDI); `agendamentos.telefone` = `3398…`
-(sem DDI); `whatsapp_contacts.phone` = `5533…`; e o n8n montava
-`5533…@s.whatsapp.net` com um `9` **inserido artificialmente** (formato de JID da Evolution
-API, não da Cloud API).
-**Pergunta:** qual é a forma canônica única? (A Cloud API entrega `wa_id` limpo — o
-candidato natural.) E como identificamos o mesmo cliente entre as tabelas?
 
 ### C16. "Humano assumiu" está modelado em dois lugares
 **Achado:** `dados_cliente.atendimento_temporario` (boolean, 1 linha true) **e**
@@ -134,12 +116,6 @@ ficar calado?
 É a regra da Cloud API: fora dessa janela só se inicia conversa por template aprovado.
 **Pergunta:** o nosso motor passa a respeitar/manter esse campo? Isso impacta direto o
 **lembrete** — se o lembrete cair fora da janela, precisa de template aprovado pela Meta.
-
-### D19. Dedupe por `wamid` já existe no banco
-**Achado:** `UNIQUE (whatsapp_message_id) WHERE NOT NULL` em `whatsapp_messages`. O n8n
-fazia dedupe no Redis, mas a garantia estrutural está aqui.
-**Pergunta:** aproveitamos esse mecanismo (gravar a mensagem primeiro e deixar o banco
-rejeitar a duplicata) em vez de dedupe em memória?
 
 ### D20. O envelope original da Meta não é preservado em lugar nenhum
 **Achado:** `raw_payload` guarda o corpo que o n8n **montou** para o espelhamento
@@ -208,6 +184,23 @@ sessão interativa. O acesso ao banco foi resolvido por **conexão direta Postgr
 morta no repo? (A conexão direta é a que o código vai usar de todo jeito, com Drizzle.)
 
 ---
+
+## Resolvidos em 2026-07-30 (o número não é reaproveitado)
+
+- **C12 — `dados_cliente` sem contrato:** ganhou `UNIQUE (telefone)` e `default now()`
+  no `created_at`, e virou o **cadastro de contato** do bot (só o telefone, por ora).
+  Não virou tabela de estado: estado é derivado, não guardado.
+- **C13 — "sem estado" com duas representações:** deixou de existir. Não há coluna de
+  estado; a fonte é a última resposta registrada em `webhook_eventos.acao`.
+- **C15 — quatro formatos de telefone:** canônico cravado como o **`wa_id` da Cloud
+  API** (dígitos puros com DDI, ex. `553384246770`). Sem `9` artificial, sem
+  `@s.whatsapp.net`. Feito enquanto as tabelas estavam vazias — custo zero de migração.
+- **D19 — dedupe por `wamid`:** adotado como mecanismo, na **nossa** tabela
+  (`webhook_eventos`), não em `whatsapp_messages` (que exige contato e conversa antes
+  de gravar).
+- **E25/E26 parcialmente:** `webhook_eventos` nasceu com RLS ligado e sem política, o
+  que é o desejado — só o bot escreve, por conexão direta. Os grants de
+  `anon`/`authenticated` nas tabelas legadas continuam em aberto.
 
 ## Registros (sem decisão pendente)
 

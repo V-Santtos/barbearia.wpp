@@ -25,7 +25,11 @@ function montar(sobrescreve: Partial<Dependencias> = {}) {
   const enviadas: Acao[] = [];
 
   const deps: Dependencias = {
-    registrar: async (_evento, acoes) => ({ novo: true, enviar: acoes }),
+    registrar: async (_evento, decidir) => ({
+      novo: true,
+      enviar: decidir({ clienteNovo: true, ultimaResposta: undefined, degrau: 0 }),
+      clienteNovo: true,
+    }),
     enviar: async (acao) => {
       enviadas.push(acao);
     },
@@ -152,17 +156,40 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
   });
 
   it('nao envia nada quando o evento e reentrega da Meta', async () => {
-    const { app, enviadas } = montar({ registrar: async () => ({ novo: false, enviar: [] }) });
+    const { app, enviadas } = montar({
+      registrar: async () => ({ novo: false, enviar: [], clienteNovo: false }),
+    });
 
     expect((await postar(app, MENSAGEM_DE_TEXTO)).status).toBe(200);
     expect(enviadas).toEqual([]);
   });
 
   it('nao envia nada quando a trava anti-repeticao suprime a acao', async () => {
-    const { app, enviadas } = montar({ registrar: async () => ({ novo: true, enviar: [] }) });
+    const { app, enviadas } = montar({
+      registrar: async () => ({ novo: true, enviar: [], clienteNovo: false }),
+    });
 
     expect((await postar(app, MENSAGEM_DE_TEXTO)).status).toBe(200);
     expect(enviadas).toEqual([]);
+  });
+
+  it('a saudacao muda conforme o contato ja esteja cadastrado', async () => {
+    const primeira = montar();
+    await postar(primeira.app, MENSAGEM_DE_TEXTO);
+
+    const repetida = montar({
+      registrar: async (_evento, decidir) => ({
+        novo: true,
+        enviar: decidir({ clienteNovo: false, ultimaResposta: undefined, degrau: 0 }),
+        clienteNovo: false,
+      }),
+    });
+    await postar(repetida.app, MENSAGEM_DE_TEXTO);
+
+    expect(primeira.enviadas[0]?.texto).not.toBe(repetida.enviadas[0]?.texto);
+    expect(repetida.enviadas[0]?.texto).toContain('de novo');
+    // Mesmo nome de resposta nos dois: e a trava anti-repeticao que depende disso.
+    expect(primeira.enviadas[0]?.resposta).toBe(repetida.enviadas[0]?.resposta);
   });
 
   it('nao trata recibo de entrega como mensagem de cliente', async () => {
@@ -203,7 +230,11 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
   it('falha de envio numa mensagem nao derruba as outras do mesmo envelope', async () => {
     const enviadas: Acao[] = [];
     const app = criarApp(env, {
-      registrar: async (_evento, acoes) => ({ novo: true, enviar: acoes }),
+      registrar: async (_evento, decidir) => ({
+        novo: true,
+        enviar: decidir({ clienteNovo: false, ultimaResposta: undefined, degrau: 0 }),
+        clienteNovo: false,
+      }),
       enviar: async (acao) => {
         if (enviadas.length === 0) {
           enviadas.push(acao);

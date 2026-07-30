@@ -190,51 +190,51 @@ tipos, contagens). Isso o banco responde em 2 segundos e markdown envelhece cala
 — sobraram dois arquivos, `README.md` (armadilhas) e `DECIDIR.md` (agenda). Regra
 daqui pra frente: **não espelhar o banco no repositório.**
 
-## PRIMEIRA INTERAÇÃO CODADA (2026-07-30)
+## PRIMEIRA INTERAÇÃO PRONTA E TESTADA NO CELULAR (2026-07-30)
 
-Mensagem chega → é traduzida → registrada → roteada → o bot responde com **3
-botões: Agendar, Reagendar, Cancelar**. Só `Agendar` tem rota própria; os outros
-dois respondem "ainda não sei fazer isso" — **nunca silêncio**.
+Mensagem chega → traduzida → registrada → contato cadastrado → roteada → o bot
+responde com **3 botões: Agendar, Reagendar, Cancelar**. Só `Agendar` tem rota
+própria; os outros dois respondem "ainda não sei fazer isso" — nunca silêncio.
 
-Token de envio resolvido: `WHATSAPP_TOKEN` e `WHATSAPP_PHONE_NUMBER_ID` no `.env`.
-É token de **teste, descartável** (já passou por log de conversa) — trocar antes da
-produção. Validado por chamada real: número +55 33 8459-4968, qualidade GREEN.
+**Rodou ponta a ponta com o celular do usuário**, do "Oi" ao menu na tela.
 
-### As decisões que moldam tudo daqui pra frente
+As decisões de desenho estão em `REGRAS-APRENDIZADOS/REGRAS.md` (entrada de
+2026-07-30), com o porquê de cada uma. Resumo do que existe:
 
-1. **O contexto viaja dentro do id do botão, não no banco.** Id versionado, ação
-   minúscula, parâmetros em querystring: `1.agendar`,
-   `1.hora?b=1&d=2026-08-04&h=13:00`. **Vocabulário criado do zero** — nenhum id do
-   n8n (`MENU_AGENDAR`, `BARBEIRO_LUCAS_COSTA`) é herdado.
-   Consequência: some a validade de 30 minutos do fluxo antigo. Botão velho chega
-   auto-suficiente; o que pode ter mudado é o **dado**, e a defesa é conferir no
-   banco na hora de marcar.
-2. **O id decide a rota, o título nunca.** O antigo comparava `'✅ Confirmar'`.
-3. **O roteador é função pura e total.** Devolve intenções, não efeitos. Para toda
-   entrada existe resposta — inclusive áudio, id desconhecido e botão de versão
-   antiga.
-4. **Redis não entra**, com o motivo verificado uso a uso: estado morreu com o
-   contexto no botão; dedupe é `UNIQUE (wamid)` no Postgres; rajada é trava **na
-   saída** (processa tudo, não repete a resposta) em vez do `INCR` que descartava
-   mensagem.
-5. **Uma tabela só: `webhook_eventos`** — dedupe, anti-repetição (janela de 15s),
-   replay pra depurar. `dados_cliente` e `whatsapp_messages` foram avaliadas e
-   descartadas (grão errado / exigem contato e conversa antes de gravar).
-6. **Drizzle adiado, de propósito** — desvio explícito do `REGRAS.md`, aprovado. O
-   `drizzle-kit` quereria ser dono das migrações e criaria uma segunda tabela de
-   histórico ao lado da `supabase_migrations.schema_migrations`. Gatilho pra
-   entrar: quando existir schema nosso com relações.
+- **Contexto no id do botão** (`1.agendar`), vocabulário criado do zero.
+- **`webhook_eventos`** — uma tabela servindo a dedupe, trava de rajada, estado
+  derivado e replay.
+- **`dados_cliente`** virou o cadastro de contato, guardando **só o telefone** por
+  ora. Ganhou `UNIQUE (telefone)` e `default now()` no `created_at` — sem a unique,
+  "cria só se não existir" era torcida, não garantia.
+- **Saudação muda para cliente conhecido**, e a distinção sai do próprio cadastro
+  (`insert ... on conflict do nothing returning id`: voltou linha = novo).
+- **Escada de feedback** — texto fora do trilho recebe dica mirada no último estado
+  → insistiu, reenvia menu e trava texto → insistiu, silêncio. Botão sempre
+  funciona. Reset à meia-noite de São Paulo e a cada toque em botão.
 
-Custo por "Oi": **1 escrita no banco + 1 chamada HTTP**. O n8n gastava ~6 idas ao
+Custo por "Oi": **2 escritas no banco + 1 chamada HTTP**. O n8n gastava ~6 idas ao
 banco e 3–4 chamadas.
+
+Token de envio no `.env` (`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`). É token de
+**teste, descartável** — passou por log de conversa; trocar antes da produção.
+Validado por chamada real: +55 33 8459-4968, qualidade GREEN.
 
 ### Estado da verificação
 
-- `npm test` — 58 testes passando; `npm run typecheck` limpo.
-- Camada de banco exercitada contra o Supabase real: reentrega absorvida, rajada
-  gravada sem repetir o menu. Linhas de teste apagadas.
-- **Falta o teste no celular:** subir ngrok, **recolar a nova URL de callback no
-  painel da Meta** e mandar "Oi". Nunca rodou ponta a ponta.
+- **70 testes** passando, `npm run typecheck` limpo.
+- **Escada exercitada contra o banco real**, os 7 degraus. Achou um bug que teste
+  unitário não pegaria: o corte "do último botão pra cá" precisa ser inclusivo
+  (`>=`), senão o bot esquece a resposta que acabou de dar ao toque e manda o menu
+  no lugar da dica certa.
+- **Teste no celular:** "Oi" → menu; segunda mensagem → saudação de conhecido.
+
+### O banco foi esvaziado pelo usuário em 2026-07-30
+
+`whatsapp_contacts`, `whatsapp_conversations`, `whatsapp_messages`, `dados_cliente`
+e `agendamentos` estavam com dado do case antigo e foram zerados **de propósito**,
+para testar do zero. `profissionais` (2) e `servicos` (6) continuam. Foi isso que
+permitiu cravar o formato canônico de telefone sem migrar nada.
 
 ## Próximo passo: o fluxo de AGENDAMENTO
 
@@ -256,6 +256,17 @@ e mais rápido** que o antigo; ler o antigo serve para saber o que já foi tenta
 Primeira decisão que aparece pela frente: barbeiro é **dado**, não código (o antigo
 tinha 2 hardcoded e duplicava ~20 nós por barbeiro — foi o que gerou o único bug
 achado na leitura).
+
+**Como o novo passo se encaixa no que já existe** (não precisa redescobrir):
+
+1. Novo id de botão em `montarId('barbeiro', { b: '1' })` — o contexto vai dentro dele.
+2. Nova rota no `switch` de `rotear.ts`, com nome de resposta próprio.
+3. O nome entra em `NOMES_RESPOSTA` (`acoes.ts`) **e no mapa `AJUDA`** — sem a frase
+   de "toque no botão tal", o TypeScript recusa compilar. É de propósito.
+4. A escada de feedback e o cadastro de contato passam a valer no passo novo sem
+   nenhuma alteração: eles leem `webhook_eventos.acao`, seja ela qual for.
+5. Nome do cliente ainda não é aproveitado — a Meta manda em toda mensagem e hoje a
+   gente descarta. É o insumo natural para a tela de confirmação do agendamento.
 
 ## Fluxo n8n do case antigo: LIDO em 2026-07-30 (as duas partes)
 
