@@ -35,6 +35,54 @@ pasta), não uma sobrescrita silenciosa.
   referência para quando o produto crescer (V2 ou V1 em volume alto), não como
   requisito de agora.
 
+## [2026-07-29] Stack do motor do bot WhatsApp (Fase 1/Fase 2) — decisão travada
+- **Regra:** motor do bot em **Node.js + TypeScript + Hono** (não Fastify — o
+  calendário existente usa Fastify, mas o bot é um serviço novo e separado;
+  interoperabilidade na Fase 2 acontece via contrato HTTP, não via framework
+  compartilhado). Demais decisões:
+  - **Estado de conversa:** tabela `conversas` no Supabase Postgres
+    (`tenant_id`, `telefone`, `passo_atual`, `contexto jsonb`, `expira_em`), via
+    pooler transacional (porta 6543). Sem Redis/cache — dedupe de webhook por
+    `wamid` (idempotência) cobre o que o Redis resolveria.
+  - **Multi-tenancy:** RLS com `tenant_id` em toda tabela + tabela `barbearias`.
+    O bot usa `service_role` (ignora RLS) — disciplina de filtrar por
+    `tenant_id` é responsabilidade do código, sempre.
+  - **Billing:** Asaas (Pix nativo, boleto, régua de cobrança automática —
+    melhor fit que Stripe/Mercado Pago pro perfil de dono de barbearia
+    brasileiro). Migrar para Pix Automático (débito recorrente do Banco
+    Central, taxa 0,22–0,35% vs. 0,99% do Asaas Pix Recorrente) quando passar
+    de ~200-300 assinantes ativos — não antes, a economia só compensa em volume.
+    AbacatePay avaliado e **parqueado como candidato** (taxas menores em
+    Pix/boleto, mas fintech de ~1 ano sem licenciamento confirmado) — ver
+    `ANEXO_PAGAMENTOS.md` para a comparação completa.
+  - **Acesso ao banco (ORM):** **Drizzle ORM**, não driver nativo puro nem
+    Prisma. Motivo: TypeScript-first, sem runtime pesado nem passo de geração
+    no build, combina naturalmente com Hono/serverless (é a dupla mais comum
+    do ecossistema atual) e é consistente com a razão de termos escolhido Hono
+    sobre Fastify (leveza). Conecta via o mesmo pooler transacional do
+    Supabase (porta 6543) usado pela tabela `conversas`. `@supabase/supabase-js`
+    continua sendo usado à parte, só para Auth (JWT/RLS) — não para as queries
+    de dado, que ficam com o Drizzle. Nenhuma skill de terceiro adotada (nada
+    no catálogo bate a barra de qualidade — melhor achado tinha só 62 estrelas
+    e estrutura confusa).
+  - **Auth:** Supabase Auth (JWT alimenta as políticas RLS nativamente).
+  - **Filas/lembretes:** padrão outbox — tabela `envios_pendentes`
+    (`enviar_em`, `tentativas`, `status`) + Vercel Cron a cada minuto (confirmado
+    que o plano Pro suporta essa cadência). Zero infraestrutura nova.
+  - **Observabilidade:** Sentry (free) + logs JSON + tabela `webhook_eventos`
+    guardando payload bruto da Meta (retenção de log da Vercel é curta;
+    replay de webhook é a ferramenta de debug mais valiosa aqui).
+  - **Testes:** máquina de estados como função pura `(estado, evento) →
+    (novoEstado, ações[])`, testável com Vitest tabular; mock de HTTP com msw;
+    testar a verificação de assinatura `X-Hub-Signature-256` do webhook
+    (erro de segurança clássico se esquecido).
+- **Por quê importa:** é a decisão de arquitetura central do projeto, derivada de
+  um prompt estruturado (`docs/stack-decision-llm-prompt.md`) e verificada
+  ponto a ponto antes de travar (ver `docs/resposta.md` para a resposta completa
+  e o histórico de conversa para a checagem crítica de cada item).
+- **Como aplicar:** toda decisão de código do motor do bot segue isso por padrão.
+  Se algo aqui precisar mudar, é uma revisão explícita, não um desvio silencioso.
+
 ## [2026-07-29] Processo de curadoria de skills/conhecimento
 - **Regra:** todo repositório, skill ou conhecimento trazido passa por: (1) avaliação
   crítica de encaixe, (2) busca cruzada (find-skills + GitHub) só se fizer sentido,

@@ -36,3 +36,20 @@ sobreposição antes de adicionar.
   parte pré-resolvida pela escolha de plataforma, restando avaliar cache.
 - **Status:** conhecimento de fundo, não aplicado ainda. Revisitar quando houver sinal
   real de necessidade de escala (não antes).
+
+## [2026-07-29] ORM vs. driver nativo (Reel Facebook)
+- **Fonte:** https://www.facebook.com/reel/2398255274030212 (transcrito via yt-dlp +
+  ffmpeg + faster-whisper, modelo `medium`, PT)
+- **Conteúdo:** conectar banco com driver nativo puro (mapear coluna a coluna na mão)
+  é lento e propenso a erro; a alternativa é um ORM, que mapeia automaticamente e
+  acelera o desenvolvimento. Conteúdo genérico (não cita nenhuma biblioteca
+  específica), mas correto como princípio.
+- **Avaliação e decisão:** esse vídeo expôs um buraco real na decisão de stack já
+  travada (`REGRAS.md` — "Stack do motor do bot") — tínhamos decidido "estado em
+  Supabase Postgres" sem nunca decidir como o código fala com o banco. Diferente da
+  primeira entrada deste anexo (que ficou como conhecimento de fundo), aqui havia
+  contexto suficiente pra decidir na hora: **Drizzle ORM**, por ser TypeScript-first,
+  leve, sem passo de geração no build, e consistente com a escolha de Hono sobre
+  Fastify (mesma razão: leveza em ambiente serverless). Ver `REGRAS.md` para a
+  decisão completa.
+- **Status:** aplicado à decisão de stack, não é mais conhecimento parqueado.

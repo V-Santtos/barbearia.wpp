@@ -1,0 +1,37 @@
+Victor, esse prompt está muito bem escrito — mas não precisa mandar pra outra LLM, dá pra decidir aqui mesmo. Vou responder exatamente no formato que você pediu: uma escolha concreta por item, justificativa amarrada ao seu contexto e os trade-offs que você está aceitando.
+
+**1. Linguagem/runtime e framework do bot**
+
+Node.js + TypeScript, sem discussão — compartilhar tipos e conhecimento com o calendário vale muito. No framework, porém, divirja: use **Hono** (ou handlers puros da Vercel) em vez de Fastify. Motivo concreto: Fastify foi desenhado para processo long-running — o boot de plugins, hooks e decorators roda a cada cold start em função serverless, e o adapter pra Vercel é um remendo. Hono é serverless-first, minúsculo, TypeScript nativo, e a interoperabilidade da Fase 2 acontece via contrato HTTP (endpoints + tipos compartilhados num pacote), não via framework. Trade-off aceito: dois frameworks no seu ecossistema; se isso incomodar muito, Fastify funciona, só carrega peso desnecessário.
+
+**2. Estado da conversa**
+
+Direto no **Supabase Postgres**, sem Redis. Uma tabela `conversas` com `tenant_id`, `telefone`, `passo_atual`, `contexto jsonb`, `expira_em`, `atualizado_em`. Com dezenas de barbearias, o Postgres resolve isso dormindo — Upstash Redis adicionaria um segundo datastore, uma segunda credencial, um segundo ponto de falha, pra economizar milissegundos que não importam num fluxo de botões de WhatsApp. Conecte via o pooler transacional do Supabase (porta 6543), obrigatório em serverless. Dois cuidados que substituem o Redis de verdade: **idempotência** (a Meta reenvia webhooks — guarde o `wamid` das mensagens processadas e ignore duplicatas) e expiração de sessão via coluna `expira_em` checada na leitura. Trade-off: se um dia tiver milhares de conversas simultâneas, você adiciona cache na frente — mudança aditiva, não reescrita.
+
+**3. Multi-tenancy**
+
+**RLS com coluna `tenant_id` em toda tabela** + tabela `barbearias`. Schema-per-tenant é dor operacional pura: cada migration roda N vezes, backups fragmentam, e não te dá nada em troca nessa escala. RLS com tenant_id escala tranquilamente até milhares de tenants sem reescrita. Ponto importante que a resposta genérica esconde: o serviço do bot vai usar a `service_role` key, que **ignora RLS** — então no código do bot a disciplina de filtrar por `tenant_id` é sua, sempre. O RLS protege de verdade o caminho do painel/app do dono (autenticado via Supabase Auth, item 5). Trade-off: políticas RLS precisam de testes próprios, e um esquecimento de filtro no bot vaza dados entre tenants — vale um helper que exige `tenant_id` em toda query.
+
+**4. Billing**
+
+**Asaas.** Seu público é o dono de barbearia brasileiro, muitas vezes autônomo — Pix é essencial, cartão nem sempre. O Asaas faz assinatura recorrente com Pix, boleto e cartão, tem régua de cobrança/inadimplência automática (notificação por e-mail e WhatsApp) e foi construído exatamente pra esse perfil de SaaS nacional. Stripe tem DX muito superior, mas é cartão-first; Mercado Pago tem API de assinaturas mais limitada e suporte pior pra esse caso. No banco, modele espelhando o provedor via webhook, nunca por chamada síncrona: tabela `assinaturas` com `asaas_customer_id`, `asaas_subscription_id`, `plano`, `status` (`ativa`, `inadimplente`, `cancelada`), `valida_ate` — e o gate de acesso ao produto lê só essa tabela local, com período de carência configurável pra inadimplência. Trade-off aceito: DX e documentação inferiores à Stripe, menos bibliotecas prontas; se um dia internacionalizar, aí sim Stripe entra.
+
+**5. Autenticação**
+
+**Supabase Auth**, sem hesitar. Você já paga Supabase Pro, e é a única opção onde auth e multi-tenancy se casam nativamente: o JWT do usuário alimenta as políticas RLS direto. Estrutura: tabela `membros` (`user_id`, `tenant_id`, `papel`) e políticas RLS que checam pertencimento via essa tabela — isso já te dá de graça o cenário V2 de redes com múltiplos usuários por barbearia. Como a stack de auth atual do calendário não está confirmada, trate a adoção do Supabase Auth lá como tarefa da Fase 2. Trade-off: lock-in maior no Supabase e uma migração de auth no calendário — mas com poucas dezenas de usuários, migrar agora é barato; depois fica caro.
+
+**6. Filas, retries e agendamento**
+
+**Postgres como fila (padrão outbox) + Vercel Cron.** Toda mensagem a enviar (confirmação, lembrete) vira linha numa tabela `envios_pendentes` com `enviar_em`, `tentativas`, `status`. Um cron da Vercel roda a cada minuto, pega o que venceu, envia via Cloud API, marca sucesso ou incrementa tentativa com backoff. Lembretes de agendamento são só linhas com `enviar_em` no futuro. Zero infraestrutura nova, tudo transacional com o resto dos seus dados (o agendamento e seu lembrete nascem no mesmo commit). Trade-off: granularidade de 1 minuto (irrelevante pra lembrete de corte de cabelo) e polling constante (irrelevante nesse volume). Vercel Queues existe, mas ainda não te dá o agendamento futuro que o lembrete exige — a tabela resolve os dois problemas com um mecanismo só.
+
+**7. Observabilidade**
+
+**Sentry (plano free) + logs estruturados em JSON no runtime da Vercel + uma tabela `webhook_eventos`** guardando o payload bruto de cada evento da Meta nos primeiros meses. O motivo da tabela: a retenção de logs da Vercel no Pro é curta, e quando um cliente real reclamar "o bot travou ontem", você vai querer reproduzir a sequência exata de eventos — replay de webhook é a ferramenta de debug mais valiosa em bot de mensageria. Use o `wamid` como correlation ID em todo log. Trade-off: a tabela de eventos cresce; um cron mensal de limpeza resolve.
+
+**8. Testes**
+
+Modele a máquina de estados como **função pura**: `(estadoAtual, evento) → (novoEstado, ações[])`, onde "ações" são descrições do que fazer (enviar mensagem X, gravar agendamento Y), executadas por uma camada separada. Isso torna 90% do bot testável com **Vitest em testes tabulares** cobrindo toda transição — incluindo as feias: botão de um passo antigo, mensagem de texto livre no meio do fluxo, webhook duplicado. Na integração, grave payloads reais da Cloud API (da sua Fase 1 de validação) e use como fixtures, mockando o fetch com **msw**. Teste também a verificação de assinatura `X-Hub-Signature-256` do webhook — esquecer isso é o erro de segurança clássico nesse tipo de serviço. E2E mínimo: o número de teste da própria Meta antes de cada deploy relevante. Trade-off: a separação núcleo-puro/efeitos exige disciplina de arquitetura desde o primeiro arquivo — mas é ela que torna a Fase 2 (trocar "ação: gravar local" por "ação: chamar API do calendário") quase indolor.
+
+Uma observação sobre o seu contexto que invalida resposta padrão: a maioria das recomendações de "SaaS multi-tenant com bot" assume tráfego alto e empurra Redis, fila dedicada e microsserviços. Com Vercel Pro + Supabase Pro e dezenas de tenants, sua stack inteira é honestamente: Hono + Postgres (estado, fila, eventos, tudo) + Supabase Auth + Asaas + Sentry. A única decisão realmente irreversível da lista é o modelo de dados multi-tenant — e RLS com `tenant_id` é a que não te cobra reescrita depois.
+
+Se quiser, no próximo passo posso desenhar o esquema das tabelas (conversas, agendamentos, envios_pendentes, assinaturas, membros) já com as políticas RLS.

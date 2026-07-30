@@ -54,13 +54,43 @@ Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbeari
 
 ## [2026-07-29] mcollina/skills@fastify-best-practices
 - Fonte: https://skills.sh/mcollina/skills/fastify-best-practices
-- Veredito: ⏸️ Avaliado, adoção pendente
+- Veredito: ❌ Não instalado (decisão de stack resolvida sem Fastify no bot)
 - Motivo: Skill de altíssima qualidade (autor: Matteo Collina, cocriador/mantenedor
-  do Fastify; 1.883 estrelas no repo; 30.7K instalações da skill; MIT; ativo).
-  Cobre arquitetura de plugins/encapsulamento, rotas, schemas, DB, deploy, testes.
-  Porém: a stack do motor do bot WhatsApp (webhook + máquina de estado do fluxo de
-  botões) ainda não foi decidida — instalar uma skill específica de Fastify antes de
-  travar a stack seria prematuro. Usuário vai trazer material próprio para embasar
-  essa decisão de arquitetura.
-- Ação: Não instalado. Aguardando decisão de stack do motor do WhatsApp (spec
-  separado, a ser aberto quando o usuário trouxer o mapeamento).
+  do Fastify; 1.883 estrelas no repo; 30.7K instalações; MIT; ativo) — mas a decisão
+  de stack do motor do bot (ver `REGRAS-APRENDIZADOS/REGRAS.md`) fechou em
+  **Node.js + TypeScript + Hono**, não Fastify. O calendário existente
+  (`Aplicativo-FULL/CALENDARIO`) continua em Fastify, então esta skill pode valer a
+  pena **se algum dia mexermos diretamente naquele repositório** — mas não para o
+  bot que estamos construindo agora.
+- Ação: Não instalado neste repositório. Revisitar apenas se/quando trabalharmos
+  diretamente no código do `CALENDARIO` (Fastify) do Aplicativo-FULL.
+
+## [2026-07-29] Stack do motor do bot: Node.js + TypeScript + Hono
+- Fonte: `docs/stack-decision-llm-prompt.md` (pergunta estruturada) +
+  `docs/resposta.md` (resposta recebida), verificada ponto a ponto antes de travar.
+- Veredito: ✅ Decisão travada
+- Motivo: ver entrada completa em `REGRAS-APRENDIZADOS/REGRAS.md`
+  ("Stack do motor do bot WhatsApp — decisão travada"). Resumo da checagem crítica:
+  argumento de cold-start contra Fastify estava parcialmente exagerado (Fluid
+  Compute reaproveita instâncias quentes), mas a conclusão (Hono) segue válida por
+  ser propósito-específico e mais leve pra um serviço novo de webhook; Vercel Cron
+  a cada minuto confirmado (plano Pro); Asaas confirmado como melhor fit de billing
+  pro perfil de dono de barbearia brasileiro, com nota adicional sobre Pix
+  Automático como migração futura em volume.
+- Ação: Nenhuma skill de Hono adotada (nada no catálogo bate a barra de qualidade —
+  melhor opção tinha só 645 installs, de um repo de 240 skills convertidas em
+  massa, 207 estrelas). Docs oficiais do Hono são enxutos o bastante por ora.
+
+## [2026-07-29] Acesso a banco: Drizzle ORM (sem skill de terceiro)
+- Fonte do gatilho: reel do Facebook (transcrito), ver
+  `REGRAS-APRENDIZADOS/ANEXO_ARQUITETURA.md`. Busca por skill:
+  `bobmatnyc/claude-mpm-skills@drizzle-orm` (4.4K installs no skills.sh, mas repo
+  fonte com só 62 estrelas e estrutura confusa/reorganizada — mesmo padrão de baixa
+  autoridade já visto com Hono).
+- Veredito: ✅ Decisão travada (Drizzle ORM) sem adoção de skill de terceiro
+- Motivo: preenche um buraco na decisão de stack já travada (estado em Postgres
+  sem definir a camada de acesso). Drizzle é consistente com a razão de termos
+  escolhido Hono sobre Fastify (leveza/serverless-first). Nenhuma skill do catálogo
+  teve autoridade suficiente para adoção (ver busca acima).
+- Ação: Nenhuma skill instalada. Documentação oficial do Drizzle é referência
+  suficiente por ora.
