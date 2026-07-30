@@ -3,6 +3,42 @@
 Registro de toda skill/repositório/conhecimento avaliado para entrar em `.claude/skills/`.
 Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbearia-design.md`.
 
+## [2026-07-30] supabase/agent-skills (oficial Supabase)
+- Fonte: https://github.com/supabase/agent-skills
+- Veredito: ✅ Adotado integral (as 2 skills)
+- Motivo: Repositório **oficial do Supabase**, MIT, ativo — a autoridade que faltou
+  nas buscas de skill de Hono e de Drizzle (ambas recusadas por repo de baixa
+  autoridade). Só tem 2 skills, e as duas servem, em momentos diferentes — por isso
+  a regra de "não adotar o repo inteiro quando só uma parte serve" não se aplica
+  aqui. Conteúdo verificado antes de instalar (árvore do repo + leitura do
+  `SKILL.md` das duas + do `security-rls-performance.md`): substância técnica real,
+  sem marketing.
+  - `supabase-postgres-best-practices` — 34 referências curtas (~1,5 KB cada) por
+    categoria (query, conn, lock, monitor, schema, security, data, advanced).
+    Aplicação imediata: `security-rls-performance.md` ensina que
+    `using (auth.uid() = user_id)` executa a função **por linha** e
+    `using ((select auth.uid()) = user_id)` executa uma vez — relevante direto
+    porque RLS + `tenant_id` em toda tabela é decisão travada no `REGRAS.md`.
+  - `supabase` — guia amplo (12 KB). O valor está no checklist de segurança:
+    `user_metadata` é editável pelo usuário e não serve pra RLS (usar
+    `app_metadata`); view ignora RLS sem `security_invoker = true`; `UPDATE` sem
+    política de `SELECT` falha em silêncio (0 linhas, sem erro); `UPDATE` sem
+    `WITH CHECK` permite reatribuir a linha a outro dono; `TO authenticated`
+    sozinho é IDOR; `SECURITY DEFINER` em `public` é endpoint público por padrão.
+    Também instrui a não confiar em dado de treino e buscar o changelog — postura
+    correta pra uma plataforma que muda rápido.
+  - Sem conflito com `REGRAS-APRENDIZADOS/`: é referência técnica, não um sistema
+    de memória/processo concorrente (foi exatamente o que reprovou o ECC).
+- Ação: Instalado com `npx skills add supabase/agent-skills`. Arquivos em
+  `.agents/skills/` (padrão aberto Agent Skills), com junctions em
+  `.claude/skills/`. Criou também `skills-lock.json` na raiz. A instalação declara
+  suporte a 73 agentes mas **não** espalhou pasta de configuração pra ferramentas
+  que não usamos — nada de `.gemini`, `.codex` etc.
+- Relacionado: MCP oficial do Supabase adicionado no mesmo dia (`.mcp.json`,
+  escopo de projeto, endpoint `mcp.supabase.com` com `read_only=true` e features
+  `docs,database,functions`), pendente de autenticação OAuth pelo usuário em
+  terminal interativo.
+
 ## [2026-07-29] Graphify (Graphify-Labs/graphify)
 - Fonte: https://github.com/Graphify-Labs/graphify
 - Veredito: ❌ Rejeitado por ora (candidato futuro, não descartado)

@@ -25,14 +25,42 @@ mesmo que pareça bom à primeira vista (ver rejeições de `ruvnet/ruflo` e
 `affaan-m/ECC` no skills-log — ambos tinham estrelas reais, mas sobrepunham o
 que já temos).
 
+## Como trabalhar: uma etapa por vez
+
+O projeto avança **por partes**, e o usuário conduz a ordem. Responder o que foi
+perguntado e parar ali. **Não** fechar respostas com lacunas de escopo, riscos
+futuros, incoerências que "lá na frente vão dar problema" ou próximos passos que
+ele não abriu — ele já sabe o que está faltando, e o momento de trazer isso é a
+etapa de lapidação, que ele pede quando for. Observação relevante fora da etapa
+vai para anexo em `REGRAS-APRENDIZADOS/` e fica lá, calada, até ser perguntada.
+Ver `REGRAS-APRENDIZADOS/APRENDIZADOS.md` (entrada de 2026-07-30).
+
+## Acesso ao banco (não descoberto pelo código)
+
+O banco do case atual é o Supabase ref `sppexvjvnoganlduyjvs` (PostgreSQL 17.6),
+o mesmo que o fluxo n8n usava. Acesso por **conexão direta Postgres**:
+`DATABASE_URL` no `BARBEARIA/.env` (coberto pelo `.gitignore`), usuário
+`postgres`, com **leitura e escrita**.
+
+O levantamento completo está em **`REGRAS-APRENDIZADOS/ANEXO_BANCO/`** — ler o
+`README.md` de lá antes de mexer em qualquer coisa de banco, e
+`07-A-DECIDIR.md` para saber o que ainda não foi decidido. Os scripts de
+releitura estão em `ANEXO_BANCO/ferramentas/` (precisam de `pg` instalado num
+diretório temporário, não no projeto).
+
+Fato operacional a lembrar: um event trigger (`ensure_rls`) liga RLS
+automaticamente em toda tabela criada no schema `public`. Tabela nova sem política
+**nega tudo pela API pública, em silêncio** (0 linhas, sem erro).
+
+O MCP oficial do Supabase está em `.mcp.json` mas nunca foi aprovado (exige sessão
+interativa) — não é o caminho de acesso, a conexão direta é.
+
 ## Estado do repositório
 
 `BARBEARIA/` (raiz) é onde o código do aplicativo vai morar — `package.json`,
 `tsconfig.json`, `src/`, tudo que for codado entra ali dentro, não solto na raiz
-do repo. Ainda não existe esqueleto nenhum lá (pasta vazia até agora) — só
-documentação de arquitetura e decisões nas outras pastas. Não assumir que
-build/lint/test existem até o esqueleto ser criado (ver `CONTEXTO.md` para o
-status exato).
+do repo. Já existe esqueleto do webhook (Hono + TypeScript, sem ORM ainda) — ver
+`CONTEXTO.md` para o que está lá. Não assumir que lint existe.
 
 Git local apenas, sem remote configurado ainda.
 

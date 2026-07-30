@@ -14,6 +14,9 @@ onde vierem (vídeos, artigos, repositórios, conversas, erros cometidos).
 - **`ANEXO_<TEMA>.md`** — base de conhecimento por assunto (ex.: `ANEXO_ARQUITETURA.md`,
   `ANEXO_WHATSAPP.md`). Cada arquivo acumula o que já validamos sobre aquele tema,
   citando a fonte de cada trecho.
+- **`ANEXO_<TEMA>/`** — quando o tema é grande demais para um arquivo, vira pasta com
+  `README.md` de índice + arquivos numerados (ex.: `ANEXO_BANCO/`). Mesma regra de fonte
+  e data; o índice diz o que está em cada arquivo e como reproduzir o levantamento.
 
 ## Mecanismo (obrigatório antes de adicionar algo novo)
 

@@ -1,0 +1,6 @@
+# Skills instaladas por `npx skills add` vivem em .agents/skills/ (padrao aberto
+# Agent Skills). O instalador cria junctions em .claude/skills/ apontando pra la —
+# versionar as duas copias duplicaria o conteudo. Origem versionada: .agents/.
+# Para restaurar os junctions num clone novo: npx skills add supabase/agent-skills
+.claude/skills/supabase/
+.claude/skills/supabase-postgres-best-practices/
