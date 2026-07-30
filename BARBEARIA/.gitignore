@@ -4,3 +4,9 @@ node_modules/
 dist/
 .vercel/
 *.log
+
+# Saidas das ferramentas de leitura do banco: retratos com dado real de cliente.
+# Sao descartaveis (basta reler) e nao devem ir pro git.
+schema-atual.md
+dados-atual.md
+*.saida.md

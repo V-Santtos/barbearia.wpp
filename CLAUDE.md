@@ -42,13 +42,25 @@ o mesmo que o fluxo n8n usava. Acesso por **conexão direta Postgres**:
 `DATABASE_URL` no `BARBEARIA/.env` (coberto pelo `.gitignore`), usuário
 `postgres`, com **leitura e escrita**.
 
-O levantamento completo está em **`REGRAS-APRENDIZADOS/ANEXO_BANCO/`** — ler o
-`README.md` de lá antes de mexer em qualquer coisa de banco, e
-`07-A-DECIDIR.md` para saber o que ainda não foi decidido. Os scripts de
-releitura estão em `ANEXO_BANCO/ferramentas/` (precisam de `pg` instalado num
-diretório temporário, não no projeto).
+**Não existe cópia do schema no repositório, e isso é regra, não lacuna.** Para
+saber estrutura, tipo de coluna, contagem ou conteúdo, **pergunte ao banco** — nunca
+a um markdown, que envelhece calado. Ferramentas em `BARBEARIA/ferramentas/`
+(`pg` já instalado), rodando de dentro de `BARBEARIA/`:
 
-Fato operacional a lembrar: um event trigger (`ensure_rls`) liga RLS
+- `npm run db -- "<sql>"` — consulta ou alteração; **rollback no fim** por padrão,
+  `--gravar` efetiva.
+- `npm run db:migrar` — aplica `db/migracoes/*.sql`; ensaia por padrão.
+- `npm run db:schema` / `db:dados` — retrato completo num arquivo, quando precisar
+  do panorama de uma vez. A saída fica fora do git (tem dado real de cliente).
+
+Toda mudança de estrutura entra como migração em `BARBEARIA/db/migracoes/` — nunca
+DDL avulso, nunca pelo painel do Supabase.
+
+O que fica versionado em **`REGRAS-APRENDIZADOS/ANEXO_BANCO/`** é só o que consulta
+não responde: `README.md` (as armadilhas — ler antes de mexer em banco) e
+`DECIDIR.md` (o que ainda não foi decidido).
+
+Armadilha número um, a que morde primeiro: um event trigger (`ensure_rls`) liga RLS
 automaticamente em toda tabela criada no schema `public`. Tabela nova sem política
 **nega tudo pela API pública, em silêncio** (0 linhas, sem erro).
 

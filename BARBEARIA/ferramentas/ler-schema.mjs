@@ -1,18 +1,10 @@
 // Leitura completa do schema public: tabelas, colunas, chaves, índices, RLS, contagem.
-import { readFileSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+// Uso: npm run db:schema -- [arquivo-de-saida.md]   (default: schema-atual.md)
+import { writeFileSync } from 'node:fs';
+import { conectar } from './conexao.mjs';
 
-const f = 'C:/Users/victo/Desktop/SAAS-BARBEARIA/BARBEARIA/.env';
-const url = readFileSync(f, 'utf8')
-  .split(/\r?\n/)
-  .find((l) => l.startsWith('DATABASE_URL='))
-  .slice('DATABASE_URL='.length)
-  .trim();
-
-const require = createRequire(import.meta.url);
-const pg = require('pg');
-const c = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
-await c.connect();
+const destino = process.argv[2] ?? 'schema-atual.md';
+const c = await conectar();
 
 const out = [];
 const p = (s = '') => out.push(s);
@@ -127,5 +119,5 @@ p('\n# Enums: ' + (enums.length || 'nenhum'));
 for (const e of enums) p(`  - ${e.typname}: ${e.valores}`);
 
 await c.end();
-writeFileSync(process.argv[2], out.join('\n'), 'utf8');
-console.log('ok —', out.length, 'linhas escritas');
+writeFileSync(destino, out.join('\n'), 'utf8');
+console.log('ok —', out.length, 'linhas escritas em', destino);

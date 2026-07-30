@@ -1,61 +1,144 @@
-# Anexo: Banco de dados atual (Supabase `sppexvjvnoganlduyjvs`)
+# Banco (Supabase `sppexvjvnoganlduyjvs`, PostgreSQL 17.6)
 
-> **Este anexo descreve o banco COMO ELE ESTÁ HOJE, não como ele deve ficar.**
->
-> É o banco do case antigo — nasceu para o app de calendário (`Aplicativo-FULL`) e para o
-> fluxo n8n, ambos aposentados ou em revisão. Nada aqui é decisão travada. Cada regra,
-> coluna, nome e constraint documentado aqui vai ser **discutido um a um** nas próximas
-> sessões: mantém, lapida, troca ou remove.
->
-> O que virar decisão nossa vai para `REGRAS-APRENDIZADOS/REGRAS.md`, explicitamente.
-> Até lá, isto é levantamento de terreno.
+**Não existe cópia do schema neste repositório, de propósito.** Estrutura, tipos, contagem
+de linhas e conteúdo de tabela se pergunta ao banco — cópia em markdown envelhece calada e
+vira mentira. Aqui fica só o que uma consulta **não** responde: as armadilhas e as decisões
+pendentes.
 
-- **Projeto Supabase:** ref `sppexvjvnoganlduyjvs`, PostgreSQL **17.6**
-- **Data da leitura:** 2026-07-30
-- **Como foi lido:** conexão direta Postgres (`DATABASE_URL` em `BARBEARIA/.env`), leitura
-  de `information_schema` + `pg_catalog` + dados reais das tabelas pequenas
-- **Acesso:** leitura **e escrita** (usuário `postgres`). Posso criar, alterar e apagar.
-- **Confirmado:** é o mesmo projeto que o fluxo n8n usava (o ref bate com as queries do
-  `ANEXO_FLUXO_N8N.md`).
+## Como enxergar
 
-## Índice
+Conexão direta Postgres (`DATABASE_URL` no `BARBEARIA/.env`, usuário `postgres`, leitura e
+escrita). Ferramentas em `BARBEARIA/ferramentas/`, `pg` já instalado:
 
-| Arquivo | Conteúdo |
+```bash
+cd BARBEARIA && npm run db -- "select * from agenda_profissional"
+```
+
+| Comando | Para quê |
 |---|---|
-| [`01-INVENTARIO.md`](01-INVENTARIO.md) | As 12 tabelas, contagens, mapa de relações, migrações, extensões, storage |
-| [`02-AGENDA-DISPONIBILIDADE.md`](02-AGENDA-DISPONIBILIDADE.md) | `profissionais`, `agenda_profissional`, `dias_bloqueados`, `agendamentos` — o motor da agenda |
-| [`03-SERVICOS-CONFIG.md`](03-SERVICOS-CONFIG.md) | `servicos`, `categorias_servicos`, `configuracao`, `documentos_bot` |
-| [`04-ESTADO-BOT.md`](04-ESTADO-BOT.md) | `dados_cliente` — onde o estado da conversa vivia |
-| [`05-MENSAGERIA.md`](05-MENSAGERIA.md) | `whatsapp_contacts`, `whatsapp_conversations`, `whatsapp_messages` |
-| [`06-SEGURANCA-RLS.md`](06-SEGURANCA-RLS.md) | Grants, RLS sem políticas, event trigger `ensure_rls`, funções |
-| [`07-A-DECIDIR.md`](07-A-DECIDIR.md) | **Tudo que precisa ser averiguado ou discutido**, com o achado e a pergunta |
+| `npm run db -- "<sql>"` | consulta ou alteração avulsa — **rollback no fim**, `--gravar` efetiva |
+| `npm run db:migrar` | aplica `db/migracoes/*.sql` — ensaia por padrão, `--gravar` efetiva |
+| `npm run db:schema` | retrato de estrutura inteiro num arquivo (fora do git) |
+| `npm run db:dados` | retrato de conteúdo, com telefone mascarado (fora do git) |
 
-## Como reler o banco numa sessão nova
+Os dois últimos são para **eu** ler de uma vez quando precisar do panorama. A saída não vai
+pro git: tem dado real de cliente.
 
-Os scripts de leitura estão em [`ferramentas/`](ferramentas/). Eles leem a `DATABASE_URL`
-do `BARBEARIA/.env` e **não imprimem a senha**.
+Toda mudança de estrutura entra como arquivo em `BARBEARIA/db/migracoes/` — nunca DDL
+avulso, nunca pelo painel. Regras lá no `README.md` da pasta.
 
-Precisam do driver `pg`, que **não é dependência do projeto** — instale num diretório
-temporário para não sujar o `package.json` do `BARBEARIA/`:
+O MCP oficial do Supabase está em `.mcp.json` mas nunca saiu de *pending approval* (exige
+sessão interativa). Não é o caminho: a conexão direta é.
 
-```bash
-mkdir -p /tmp/lerbanco && cd /tmp/lerbanco && npm install pg
-```
+---
 
-Depois, rodando de dentro desse diretório:
+# As armadilhas
 
-```bash
-node "C:/Users/victo/Desktop/SAAS-BARBEARIA/REGRAS-APRENDIZADOS/ANEXO_BANCO/ferramentas/ler-schema.mjs" schema.md
-```
+Fatos verificados no banco em 2026-07-30 que mordem quem não sabe que existem. Datas e
+contagens podem ter mudado; o comportamento, não.
 
-```bash
-node "C:/Users/victo/Desktop/SAAS-BARBEARIA/REGRAS-APRENDIZADOS/ANEXO_BANCO/ferramentas/ler-dados.mjs" dados.md
-```
+## Ao criar qualquer tabela
 
-`ler-schema.mjs` gera estrutura (tabelas, colunas, tipos, constraints, índices, políticas).
-`ler-dados.mjs` gera o conteúdo real das tabelas de configuração e as distribuições de
-valores, com telefone mascarado.
+**Um event trigger (`ensure_rls`) liga RLS sozinho em toda tabela nova de `public`.** Não é
+configuração nossa, é hardening padrão. Tabela criada sem política **nega tudo pela API
+pública em silêncio** — 0 linhas, sem erro, sem log. Política entra na mesma migração que
+cria a tabela, sempre.
 
-**Alternativa por MCP:** existe um servidor MCP oficial do Supabase configurado em
-`.mcp.json` (escopo de projeto), mas ele ficou pendente de aprovação/OAuth e **não é o
-caminho usado** — a conexão direta resolveu. Ver `07-A-DECIDIR.md`.
+**A tranca de hoje é acidental.** As 12 tabelas têm RLS ligado e **zero políticas**,
+enquanto `anon` e `authenticated` têm privilégio total (incluindo TRUNCATE). Nada quebrou
+porque os consumidores entram por `service_role`/conexão direta, que ignoram RLS. Um
+`DISABLE ROW LEVEL SECURITY` em qualquer tabela abre escrita pública naquela tabela.
+
+`auth.users` está vazio — **não existe sujeito para `auth.uid()`**. Toda política que
+dependa dele é teórica até o Supabase Auth ser adotado de fato.
+
+Antes de escrever política, reler `references/security-rls-performance.md` da skill
+`supabase-postgres-best-practices`: `using (auth.uid() = x)` roda a função **por linha**;
+`using ((select auth.uid()) = x)` roda uma vez.
+
+## Ao mexer em agendamento
+
+**A trava de double-booking já existe** — índice único parcial em
+`(profissional, dia_marcado, hora_marcada)` para status ativos. É o que faltava no n8n, e
+está no nível certo. **Mas a chave é `profissional` como TEXTO:** escrever "Lucas costa" em
+vez de "Lucas Costa" fura a trava. `agendamentos` inteira é texto solto — `profissional`,
+`servico`, `cliente`, sem FK nenhuma.
+
+**Duração é por profissional, não por serviço** (`agenda_profissional.duracao_min`).
+`servicos` não tem duração: corte de R$35 e combo de R$55 ocupam o mesmo slot.
+
+**`dias_semana` usa convenção JavaScript** — `[1..6]` = segunda a sábado, logo `0 = domingo`
+(`Date.getDay()`), não ISO-8601 (onde domingo é 7). Fonte clássica de bug de fuso.
+
+**As fronteiras de `morning`/`afternoon`/`night` não estão no banco.** `dias_bloqueados
+.periodos` aceita esses valores, mas onde cada período começa e termina vive no código do
+`Aplicativo-FULL`. `periodos = NULL` significa dia inteiro bloqueado.
+
+**Não há função SQL de disponibilidade.** Calcular dia/hora livre a partir de
+`agenda_profissional` + `dias_bloqueados` + `agendamentos` é código do app de calendário,
+fora deste banco — e esse código a gente ainda não tem.
+
+## Ao mexer em telefone / identidade do cliente
+
+**Quatro formatos do mesmo número convivem:** `dados_cliente.telefone` com DDI (`5533…`),
+`agendamentos.telefone` sem DDI (`3398…`), `whatsapp_contacts.phone` com DDI, e o que o n8n
+montava — `5533…@s.whatsapp.net`, JID da Evolution API, **com um `9` inserido
+artificialmente** depois do DDI+DDD. O `phone` e o `wa_id` do mesmo contato têm quantidade
+de dígitos diferente.
+
+**`wa_id` está corrompido em 7 de 8 contatos:** começa com `=`, o sinal das expressões do
+n8n (`={{ … }}`) que vazou literal para o dado. Busca por `wa_id` exato falha nesses.
+
+## Ao mexer em mensagem
+
+**Dedupe por `wamid` já é garantido pelo banco** — `UNIQUE (whatsapp_message_id) WHERE NOT
+NULL`. Dá para gravar primeiro e deixar o Postgres rejeitar a reentrega, em vez de dedupe em
+memória.
+
+**A janela de 24h da Meta está materializada** em `whatsapp_contacts.service_window_until`,
+sempre `last_message_at + 24h`. Fora dela só se inicia conversa por **template aprovado** —
+impacta direto o lembrete.
+
+**O envelope original da Meta não existe em lugar nenhum.** `raw_payload` guarda o corpo que
+o n8n montava para espelhamento, não o JSON da Cloud API com `entry`/`changes`/`value`.
+
+**O `id` do botão não foi persistido, só o título.** `body` tem `"🔘 13:00"`, não
+`HORA_2026-06-17_1300`. O identificador que dirigia todo o roteamento se perdeu — não dá
+para reconstruir o que o cliente escolheu a partir do histórico.
+
+## Ao olhar o estado de conversa antigo (`dados_cliente`)
+
+Tabela sem contrato nenhum: sem UNIQUE em `telefone` (o mesmo cliente tem linhas
+duplicadas), sem índice além da PK, sem FK, `created_at` **sem default** (há linha NULL).
+"Sem estado" tem duas representações — `NULL` e `''`. E `data_hora` é `jsonb` guardando
+**string JSON duplamente codificada** (por isso o n8n precisava de `JSON.parse` condicional).
+
+"Humano assumiu" está modelado em dois lugares sem ligação:
+`dados_cliente.atendimento_temporario` (usado) e `whatsapp_conversations.status='human'`
+(nunca escrito).
+
+## Coisas que enganam
+
+- `configuracao['servicos']` e `['categorias']` **duplicam em jsonb** o conteúdo das tabelas
+  `servicos` e `categorias_servicos`. Duas fontes de verdade, sincronizadas só pelo app
+  escrever nas duas.
+- `servicos.preco` é **`text`** (`"35"`). Não soma, não ordena por valor, não tem centavos
+  nem moeda.
+- **Só 3 das 12 tabelas** atualizam `updated_at` sozinhas (trigger `set_updated_at` em
+  `agendamentos`, `servicos`, `categorias_servicos`). `whatsapp_contacts` e
+  `whatsapp_conversations` têm a coluna e **não** têm o trigger.
+- **O histórico de migrações é parcial:** 4 entradas de 17/05/2026; as tabelas originais
+  nasceram no painel. **Não dá para recriar este banco do zero a partir dele.**
+- Dois buckets de Storage **públicos**: `tabelas` (o PDF de preços, intencional) e `FOTO`
+  (conteúdo e intenção desconhecidos).
+
+## O que as 165 mensagens reais (01–17/06/2026) provam
+
+Não é hipótese, é dado: **68% das mensagens são `interactive`** — o sistema de botões
+funcionou. **31 mensagens `inbound text`** — o cliente digitou fora do trilho 31 vezes, e o
+único momento em que digitar era esperado é o nome. **10 mensagens `outbound human`** — o
+dono assumiu conversas de verdade; "humano no meio" é requisito observado, não previsão.
+
+---
+
+Agenda de decisões pendentes: [`DECIDIR.md`](DECIDIR.md).

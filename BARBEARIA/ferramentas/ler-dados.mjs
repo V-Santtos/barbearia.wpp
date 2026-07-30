@@ -1,13 +1,10 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+// Conteudo real das tabelas de configuracao + distribuicoes de valores (telefone mascarado).
+// Uso: npm run db:dados -- [arquivo-de-saida.md]   (default: dados-atual.md)
+import { writeFileSync } from 'node:fs';
+import { conectar } from './conexao.mjs';
 
-const url = readFileSync('C:/Users/victo/Desktop/SAAS-BARBEARIA/BARBEARIA/.env', 'utf8')
-  .split(/\r?\n/).find((l) => l.startsWith('DATABASE_URL=')).slice(13).trim();
-
-const require = createRequire(import.meta.url);
-const pg = require('pg');
-const c = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
-await c.connect();
+const destino = process.argv[2] ?? 'dados-atual.md';
+const c = await conectar();
 
 const out = [];
 const p = (s = '') => out.push(s);
@@ -54,5 +51,5 @@ await q('storage: objetos por bucket', 'select bucket_id, count(*)::int as n fro
 await q('auth.users (contagem)', 'select count(*)::int as n from auth.users');
 
 await c.end();
-writeFileSync(process.argv[2], out.join('\n'), 'utf8');
-console.log('ok', out.length, 'linhas');
+writeFileSync(destino, out.join('\n'), 'utf8');
+console.log('ok', out.length, 'linhas em', destino);

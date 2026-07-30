@@ -1,10 +1,13 @@
-# 07 — A averiguar ou discutir
+# Agenda de decisões sobre o banco
 
-Consolidação de tudo que a leitura do banco levantou e que **precisa de decisão** — manter,
-lapidar, trocar ou remover. Nada aqui está decidido. Cada item traz o **achado** (fato
-verificado no banco) e a **pergunta** (o que precisa ser resolvido com o usuário).
+Tudo que a leitura do banco levantou e que **precisa de decisão** — manter, lapidar, trocar
+ou remover. Nada aqui está decidido. Cada item traz o **achado** (fato verificado em
+2026-07-30, reconferível com `npm run db`) e a **pergunta** (o que resolver com o usuário).
 
-Ordenado por peso na arquitetura, não por urgência.
+Ordenado por peso na arquitetura, não por urgência. **Os códigos são estáveis** — item
+resolvido sai da lista e o número não é reaproveitado, então buraco na sequência é
+intencional. As armadilhas que não pedem decisão, só cuidado, estão no
+[`README.md`](README.md).
 
 ---
 
@@ -24,12 +27,13 @@ de `profissionais`, e a barbearia é implícita — há exatamente uma. Nossa de
 **Pergunta:** este banco é adaptado (adicionar `tenant_id` em tudo, migrar dado existente) ou
 o SaaS nasce em schema novo e este fica como legado da barbearia-piloto?
 
-### A3. Migrações estão pela metade
-**Achado:** `supabase_migrations.schema_migrations` tem só 4 entradas, todas de 17/05/2026.
-As tabelas originais foram criadas fora de migração (no painel). Não é possível recriar o
-banco do zero a partir do histórico.
-**Pergunta:** adotamos migração versionada de verdade daqui pra frente (declarativa ou
-imperativa)? E o baseline: geramos um dump inicial do estado atual como migração zero?
+### A3. Falta o baseline das migrações
+**Achado:** o histórico tem 4 entradas de 17/05/2026 e as tabelas originais nasceram no
+painel — não dá para recriar o banco do zero a partir dele. **Metade resolvida em
+2026-07-30:** daqui pra frente toda DDL passa por `BARBEARIA/db/migracoes/`, registrada na
+mesma `supabase_migrations.schema_migrations` que o CLI do Supabase usa.
+**Pergunta:** geramos um dump do estado atual como migração zero (banco recriável do zero,
+útil para ambiente de teste), ou o baseline é o próprio banco e vivemos com isso?
 
 ---
 
@@ -180,13 +184,6 @@ consumidores usam `service_role`/conexão direta, que ignoram RLS. Um
 **Pergunta:** revogamos os grants de `anon`/`authenticated` (defesa em profundidade) ou
 escrevemos políticas de verdade? As duas coisas?
 
-### E26. RLS liga sozinho em toda tabela nova
-**Achado:** event trigger `ensure_rls` → `rls_auto_enable()` executa
-`ENABLE ROW LEVEL SECURITY` em toda tabela criada em `public`.
-**Pergunta:** nada a decidir — é fato operacional a **lembrar**: toda tabela que criarmos
-nasce negando tudo pela API pública, e esquecer a política dá falha silenciosa (0 linhas,
-sem erro).
-
 ### E27. Supabase Auth está vazio
 **Achado:** `auth.users` = 0. Não existe sujeito para `auth.uid()`.
 **Pergunta:** quem são os usuários autenticados no SaaS — donos de barbearia? Barbeiros
@@ -210,16 +207,12 @@ sessão interativa. O acesso ao banco foi resolvido por **conexão direta Postgr
 **Pergunta:** vale insistir no MCP, ou removemos o `.mcp.json` para não deixar configuração
 morta no repo? (A conexão direta é a que o código vai usar de todo jeito, com Drizzle.)
 
-### F30. O driver `pg` não é dependência do projeto
-**Achado:** os scripts de leitura em `ferramentas/` precisam de `pg` instalado num diretório
-temporário. O `BARBEARIA/` não tem driver de banco ainda — decisão de ORM (Drizzle) travada,
-mas nada instalado.
-**Pergunta:** quando instalarmos Drizzle, os scripts de introspecção passam a usar o
-`drizzle-kit pull` em vez de script próprio?
+---
 
-### F31. A senha do banco passou pelo log da sessão
-**Achado:** durante a configuração, uma senha antiga apareceu em saída de comando (foi
-colada na linha errada do `.env`). Ela foi **resetada em seguida** e não vale mais. O `.env`
-está coberto pelo `.gitignore` (`BARBEARIA/.gitignore:2`), então a senha atual não vai para
-o git.
-**Pergunta:** nada a decidir — registro para rastreabilidade.
+## Registros (sem decisão pendente)
+
+- **Senha antiga vazou em log de sessão** em 2026-07-30 (colada na linha errada do `.env`).
+  Foi **resetada em seguida** e não vale mais; o `.env` está no `.gitignore`.
+- **F30 resolvido:** `pg` virou devDependency do `BARBEARIA/` e as ferramentas saíram deste
+  anexo para `BARBEARIA/ferramentas/`. Se Drizzle entrar com `drizzle-kit pull`, reavaliar
+  os scripts de leitura própria.
