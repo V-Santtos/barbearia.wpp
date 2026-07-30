@@ -267,7 +267,42 @@ dele — dia e horário são o próximo passo.
 contra o banco real (abertura → escada nos 3 degraus → escolha de barbeiro →
 barbeiro inválido), e handshake da Meta confirmado no endpoint novo.
 
-## Próximo passo: DIA E HORÁRIO — e é onde entra a API do calendário
+## PRIMEIRA COISA AO VOLTAR (decidido pelo usuário em 2026-07-30): mensagem velha
+
+**Achado no teste de celular, não em teste automatizado.** A Meta entregou uma
+mensagem **4min59s depois** de o cliente ter digitado, e o bot respondeu a ela como
+se fosse de agora — o cliente já tinha avançado dois passos no fluxo nesse meio tempo.
+
+Prova (payload cru, `timestamp` é da Meta):
+
+| digitado | entregue aqui | texto | o que o bot fez |
+|----------|---------------|-------|-----------------|
+| 16:46:35 | 16:46:38      | Oii   | saudação + menu |
+| 16:43:59 | **16:48:58**  | Oi    | dica da escada, fora de hora |
+
+**O que causou:** o webhook estava inalcançável às 16:43:59 (túnel novo ainda não
+colado no painel). A Meta **enfileira e reentrega** — isso é por design dela, e é o
+que impede mensagem de se perder. Não foi falha do nosso código, e não é coisa que a
+gente consiga "corrigir" do lado de cá: quem decide reentregar é a Meta.
+
+**Por que continua importando em produção:** a reentrega dispara em qualquer timeout
+ou 5xx nosso, não só com túnel morto. Entrega **atrasada e fora de ordem** é
+propriedade permanente da plataforma. O que está sob nosso controle é a reação: hoje
+o bot trata mensagem velha como se fosse recém-chegada.
+
+**Direção (a decidir junto, nada travado):** descartar — ou pelo menos não avançar a
+escada com — mensagem cujo `timestamp` já passou de alguns minutos. Duas coisas a
+decidir antes de codar:
+
+1. **Qual o corte** e se ele vale para todo tipo de evento ou só para texto.
+2. **Descartar em silêncio conflita com regra travada** (`REGRAS.md`: "silêncio só
+   existe no último degrau da escada"). Ou se abre exceção explícita, ou a mensagem
+   velha recebe algum tratamento próprio. Essa é a decisão de verdade.
+
+O `wamid` continua no dedupe, então reentrega da *mesma* mensagem já é absorvida — o
+problema é só o atraso, não a duplicata.
+
+## Depois disso: DIA E HORÁRIO — e é onde entra a API do calendário
 
 O agendamento parou depois da escolha do barbeiro. O próximo nó precisa de
 **disponibilidade real** (dias livres, horários livres), e essa lógica não está em
@@ -329,6 +364,9 @@ Dois fatos de lá que existem independente do n8n:
 
 ## Primeira coisa ao retomar
 
+**O trabalho começa pela seção "PRIMEIRA COISA AO VOLTAR" acima** (mensagem entregue
+com atraso pela Meta) — ordem dada pelo usuário, antes de dia e horário.
+
 **Ler `REGRAS-APRENDIZADOS/ANEXO_BANCO/README.md`** — as armadilhas do banco e os
 comandos para enxergá-lo. O acesso já está montado; não precisa reconectar nem
 remapear. Estrutura de tabela se pergunta ao banco (`npm run db`), não a arquivo.
@@ -358,6 +396,8 @@ Isso zera degrau, última resposta e trava de rajada, e **preserva o cadastro** 
 
 ## Pendências em aberto (não travadas ainda)
 
+- **Mensagem entregue com atraso pela Meta** — virou o primeiro item da próxima
+  sessão, ver seção própria acima.
 - **Cutucão por inatividade — ideia nova do usuário (2026-07-30), não existe ainda.**
   Ele gostou da escada de feedback e quis "aumentar o tempo" dela. **Cuidado com o
   mal-entendido:** a escada não é por tempo — ela dispara quando o cliente *digita
