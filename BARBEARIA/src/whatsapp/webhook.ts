@@ -1,9 +1,19 @@
 import { Hono } from 'hono';
 import type { Env } from '../config/env.js';
+import type { Acao } from '../fluxo/acoes.js';
+import { rotear } from '../fluxo/rotear.js';
 import { compararSegredos, verificarAssinatura } from './assinatura.js';
-import { resumirEvento, type EnvelopeWebhook } from './eventos.js';
+import type { Emissor } from './enviar.js';
+import { traduzirEnvelope, type EnvelopeWebhook, type EventoRecebido } from './eventos.js';
 
-export function criarRotasWebhook(env: Env): Hono {
+/** O que o webhook precisa do mundo externo. Injetado pra o teste nao tocar em rede nem banco. */
+export type Dependencias = {
+  /** Grava o evento e decide o que ainda deve ser enviado (dedupe + anti-repeticao). */
+  registrar: (evento: EventoRecebido, acoes: Acao[]) => Promise<{ novo: boolean; enviar: Acao[] }>;
+  enviar: Emissor;
+};
+
+export function criarRotasWebhook(env: Env, deps: Dependencias): Hono {
   const rotas = new Hono();
 
   /**
@@ -34,9 +44,12 @@ export function criarRotasWebhook(env: Env): Hono {
 
   /**
    * Recebimento de eventos. Duas regras que a Meta impoe:
-   *  - responder 200 rapido, senao ela reenvia (e o reenvio vira mensagem
-   *    duplicada pro cliente da barbearia);
+   *  - responder 200 rapido, senao ela reenvia;
    *  - validar a assinatura sobre o corpo BRUTO, nunca sobre o JSON reparseado.
+   *
+   * O processamento e sincrono dentro da requisicao, e isso e seguro por causa
+   * do dedupe: se a Meta desistir de esperar e reentregar, o `on conflict`
+   * absorve em vez de o cliente receber a resposta duas vezes.
    */
   rotas.post('/', async (c) => {
     const corpoBruto = await c.req.text();
@@ -66,26 +79,62 @@ export function criarRotasWebhook(env: Env): Hono {
       return c.text('OK', 200);
     }
 
-    // ponytail: payload bruto so no stdout, sem persistencia. Teto: serve pra
-    // validar a Fase 1 na nossa frente, no terminal. Gatilho de upgrade: criar
-    // a tabela `webhook_eventos` antes de qualquer trafego real — a retencao de
-    // log da Vercel e curta e replay de webhook e a ferramenta de debug que a
-    // gente mais vai usar.
-    for (const resumo of resumirEvento(envelope)) {
-      console.log(
-        JSON.stringify({
-          nivel: 'info',
-          evento: 'webhook.recebido',
-          campo: resumo.campo,
-          wabaId: resumo.wabaId,
-          wamids: resumo.wamids,
-        }),
-      );
+    const { eventos, ignorados } = traduzirEnvelope(envelope);
+
+    if (ignorados.length > 0) {
+      console.log(JSON.stringify({ nivel: 'debug', evento: 'webhook.ignorado', motivos: ignorados }));
     }
-    console.log(JSON.stringify({ nivel: 'debug', evento: 'webhook.bruto', payload: envelope }));
+
+    for (const recebido of eventos) {
+      // Uma mensagem com problema nao pode derrubar as outras do mesmo envelope.
+      try {
+        await processar(recebido, deps);
+      } catch (erro) {
+        console.error(
+          JSON.stringify({
+            nivel: 'error',
+            evento: 'webhook.processamento.falhou',
+            wamid: recebido.wamid,
+            erro: erro instanceof Error ? erro.message : String(erro),
+          }),
+        );
+      }
+    }
 
     return c.text('OK', 200);
   });
 
   return rotas;
+}
+
+async function processar(recebido: EventoRecebido, deps: Dependencias): Promise<void> {
+  const acoes = rotear(recebido);
+  const decisao = await deps.registrar(recebido, acoes);
+
+  if (!decisao.novo) {
+    console.log(
+      JSON.stringify({ nivel: 'info', evento: 'webhook.reentrega.ignorada', wamid: recebido.wamid }),
+    );
+    return;
+  }
+
+  // ponytail: envio que falha nao e retentado — o evento ja esta gravado, entao
+  // a reentrega da Meta cai no dedupe e a mensagem se perde (com log de erro).
+  // Gatilho de upgrade: quando existir a tabela `envios_pendentes` (outbox), o
+  // envio passa por ela e ganha retentativa de graca.
+  for (const acao of decisao.enviar) {
+    await deps.enviar(acao);
+  }
+
+  console.log(
+    JSON.stringify({
+      nivel: 'info',
+      evento: 'webhook.processado',
+      wamid: recebido.wamid,
+      tipo: recebido.tipo,
+      de: recebido.de,
+      enviadas: decisao.enviar.map((acao) => acao.resposta),
+      suprimidas: acoes.length - decisao.enviar.length,
+    }),
+  );
 }

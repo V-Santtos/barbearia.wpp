@@ -1,12 +1,15 @@
 export type Env = {
   META_APP_SECRET: string;
   WHATSAPP_VERIFY_TOKEN: string;
+  WHATSAPP_TOKEN: string;
+  WHATSAPP_PHONE_NUMBER_ID: string;
+  DATABASE_URL: string;
   PORT: number;
 };
 
-// ponytail: validacao manual de env, sem zod. Teto: ~6 variaveis. Gatilho de
-// upgrade: quando passar disso ou quando alguma precisar de coercao/formato
-// (URL, enum), trocar por um schema.
+// ponytail: validacao manual de env, sem zod. Estamos EM CIMA do teto declarado
+// (6 variaveis). Gatilho de upgrade: a proxima variavel que precisar de coercao ou
+// formato (URL, enum, numero com faixa) troca isto por um schema.
 export function carregarEnv(fonte: NodeJS.ProcessEnv = process.env): Env {
   const faltando: string[] = [];
 
@@ -22,6 +25,9 @@ export function carregarEnv(fonte: NodeJS.ProcessEnv = process.env): Env {
   const env: Env = {
     META_APP_SECRET: obrigatoria('META_APP_SECRET'),
     WHATSAPP_VERIFY_TOKEN: obrigatoria('WHATSAPP_VERIFY_TOKEN'),
+    WHATSAPP_TOKEN: obrigatoria('WHATSAPP_TOKEN'),
+    WHATSAPP_PHONE_NUMBER_ID: obrigatoria('WHATSAPP_PHONE_NUMBER_ID'),
+    DATABASE_URL: obrigatoria('DATABASE_URL'),
     PORT: Number(fonte.PORT ?? 3000),
   };
 

@@ -60,18 +60,26 @@ fora e por quê). Repos rejeitados: `Graphify` (parqueado p/ Fase 2),
 
 ## O que já existe em `BARBEARIA/`
 
-Node 22 + npm (sem pnpm nesta máquina). Hono + TypeScript, sem Drizzle ainda
-(não há banco no caminho até aqui).
+Node 22 + npm (sem pnpm nesta máquina). Hono + TypeScript + `pg`. **Drizzle ainda
+não entrou** — decisão explícita, ver a seção da primeira interação.
 
 - `src/whatsapp/assinatura.ts` — validação do `X-Hub-Signature-256` (HMAC-SHA256
   sobre o corpo **bruto**) + comparação de segredo em tempo constante.
-- `src/whatsapp/eventos.ts` — achata o envelope da Meta em `{campo, wabaId,
-  wamids}`. Base do dedupe por `wamid` que vem depois.
-- `src/whatsapp/webhook.ts` — `GET` (handshake `hub.challenge`) e `POST`
-  (valida assinatura → 401, loga, 200 rápido).
+- `src/whatsapp/eventos.ts` — **camada de anticorrupção**: envelope da Meta →
+  `EventoRecebido` (`texto` | `botao` | `nao_suportado`). Separa recibo de entrega
+  (`statuses`) de mensagem de cliente, que chegam no mesmo campo.
+- `src/whatsapp/webhook.ts` — `GET` (handshake) e `POST` (assinatura → tradução →
+  registro → roteamento → envio). Dependências injetadas.
+- `src/whatsapp/enviar.ts` — único lugar que chama a Cloud API para enviar.
+- `src/fluxo/botoes.ts` — contrato do id de botão (`1.agendar`, versionado).
+- `src/fluxo/rotear.ts` — o roteador: função **pura e total**.
+- `src/fluxo/acoes.ts` — as intenções que o roteador devolve.
+- `src/db/cliente.ts` / `src/db/eventos.ts` — pool `pg` e a transação de
+  dedupe + anti-repetição.
 - `src/app.ts` / `src/index.ts` — app separado do servidor, pra virar handler
-  serverless na Vercel sem duplicar rota.
-- Rodar: `npm run dev` (precisa de `.env`, ver `.env.example`). `npm test`.
+  serverless na Vercel sem duplicar rota. `app.ts` é o ponto de composição.
+- Rodar: `npm run dev` (precisa de `.env`, ver `.env.example`). `npm test`,
+  `npm run typecheck`.
 
 ## DECISÃO (2026-07-29): validar o SaaS inteiro SEM coexistência
 
@@ -140,11 +148,12 @@ fluxo n8n: ref `sppexvjvnoganlduyjvs`, PostgreSQL 17.6.
 - **Como:** `DATABASE_URL` (conexão direta Postgres) no `BARBEARIA/.env`, coberto
   pelo `.gitignore`. Usuário `postgres` — leitura **e escrita**, posso criar e
   alterar tabelas.
-- **Levantamento completo:** `REGRAS-APRENDIZADOS/ANEXO_BANCO/` (pasta com
-  índice + 7 arquivos + scripts de releitura em `ferramentas/`).
+- **Ferramentas:** `BARBEARIA/ferramentas/` (`pg` já é dependência). `npm run db`
+  consulta/altera com rollback por padrão; `npm run db:migrar` aplica
+  `db/migracoes/*.sql`; `db:schema`/`db:dados` regeram o retrato quando preciso.
 - **MCP do Supabase:** configurado em `.mcp.json` mas **nunca aprovado** (exige
   sessão interativa). Não é o caminho usado; a conexão direta resolveu. Ver
-  `ANEXO_BANCO/07-A-DECIDIR.md` item F29.
+  `ANEXO_BANCO/DECIDIR.md` item F29.
 - **Skills adotadas no mesmo dia:** `supabase` e
   `supabase-postgres-best-practices` (oficiais, ver `docs/skills-log.md`).
 
@@ -173,34 +182,80 @@ Achados que mudam o desenho (detalhe no anexo):
    `fluxo` NULL em 9 linhas e `''` em 7, `data_hora` jsonb guardando string
    duplamente codificada, telefone em 4 formatos diferentes pelo sistema.
 
-`ANEXO_BANCO/07-A-DECIDIR.md` lista **31 pontos** a discutir um por um (manter,
-lapidar, trocar, remover). É a agenda do planejamento.
+`ANEXO_BANCO/DECIDIR.md` lista os pontos a discutir um por um (manter, lapidar,
+trocar, remover). É a agenda do planejamento.
 
-## Próximo passo: construir o FLUXO DE AGENDAMENTO
+**Enxugado em 2026-07-30:** o anexo tinha 8 arquivos espelhando o schema (colunas,
+tipos, contagens). Isso o banco responde em 2 segundos e markdown envelhece calado
+— sobraram dois arquivos, `README.md` (armadilhas) e `DECIDIR.md` (agenda). Regra
+daqui pra frente: **não espelhar o banco no repositório.**
 
-**Escopo da próxima sessão: só o fluxo de agendamento.** Nada de reagendamento,
-cancelamento, tabela de preços ou saída — esses vêm depois, um por vez.
+## PRIMEIRA INTERAÇÃO CODADA (2026-07-30)
 
-Antes de codar: **planejamento**, decidido junto. Material de partida já pronto —
-`ANEXO_FLUXO_N8N_AGENDAMENTO.md` (seção 14, as 9 perguntas de desenho; seção 13,
-os números do baseline) e `ANEXO_BANCO/07-A-DECIDIR.md` (os 31 pontos).
+Mensagem chega → é traduzida → registrada → roteada → o bot responde com **3
+botões: Agendar, Reagendar, Cancelar**. Só `Agendar` tem rota própria; os outros
+dois respondem "ainda não sei fazer isso" — **nunca silêncio**.
 
-Como vai ser: **decidido junto com o usuário, do zero.** Nada está pré-definido
-— por onde o fluxo começa, quais as regras sequenciais, quais os estados e seus
-nomes, se usa X ou Y em cada bifurcação. Tudo é decisão da sessão, tomada em
-conjunto. Não chegar com desenho fechado nem tratar o fluxo antigo como base.
+Token de envio resolvido: `WHATSAPP_TOKEN` e `WHATSAPP_PHONE_NUMBER_ID` no `.env`.
+É token de **teste, descartável** (já passou por log de conversa) — trocar antes da
+produção. Validado por chamada real: número +55 33 8459-4968, qualidade GREEN.
 
-O objetivo declarado é um fluxo **melhor, mais eficiente, mais prático e mais
-rápido** que o antigo. Pouquíssima coisa do n8n será reaproveitada; ler o antigo
-serve para entender como foi feito antes, e é isso.
+### As decisões que moldam tudo daqui pra frente
 
-Apoio de leitura (histórico, não modelo): **já lido** —
-`REGRAS-APRENDIZADOS/ANEXO_FLUXO_N8N_AGENDAMENTO.md` mapeia o sub-fluxo
-`Galho AGENDAMENTO` do n8n inteiro. Começar a sessão pela seção 14 dele (as 9
-perguntas de desenho) e pela 13 (números do baseline).
+1. **O contexto viaja dentro do id do botão, não no banco.** Id versionado, ação
+   minúscula, parâmetros em querystring: `1.agendar`,
+   `1.hora?b=1&d=2026-08-04&h=13:00`. **Vocabulário criado do zero** — nenhum id do
+   n8n (`MENU_AGENDAR`, `BARBEIRO_LUCAS_COSTA`) é herdado.
+   Consequência: some a validade de 30 minutos do fluxo antigo. Botão velho chega
+   auto-suficiente; o que pode ter mudado é o **dado**, e a defesa é conferir no
+   banco na hora de marcar.
+2. **O id decide a rota, o título nunca.** O antigo comparava `'✅ Confirmar'`.
+3. **O roteador é função pura e total.** Devolve intenções, não efeitos. Para toda
+   entrada existe resposta — inclusive áudio, id desconhecido e botão de versão
+   antiga.
+4. **Redis não entra**, com o motivo verificado uso a uso: estado morreu com o
+   contexto no botão; dedupe é `UNIQUE (wamid)` no Postgres; rajada é trava **na
+   saída** (processa tudo, não repete a resposta) em vez do `INCR` que descartava
+   mensagem.
+5. **Uma tabela só: `webhook_eventos`** — dedupe, anti-repetição (janela de 15s),
+   replay pra depurar. `dados_cliente` e `whatsapp_messages` foram avaliadas e
+   descartadas (grão errado / exigem contato e conversa antes de gravar).
+6. **Drizzle adiado, de propósito** — desvio explícito do `REGRAS.md`, aprovado. O
+   `drizzle-kit` quereria ser dono das migrações e criaria uma segunda tabela de
+   histórico ao lado da `supabase_migrations.schema_migrations`. Gatilho pra
+   entrar: quando existir schema nosso com relações.
 
-Pendência que trava o envio: falta o **token de acesso permanente** (System User)
-pra o bot **enviar** mensagem — até aqui só recebemos.
+Custo por "Oi": **1 escrita no banco + 1 chamada HTTP**. O n8n gastava ~6 idas ao
+banco e 3–4 chamadas.
+
+### Estado da verificação
+
+- `npm test` — 58 testes passando; `npm run typecheck` limpo.
+- Camada de banco exercitada contra o Supabase real: reentrega absorvida, rajada
+  gravada sem repetir o menu. Linhas de teste apagadas.
+- **Falta o teste no celular:** subir ngrok, **recolar a nova URL de callback no
+  painel da Meta** e mandar "Oi". Nunca rodou ponta a ponta.
+
+## Próximo passo: o fluxo de AGENDAMENTO
+
+Continua sendo o próximo, agora a partir do botão `1.agendar`, que hoje responde
+uma frase provisória.
+
+**Escopo:** só agendar. Nada de reagendamento, cancelamento, tabela de preços ou
+saída — esses vêm depois, um por vez.
+
+Antes de codar: **planejamento decidido junto**, do zero. Nada pré-definido — por
+onde começa, quais as regras sequenciais, se usa X ou Y em cada bifurcação. Não
+chegar com desenho fechado nem tratar o fluxo antigo como base.
+
+Material de partida: `ANEXO_FLUXO_N8N_AGENDAMENTO.md` (seção 14, as 9 perguntas de
+desenho; seção 13, os números do baseline — 7 interações a bater) e
+`ANEXO_BANCO/DECIDIR.md`. O objetivo declarado é um fluxo **melhor, mais eficiente
+e mais rápido** que o antigo; ler o antigo serve para saber o que já foi tentado.
+
+Primeira decisão que aparece pela frente: barbeiro é **dado**, não código (o antigo
+tinha 2 hardcoded e duplicava ~20 nós por barbeiro — foi o que gerou o único bug
+achado na leitura).
 
 ## Fluxo n8n do case antigo: LIDO em 2026-07-30 (as duas partes)
 
@@ -237,8 +292,9 @@ Dois fatos de lá que existem independente do n8n:
 
 ## Primeira coisa ao retomar
 
-**Ler `REGRAS-APRENDIZADOS/ANEXO_BANCO/README.md`** — o banco já está mapeado e
-acessível; não precisa redescobrir nada nem reconectar.
+**Ler `REGRAS-APRENDIZADOS/ANEXO_BANCO/README.md`** — as armadilhas do banco e os
+comandos para enxergá-lo. O acesso já está montado; não precisa reconectar nem
+remapear. Estrutura de tabela se pergunta ao banco (`npm run db`), não a arquivo.
 
 Ainda **não** há clone local do `Aplicativo-FULL`
 (`github.com/V-Santtos/Aplicativo-FULL`). O banco dele já é legível, mas o
@@ -256,5 +312,6 @@ token continua válido, está no `BARBEARIA/.env`.
 - **Hospedagem definitiva:** hoje é túnel ngrok (URL morre a cada sessão e
   precisa ser recolada no painel da Meta). Migrar pra Vercel quando o fluxo
   estabilizar.
-- **Token de acesso permanente** (System User) pra envio de mensagens.
+- **Trocar o token de envio antes da produção** — o que está no `.env` é de teste e
+  passou por log de conversa. Produção será outro número e outro ambiente.
 - Confirmar status de licenciamento do AbacatePay antes de reconsiderá-lo.
