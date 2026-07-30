@@ -92,9 +92,54 @@ Todas passam por rate limit por IP, janela de 60s.
 | POST | `/whatsapp/conversations/:id/read` | admin |
 | POST | `/whatsapp/conversations/:id/send` | admin — **responde 501** |
 
-As duas rotas de disponibilidade são o coração para a integração:
-`dias-disponiveis` responde quais dias têm vaga numa janela inteira de uma vez, e
-`horarios-disponiveis` responde os horários livres de um dia.
+### O contrato das três rotas que a integração usa
+
+Verificado por chamada real em 2026-07-30, contra o banco de verdade.
+
+**Quais dias têm vaga** — uma chamada resolve a janela inteira, em vez de uma por dia:
+
+```
+GET /agendamentos/dias-disponiveis?professionalId=2&days=10
+→ { professionalId, days,
+    openDays: [{ date, availableSlotsCount, totalSlotsCount, occupancyRatio, firstSlot }],
+    disabledDays: [...] }
+```
+
+**Quais horários naquele dia:**
+
+```
+GET /agendamentos/horarios-disponiveis?professionalId=1&date=2026-07-31
+→ { professionalId, date, availableSlots: ["08:00","09:00","10:00","13:00", ...] }
+```
+
+Os slots já vêm filtrados por tudo: expediente, dia da semana, intervalo de
+descanso, bloqueio de período, agendamento existente e antecedência mínima. Não há
+nada a recalcular do lado de quem chama.
+
+**Marcar:**
+
+```
+POST /agendamentos
+{ cliente, telefone, profissional (NOME, não id), dia_marcado, hora_marcada,
+  servico?, status?, source? }
+→ 201 { message, event }
+→ 409 se o horário caiu no meio do caminho, fora da janela ou dia bloqueado
+```
+
+O `409` é a resposta certa e esperada — a rota revalida tudo de novo e ainda
+trata a corrida pelo índice único do banco. Quem chama não precisa checar antes.
+
+**Entregar mensagem do WhatsApp no painel** (testado: 401 sem token, 201 com
+token, e reenviar o mesmo `whatsapp_message_id` **não duplica**):
+
+```
+POST /whatsapp/events          Authorization: Bearer <WHATSAPP_WEBHOOK_TOKEN>
+{ direction, sender_type, phone, wa_id, name, type, body,
+  timestamp, whatsapp_message_id, raw }
+```
+
+O telefone atravessa **em dígitos puros** (`5533999990000`), que é o formato
+canônico do bot — não vira JID. Nenhuma tradução é necessária.
 
 ## Armadilhas
 

@@ -41,6 +41,16 @@ real. Os porquês de cada decisão de desenho estão em `REGRAS-APRENDIZADOS/REG
 `github.com/V-Santtos/Aplicativo-FULL` e podado para o nosso escopo (dois
 commits: `4f2294f` intacto, `6a3760a` a poda). Ver `CALENDARIO/README.md`.
 
+## PRIMEIRA COISA AO RETOMAR (2026-07-30)
+
+**Perguntar a regra antes de desenhar qualquer botão.** O usuário disse ter uma
+regra de negócio sobre a escolha de dia e horário que ele ainda não detalhou, e
+que provavelmente não está visível no código nem no fluxo antigo. Ele vai trazer.
+
+Confirmado com ele: a sequência é **barbeiro → dia → horário**, e os dois passos
+novos são botões, no mesmo molde dos que já existem. Mas **não começar a codar
+antes de ouvir a regra** — ela pode mudar como os dois passos são apresentados.
+
 ## O próximo passo: DIA E HORÁRIO
 
 A lógica de disponibilidade **já existe e é boa** — está na API do calendário, não

@@ -28,6 +28,23 @@ Formato de cada entrada:
 - Como saber que estou errando: se a resposta termina em alerta, ressalva ou
   pergunta de escopo que ele não abriu, é sinal de que saí da etapa atual.
 
+## [2026-07-30] Investigar fundo antes de saber qual é a tarefa
+
+- O que aconteceu: ele mandou o link de um repositório pedindo uma olhada
+  **superficial** — só confirmar se era um calendário com login. Eu respondi isso,
+  mas em seguida, quando ele trouxe a pasta pro ambiente, disparei três agentes de
+  exploração e mapeei 30 rotas, tipos, hooks e seis documentos **antes de saber o
+  que ele queria fazer com aquilo**. Custou ~300 mil tokens. Palavras dele: "essa
+  vistoria que eu nem te pedi". Serviu depois, mas por sorte — a tarefa poderia
+  ter sido outra e o levantamento inteiro seria lixo.
+- Correção: **primeiro descobrir a tarefa, depois dimensionar a investigação.**
+  Uma pergunta curta de escopo custa uma frase; um mapeamento completo custa uma
+  sessão. Quando ele pedir algo "superficial", entregar superficial e parar. O
+  gatilho para investigar fundo é ter a tarefa na mão, não a curiosidade de já ter
+  o repositório aberto.
+- Como saber que estou errando: se eu estou lendo o terceiro arquivo grande e
+  ainda não sei qual é o objetivo, parei de trabalhar e comecei a passear.
+
 ## [2026-07-30] Terceirizar decisão técnica para o usuário
 
 - O que aconteceu: perguntei a ele se três ajustes na API do calendário (isenção
