@@ -45,20 +45,30 @@ function montarCorpo(acao: Acao): Record<string, unknown> {
     return { ...base, type: 'text', text: { preview_url: false, body: acao.texto } };
   }
 
-  // `interactive.type = button` aceita no maximo 3 opcoes; acima disso a Meta
-  // exige `list`, que custa um toque a mais do cliente pra abrir. O menu foi
-  // desenhado com 3 justamente pra caber aqui.
+  // `interactive.type = list`: o cliente toca em "Ver opcoes" pra abrir a lista.
+  // Custa um toque a mais que o formato `button`, e em troca traz header e footer,
+  // que `button` nao aceita — foi a escolha do dono do produto pra padronizar o menu.
+  //
+  // Tetos da Meta, todos silenciosos (ela recusa o envio com 400): header 60,
+  // body 1024, footer 60, `action.button` 20, titulo de linha 24, id de linha 200.
   return {
     ...base,
     type: 'interactive',
     interactive: {
-      type: 'button',
+      type: 'list',
+      // Header e opcional: so a abertura do dia manda um. Mandar `header: undefined`
+      // nao serve — a Meta rejeita a chave presente com valor vazio.
+      ...(acao.cabecalho ? { header: { type: 'text', text: acao.cabecalho } } : {}),
       body: { text: acao.texto },
+      footer: { text: acao.rodape },
       action: {
-        buttons: acao.botoes.map((botao) => ({
-          type: 'reply',
-          reply: { id: botao.id, title: botao.titulo },
-        })),
+        button: acao.abrir,
+        sections: [
+          {
+            title: acao.secao,
+            rows: acao.opcoes.map((opcao) => ({ id: opcao.id, title: opcao.titulo })),
+          },
+        ],
       },
     },
   };

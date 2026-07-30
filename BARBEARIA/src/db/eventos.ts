@@ -1,7 +1,9 @@
 import type pg from 'pg';
 import type { Acao, ContextoFluxo, NomeResposta } from '../fluxo/acoes.js';
 import type { EventoRecebido } from '../whatsapp/eventos.js';
+import { saudacaoDe } from '../fluxo/saudacao.js';
 import { registrarContato } from './contatos.js';
+import { lerBarbeirosAtivos } from './profissionais.js';
 
 /**
  * O substituto dos tres usos de Redis do fluxo antigo, numa tabela so.
@@ -79,27 +81,40 @@ export async function registrarEDecidir(
 
     // Cadastro do contato: qualquer mensagem prova que o numero existe, entao vale
     // pra texto, botao e formato nao suportado.
-    const clienteNovo = await registrarContato(cliente, evento.de);
-    const acoes = decidir({ clienteNovo, ...await lerEscada(cliente, evento.de) });
+    const contato = await registrarContato(cliente, evento.de);
+
+    // A saudacao sai do horario em que o CLIENTE mandou, nao de `now()`: e o relogio
+    // dele que importa, e usar o timestamp do evento mantem o resultado igual se a
+    // mensagem for reprocessada depois.
+    // Os barbeiros sao lidos em TODO evento, inclusive nos que nunca vao usar a
+    // lista. Carregar so quando "parece que vai precisar" faria o roteador depender
+    // em silencio de quem o chamou: um dia uma rota nova consultaria `barbeiros` num
+    // caminho onde ele veio vazio, e a barbearia inteira pareceria estar sem equipe.
+    // Sao poucas linhas, na conexao ja aberta, dentro da mesma transacao.
+    const acoes = decidir({
+      nome: contato.nome,
+      saudacao: saudacaoDe(evento.recebidoEm),
+      barbeiros: await lerBarbeirosAtivos(cliente),
+      ...(await lerEscada(cliente, evento.de)),
+    });
 
     // A trava de rajada vale so pra texto: dois toques em botao seguidos sao uso
     // normal do fluxo, nao insistencia.
     const calado = evento.tipo !== 'botao' && (await falouRecentemente(cliente, evento.de, janelaSegundos));
     const enviar = calado ? [] : acoes;
 
-    // ponytail: `acao` guarda os nomes separados por virgula e as consultas comparam
-    // por igualdade. Teto: hoje o roteador devolve no maximo uma acao por evento.
-    // Gatilho de upgrade: no dia em que uma rota devolver duas, trocar a coluna por
-    // text[] e as comparacoes por `= any(acao)`.
+    // `acao` e text[] em ordem de envio. Era text com nomes concatenados por virgula
+    // enquanto o roteador devolvia no maximo uma acao por evento; a abertura picada
+    // (saudacao + menu) foi o gatilho previsto pra trocar.
     await cliente.query(
       `update webhook_eventos
           set acao = $2, processado_em = now()
         where id = $1`,
-      [linha.id, enviar.map((acao) => acao.resposta).join(',') || null],
+      [linha.id, enviar.length > 0 ? enviar.map((acao) => acao.resposta) : null],
     );
 
     await cliente.query('commit');
-    return { novo: true, enviar, clienteNovo };
+    return { novo: true, enviar, clienteNovo: contato.novo };
   } catch (erro) {
     await cliente.query('rollback').catch(() => undefined);
     throw erro;
@@ -129,7 +144,7 @@ async function lerEscada(
   cliente: pg.PoolClient,
   de: string,
 ): Promise<{ ultimaResposta: NomeResposta | undefined; degrau: 0 | 1 | 2 }> {
-  const { rows } = await cliente.query<{ acao: string }>(
+  const { rows } = await cliente.query<{ acao: string[] | null }>(
     `with inicio as (
        select date_trunc('day', now() at time zone $2) at time zone $2 as momento
      ),
@@ -148,10 +163,17 @@ async function lerEscada(
     [de, FUSO],
   );
 
-  const respostas = rows.map((linha) => linha.acao);
+  // O degrau olha tudo que o bot disse na janela; `ultimaResposta` olha so o evento
+  // mais novo — e, dentro dele, a ULTIMA acao. Numa abertura picada
+  // (`{saudacao,menu_principal}`) o que vale pra mirar a dica e o menu, nao o "Boa noite".
+  const respostas = rows.flatMap((linha) => linha.acao ?? []);
+  const maisRecente = rows[0]?.acao ?? [];
   const degrau = respostas.includes('menu_reforcado') ? 2 : respostas.includes('feedback') ? 1 : 0;
 
-  return { ultimaResposta: respostas[0] as NomeResposta | undefined, degrau };
+  return {
+    ultimaResposta: maisRecente[maisRecente.length - 1] as NomeResposta | undefined,
+    degrau,
+  };
 }
 
 /** "Acabei de falar com esse contato?" — a trava de rajada. */

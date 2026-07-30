@@ -8,13 +8,30 @@ const BASE = {
   wamid: 'wamid.TESTE',
   numeroBarbearia: '922642447599728',
   de: '5533999999999',
-  nome: 'Victor',
+  // O nome do PERFIL do WhatsApp. Chega em toda mensagem e o roteador nao usa:
+  // o nome que vale e o do cadastro, no contexto.
+  nome: 'Vitinho 🔥',
   recebidoEm: new Date('2026-07-30T12:00:00Z'),
   cru: {},
 };
 
-const NOVO: ContextoFluxo = { clienteNovo: true, ultimaResposta: undefined, degrau: 0 };
-const CONHECIDO: ContextoFluxo = { clienteNovo: false, ultimaResposta: undefined, degrau: 0 };
+/** Os dois barbeiros cadastrados hoje — vem do banco, nao do codigo. */
+const DOIS = [
+  { id: 1, nome: 'Lucas Costa' },
+  { id: 2, nome: 'Lucas Eloi' },
+];
+
+/** Quem nunca fechou um agendamento: sem nome no cadastro. */
+const SEM_NOME: ContextoFluxo = {
+  nome: undefined,
+  saudacao: 'Boa noite',
+  barbeiros: DOIS,
+  ultimaResposta: undefined,
+  degrau: 0,
+};
+
+/** Quem ja fechou: o nome foi dito por ele, na etapa de nome do agendamento. */
+const COM_NOME: ContextoFluxo = { ...SEM_NOME, nome: 'Victor' };
 
 const texto = (texto: string): EventoRecebido => ({ ...BASE, tipo: 'texto', texto });
 const botao = (botaoId: string): EventoRecebido => ({
@@ -25,103 +42,223 @@ const botao = (botaoId: string): EventoRecebido => ({
 });
 const naoSuportado = (formato: string): EventoRecebido => ({ ...BASE, tipo: 'nao_suportado', formato });
 
-describe('rotear — menu principal', () => {
-  it('responde qualquer texto com o menu de 3 botoes', () => {
-    const [acao] = rotear(texto('Oi'), NOVO);
+describe('rotear — abertura', () => {
+  it('responde qualquer texto com saudacao picada e o menu em lista', () => {
+    const acoes = rotear(texto('Oi'), SEM_NOME);
 
-    expect(acao?.tipo).toBe('enviar_botoes');
-    expect(acao?.resposta).toBe('menu_principal');
-    expect(acao?.para).toBe(BASE.de);
-    expect(acao?.tipo === 'enviar_botoes' && acao.botoes).toEqual([
-      { id: '1.agendar', titulo: 'Agendar' },
-      { id: '1.reagendar', titulo: 'Reagendar' },
-      { id: '1.cancelar', titulo: 'Cancelar' },
+    expect(acoes).toHaveLength(2);
+    expect(acoes[0]?.tipo).toBe('enviar_texto');
+    expect(acoes[0]?.resposta).toBe('saudacao');
+    expect(acoes[1]?.tipo).toBe('enviar_lista');
+    expect(acoes[1]?.resposta).toBe('menu_principal');
+    expect(acoes.every((acao) => acao.para === BASE.de)).toBe(true);
+  });
+
+  it('o menu traz as 3 opcoes, o rodape e o rotulo de abertura', () => {
+    const menu = rotear(texto('Oi'), SEM_NOME)[1];
+    if (menu?.tipo !== 'enviar_lista') throw new Error('esperava lista');
+
+    expect(menu.opcoes).toEqual([
+      { id: '1.agendar', titulo: '🗓️ Agendar horário' },
+      { id: '1.reagendar', titulo: '🔄 Reagendar horário' },
+      { id: '1.cancelar', titulo: '❌ Cancelar horário' },
     ]);
+    expect(menu.abrir).toBe('Ver opções');
+    expect(menu.rodape).toContain('Atendimento rápido');
   });
 
   it('trata texto aleatorio igual a saudacao — nao existe entrada sem resposta', () => {
-    expect(rotear(texto('asdfgh'), NOVO)[0]?.resposta).toBe('menu_principal');
-    expect(rotear(texto('quero cortar o cabelo amanha cedo'), CONHECIDO)[0]?.resposta).toBe(
+    expect(rotear(texto('asdfgh'), SEM_NOME)[1]?.resposta).toBe('menu_principal');
+    expect(rotear(texto('quero cortar o cabelo amanha cedo'), COM_NOME)[1]?.resposta).toBe(
       'menu_principal',
     );
   });
 
-  it('cabe no limite de 3 botoes do tipo `button` da Meta', () => {
-    const acao = rotear(texto('Oi'), NOVO)[0];
-    expect(acao?.tipo === 'enviar_botoes' && acao.botoes.length).toBeLessThanOrEqual(3);
-  });
+  it('respeita os tetos da Meta: 24 no titulo da linha, 20 no rotulo, 60 no header e no rodape', () => {
+    for (const contexto of [SEM_NOME, COM_NOME]) {
+      const menu = rotear(texto('Oi'), contexto)[1];
+      if (menu?.tipo !== 'enviar_lista') throw new Error('esperava lista');
 
-  it('respeita o teto de 20 caracteres no titulo do botao', () => {
-    const acao = rotear(texto('Oi'), NOVO)[0];
-    if (acao?.tipo !== 'enviar_botoes') throw new Error('esperava botoes');
-    for (const item of acao.botoes) expect(item.titulo.length).toBeLessThanOrEqual(20);
-  });
-});
-
-describe('rotear — cliente novo x conhecido', () => {
-  it('muda a saudacao conforme o cliente ja tenha falado antes', () => {
-    const paraNovo = rotear(texto('Oi'), NOVO)[0]?.texto ?? '';
-    const paraConhecido = rotear(texto('Oi'), CONHECIDO)[0]?.texto ?? '';
-
-    expect(paraNovo).not.toBe(paraConhecido);
-    expect(paraNovo).toContain('Sou o atendimento');
-    expect(paraConhecido).toContain('de novo');
-  });
-
-  it('muda so a frase: os botoes sao exatamente os mesmos', () => {
-    const novo = rotear(texto('Oi'), NOVO)[0];
-    const conhecido = rotear(texto('Oi'), CONHECIDO)[0];
-
-    if (novo?.tipo !== 'enviar_botoes' || conhecido?.tipo !== 'enviar_botoes') {
-      throw new Error('esperava botoes nos dois');
-    }
-    expect(novo.botoes).toEqual(conhecido.botoes);
-  });
-
-  it('as duas saudacoes tem o MESMO nome de resposta', () => {
-    // Se tivessem nomes diferentes, o cliente novo que mandasse duas mensagens em
-    // rajada receberia dois menus: o primeiro como novo, o segundo como
-    // conhecido, e a trava anti-repeticao nao veria relacao entre eles.
-    expect(rotear(texto('Oi'), NOVO)[0]?.resposta).toBe(rotear(texto('Oi'), CONHECIDO)[0]?.resposta);
-  });
-
-  it('so a saudacao depende disso — as demais respostas sao iguais nos dois casos', () => {
-    for (const evento of [botao(montarId('agendar')), botao('1.inexistente'), naoSuportado('audio')]) {
-      expect(rotear(evento, NOVO)).toEqual(rotear(evento, CONHECIDO));
+      for (const opcao of menu.opcoes) expect(opcao.titulo.length).toBeLessThanOrEqual(24);
+      expect(menu.abrir.length).toBeLessThanOrEqual(20);
+      expect(menu.secao.length).toBeLessThanOrEqual(24);
+      expect(menu.rodape.length).toBeLessThanOrEqual(60);
+      expect(menu.cabecalho?.length ?? 0).toBeLessThanOrEqual(60);
     }
   });
 });
 
-describe('rotear — botoes', () => {
-  it('`agendar` segue para o inicio do agendamento', () => {
-    const [acao] = rotear(botao(montarId('agendar')), CONHECIDO);
+describe('rotear — saudacao por horario', () => {
+  it('usa a saudacao que veio no contexto, sem olhar relogio', () => {
+    for (const saudacao of ['Bom dia', 'Boa tarde', 'Boa noite'] as const) {
+      expect(rotear(texto('Oi'), { ...SEM_NOME, saudacao })[0]?.texto).toBe(`${saudacao}! 👋`);
+    }
+  });
+});
+
+describe('rotear — com nome x sem nome', () => {
+  it('so quem tem nome no cadastro e chamado pelo nome', () => {
+    expect(rotear(texto('Oi'), SEM_NOME)[0]?.texto).toBe('Boa noite! 👋');
+    expect(rotear(texto('Oi'), COM_NOME)[0]?.texto).toBe('Boa noite, Victor. 👋');
+  });
+
+  it('NUNCA usa o nome do perfil do WhatsApp que veio no evento', () => {
+    // BASE.nome e 'Vitinho 🔥' — apelido que a pessoa pos no proprio aparelho.
+    for (const acao of rotear(texto('Oi'), SEM_NOME)) {
+      expect(acao.texto).not.toContain('Vitinho');
+    }
+  });
+
+  it('muda tambem o cabecalho do menu, e so ele', () => {
+    const semNome = rotear(texto('Oi'), SEM_NOME)[1];
+    const comNome = rotear(texto('Oi'), COM_NOME)[1];
+
+    if (semNome?.tipo !== 'enviar_lista' || comNome?.tipo !== 'enviar_lista') {
+      throw new Error('esperava lista nos dois');
+    }
+
+    expect(semNome.cabecalho).toBe('Bem-vindo à Barbearia.');
+    expect(comNome.cabecalho).toBe('Bom de ver novamente!');
+    expect(semNome.texto).toBe(comNome.texto);
+    expect(semNome.opcoes).toEqual(comNome.opcoes);
+  });
+
+  it('as duas aberturas tem os MESMOS nomes de resposta', () => {
+    // Se tivessem nomes diferentes, o cliente que mandasse duas mensagens em rajada
+    // receberia duas aberturas e a trava anti-repeticao nao veria relacao entre elas.
+    expect(rotear(texto('Oi'), SEM_NOME).map((acao) => acao.resposta)).toEqual(
+      rotear(texto('Oi'), COM_NOME).map((acao) => acao.resposta),
+    );
+  });
+
+  it('so a abertura depende disso — as demais respostas sao iguais nos dois casos', () => {
+    for (const evento of [botao(montarId('agendar')), naoSuportado('audio')]) {
+      const meioDoFluxo = { ultimaResposta: 'menu_principal' as const, degrau: 0 as const };
+      expect(rotear(evento, { ...SEM_NOME, ...meioDoFluxo })).toEqual(
+        rotear(evento, { ...COM_NOME, ...meioDoFluxo }),
+      );
+    }
+  });
+});
+
+describe('rotear — escolha do barbeiro', () => {
+  const comBarbeiros = (barbeiros: ContextoFluxo['barbeiros']) => ({ ...SEM_NOME, barbeiros });
+
+  it('com 2 barbeiros, `agendar` pergunta com quem', () => {
+    const [acao] = rotear(botao(montarId('agendar')), SEM_NOME);
+
+    expect(acao?.resposta).toBe('escolher_barbeiro');
+    if (acao?.tipo !== 'enviar_lista') throw new Error('esperava lista');
+    expect(acao.cabecalho).toBe('Show!');
+    expect(acao.texto).toBe('Com qual profissional você deseja agendar seu horário?');
+    expect(acao.rodape).toBe('Selecione uma opção');
+    expect(acao.opcoes).toEqual([
+      { id: '1.barbeiro?b=1', titulo: 'Lucas Costa' },
+      { id: '1.barbeiro?b=2', titulo: 'Lucas Eloi' },
+    ]);
+  });
+
+  it('com 1 barbeiro, a pergunta NAO e feita — a escolha e obvia', () => {
+    const acoes = rotear(botao(montarId('agendar')), comBarbeiros([DOIS[0]!]));
+
+    expect(acoes).toHaveLength(1);
+    expect(acoes[0]?.resposta).toBe('agendar_inicio');
+    expect(acoes[0]?.texto).toContain('Lucas Costa');
+  });
+
+  it('sem barbeiro ativo, avisa que a agenda esta fechada — nunca silencio', () => {
+    const [acao] = rotear(botao(montarId('agendar')), comBarbeiros([]));
+    expect(acao?.resposta).toBe('agenda_indisponivel');
+  });
+
+  it('escolher um barbeiro valido segue com o nome dele', () => {
+    const [acao] = rotear(botao(montarId('barbeiro', { b: '2' })), SEM_NOME);
+
     expect(acao?.resposta).toBe('agendar_inicio');
-    expect(acao?.tipo).toBe('enviar_texto');
+    expect(acao?.texto).toContain('Lucas Eloi');
+    expect(acao?.texto).not.toContain('Lucas Costa');
+  });
+
+  it('id de barbeiro que nao esta ativo volta a pergunta, nao escolhe por ele', () => {
+    // O cliente tocou num item de ontem e o barbeiro 2 foi desativado no meio.
+    const [acao] = rotear(botao(montarId('barbeiro', { b: '2' })), comBarbeiros([DOIS[0]!]));
+
+    expect(acao?.resposta).toBe('escolher_barbeiro');
+    expect(acao?.texto).toContain('Não encontrei');
+    expect(acao?.tipo === 'enviar_lista' && acao.opcoes).toHaveLength(1);
+    // "Show!" e comemoracao: nao cabe em cima de uma correcao de rota.
+    expect(acao?.tipo === 'enviar_lista' && acao.cabecalho).toBeUndefined();
+  });
+
+  it('`b` fora do formato nao vira barbeiro nenhum', () => {
+    for (const b of ['', 'abc', '99', '1; drop table', ' 1']) {
+      const [acao] = rotear(botao(`1.barbeiro?b=${b}`), SEM_NOME);
+      expect(acao?.resposta).toBe('escolher_barbeiro');
+    }
+  });
+
+  it('`barbeiro` sem parametro nenhum pergunta de novo em vez de quebrar', () => {
+    expect(rotear(botao('1.barbeiro'), SEM_NOME)[0]?.resposta).toBe('escolher_barbeiro');
+  });
+
+  it('nome grande e cortado no teto de 24 da Meta', () => {
+    const acao = rotear(
+      botao(montarId('agendar')),
+      comBarbeiros([
+        { id: 1, nome: 'Lucas Costa Ferreira de Albuquerque' },
+        { id: 2, nome: 'Lucas Eloi' },
+      ]),
+    )[0];
+
+    if (acao?.tipo !== 'enviar_lista') throw new Error('esperava lista');
+    for (const opcao of acao.opcoes) expect(opcao.titulo.length).toBeLessThanOrEqual(24);
+    expect(acao.opcoes[0]?.titulo).toContain('Lucas Costa');
+  });
+
+  it('a escada mira o passo do barbeiro quando foi ele o ultimo', () => {
+    const [acao] = rotear(texto('o costa'), {
+      ...SEM_NOME,
+      ultimaResposta: 'escolher_barbeiro',
+      degrau: 0,
+    });
+
+    expect(acao?.resposta).toBe('feedback');
+    expect(acao?.texto).toContain('Ver barbeiros');
+  });
+});
+
+describe('rotear — opcoes do menu', () => {
+  it('`agendar` entra no agendamento', () => {
+    const [acao] = rotear(botao(montarId('agendar')), SEM_NOME);
+    expect(acao?.resposta).toBe('escolher_barbeiro');
   });
 
   it('`reagendar` e `cancelar` respondem que ainda nao existem — nunca silencio', () => {
     for (const nome of ['reagendar', 'cancelar']) {
-      const [acao] = rotear(botao(montarId(nome)), CONHECIDO);
+      const [acao] = rotear(botao(montarId(nome)), SEM_NOME);
       expect(acao?.resposta).toBe('rota_em_construcao');
       expect(acao?.texto).toContain('agendar');
     }
   });
 
   it('acao desconhecida no formato certo devolve o menu, nao silencio', () => {
-    const [acao] = rotear(botao('1.pagar_com_pix'), CONHECIDO);
+    const [acao] = rotear(botao('1.pagar_com_pix'), SEM_NOME);
     expect(acao?.resposta).toBe('menu_principal');
     expect(acao?.texto).toContain('Não reconheci');
   });
 
-  it('id de versao futura avisa que o botao e de conversa antiga', () => {
-    const [acao] = rotear(botao('2.agendar'), CONHECIDO);
+  it('id de versao futura avisa que a opcao e de conversa antiga', () => {
+    const [acao] = rotear(botao('2.agendar'), SEM_NOME);
     expect(acao?.resposta).toBe('menu_principal');
     expect(acao?.texto).toContain('conversa antiga');
   });
 
-  it('id do fluxo n8n antigo cai no menu em vez de quebrar', () => {
+  it('id do fluxo n8n antigo cai na abertura em vez de quebrar', () => {
     for (const antigo of ['MENU_AGENDAR', 'BARBEIRO_LUCAS_COSTA', 'DIA_2026-08-04']) {
-      expect(rotear(botao(antigo), CONHECIDO)[0]?.resposta).toBe('menu_principal');
+      expect(rotear(botao(antigo), SEM_NOME).map((acao) => acao.resposta)).toEqual([
+        'saudacao',
+        'menu_principal',
+      ]);
     }
   });
 });
@@ -129,9 +266,9 @@ describe('rotear — botoes', () => {
 describe('rotear — formatos que o bot nao entende', () => {
   it('audio, figurinha e localizacao recebem explicacao e o menu', () => {
     for (const formato of ['audio', 'sticker', 'location', 'image']) {
-      const [acao] = rotear(naoSuportado(formato), CONHECIDO);
-      expect(acao?.resposta).toBe('menu_principal');
-      expect(acao?.texto).toContain('texto');
+      const acoes = rotear(naoSuportado(formato), SEM_NOME);
+      expect(acoes[1]?.resposta).toBe('menu_principal');
+      expect(acoes[1]?.texto).toContain('texto');
     }
   });
 });
@@ -139,20 +276,20 @@ describe('rotear — formatos que o bot nao entende', () => {
 describe('rotear — escada de feedback', () => {
   it('degrau 0: texto depois do menu recebe dica curta, nao o menu de novo', () => {
     const [acao] = rotear(texto('e aí, tem horário?'), {
-      ...CONHECIDO,
+      ...SEM_NOME,
       ultimaResposta: 'menu_principal',
       degrau: 0,
     });
 
     expect(acao?.resposta).toBe('feedback');
     expect(acao?.tipo).toBe('enviar_texto');
-    expect(acao?.texto).toContain('botões');
+    expect(acao?.texto).toContain('Ver opções');
   });
 
   it('degrau 0: a dica mira no que o bot pediu por ultimo', () => {
-    const noMenu = rotear(texto('oi'), { ...CONHECIDO, ultimaResposta: 'menu_principal', degrau: 0 });
+    const noMenu = rotear(texto('oi'), { ...SEM_NOME, ultimaResposta: 'menu_principal', degrau: 0 });
     const noAgendamento = rotear(texto('oi'), {
-      ...CONHECIDO,
+      ...SEM_NOME,
       ultimaResposta: 'agendar_inicio',
       degrau: 0,
     });
@@ -161,38 +298,40 @@ describe('rotear — escada de feedback', () => {
     expect(noAgendamento[0]?.texto).toContain('agendamento');
   });
 
-  it('degrau 1: insistiu, entao reenvia o menu inteiro', () => {
-    const [acao] = rotear(texto('alô???'), {
-      ...CONHECIDO,
+  it('degrau 1: insistiu, entao reenvia o menu — sem repetir a saudacao', () => {
+    const acoes = rotear(texto('alô???'), {
+      ...SEM_NOME,
       ultimaResposta: 'feedback',
       degrau: 1,
     });
 
-    expect(acao?.resposta).toBe('menu_reforcado');
-    expect(acao?.tipo).toBe('enviar_botoes');
+    expect(acoes).toHaveLength(1);
+    expect(acoes[0]?.resposta).toBe('menu_reforcado');
+    expect(acoes[0]?.tipo).toBe('enviar_lista');
+    expect(acoes[0]?.tipo === 'enviar_lista' && acoes[0].cabecalho).toBeUndefined();
   });
 
   it('degrau 2: silencio — a tela dele ja tem tudo', () => {
-    const acoes = rotear(texto('???'), { ...CONHECIDO, ultimaResposta: 'menu_reforcado', degrau: 2 });
+    const acoes = rotear(texto('???'), { ...SEM_NOME, ultimaResposta: 'menu_reforcado', degrau: 2 });
     expect(acoes).toEqual([]);
   });
 
-  it('botao NUNCA e travado, nem no degrau 2', () => {
-    const travado = { ...CONHECIDO, ultimaResposta: 'menu_reforcado' as const, degrau: 2 as const };
+  it('opcao do menu NUNCA e travada, nem no degrau 2', () => {
+    const travado = { ...SEM_NOME, ultimaResposta: 'menu_reforcado' as const, degrau: 2 as const };
 
-    expect(rotear(botao(montarId('agendar')), travado)[0]?.resposta).toBe('agendar_inicio');
+    expect(rotear(botao(montarId('agendar')), travado)[0]?.resposta).toBe('escolher_barbeiro');
     expect(rotear(botao(montarId('cancelar')), travado)[0]?.resposta).toBe('rota_em_construcao');
-    expect(rotear(botao('MENU_AGENDAR'), travado)[0]?.resposta).toBe('menu_principal');
+    expect(rotear(botao('MENU_AGENDAR'), travado)[0]?.resposta).toBe('saudacao');
   });
 
-  it('sem resposta registrada hoje, volta pro menu — e o reset da meia-noite', () => {
-    const [acao] = rotear(texto('bom dia'), { ...CONHECIDO, ultimaResposta: undefined, degrau: 0 });
-    expect(acao?.resposta).toBe('menu_principal');
+  it('sem resposta registrada hoje, volta pra abertura — e o reset da meia-noite', () => {
+    const acoes = rotear(texto('bom dia'), { ...SEM_NOME, ultimaResposta: undefined, degrau: 0 });
+    expect(acoes.map((acao) => acao.resposta)).toEqual(['saudacao', 'menu_principal']);
   });
 
   it('audio no meio do fluxo sobe a escada igual a texto', () => {
     const [acao] = rotear(naoSuportado('audio'), {
-      ...CONHECIDO,
+      ...SEM_NOME,
       ultimaResposta: 'agendar_inicio',
       degrau: 0,
     });
@@ -214,16 +353,16 @@ describe('rotear — garantias que valem pra toda entrada', () => {
     naoSuportado('audio'),
   ];
 
-  it('nenhuma entrada fica sem resposta, com cliente novo ou conhecido', () => {
+  it('nenhuma entrada fica sem resposta, com nome no cadastro ou sem', () => {
     for (const evento of todos) {
-      expect(rotear(evento, NOVO).length).toBeGreaterThan(0);
-      expect(rotear(evento, CONHECIDO).length).toBeGreaterThan(0);
+      expect(rotear(evento, SEM_NOME).length).toBeGreaterThan(0);
+      expect(rotear(evento, COM_NOME).length).toBeGreaterThan(0);
     }
   });
 
   it('toda acao tem destinatario, nome de resposta e texto', () => {
     for (const evento of todos) {
-      for (const acao of rotear(evento, NOVO)) {
+      for (const acao of rotear(evento, SEM_NOME)) {
         expect(acao.para).toBe(BASE.de);
         expect(acao.resposta).not.toBe('');
         expect(acao.texto.length).toBeGreaterThan(0);
@@ -232,6 +371,6 @@ describe('rotear — garantias que valem pra toda entrada', () => {
   });
 
   it('e pura: chamar duas vezes com a mesma entrada da o mesmo resultado', () => {
-    for (const evento of todos) expect(rotear(evento, NOVO)).toEqual(rotear(evento, NOVO));
+    for (const evento of todos) expect(rotear(evento, SEM_NOME)).toEqual(rotear(evento, SEM_NOME));
   });
 });

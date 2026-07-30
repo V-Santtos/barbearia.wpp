@@ -236,37 +236,63 @@ e `agendamentos` estavam com dado do case antigo e foram zerados **de propósito
 para testar do zero. `profissionais` (2) e `servicos` (6) continuam. Foi isso que
 permitiu cravar o formato canônico de telefone sem migrar nada.
 
-## Próximo passo: o fluxo de AGENDAMENTO
+## MENSAGEM INICIAL PADRONIZADA + ESCOLHA DO BARBEIRO (2026-07-30, fim do dia)
 
-Continua sendo o próximo, agora a partir do botão `1.agendar`, que hoje responde
-uma frase provisória.
+O menu virou **lista** (`interactive.type = list`) e a abertura virou **duas
+mensagens**. Decisões e porquês em `REGRAS.md` (entrada de 2026-07-30, segunda).
 
-**Escopo:** só agendar. Nada de reagendamento, cancelamento, tabela de preços ou
-saída — esses vêm depois, um por vez.
+```
+Boa tarde! 👋                     ← texto; "Boa tarde, Victor. 👋" se tiver nome
+─────────────────────────
+Bem-vindo à Barbearia.            ← header; "Bom de ver novamente!" se tiver nome
+Como podemos te ajudar hoje?
+⚡ Atendimento rápido e humanizado
+        ☰ Ver opções
+              🗓️ Agendar horário / 🔄 Reagendar horário / ❌ Cancelar horário
+```
 
-Antes de codar: **planejamento decidido junto**, do zero. Nada pré-definido — por
-onde começa, quais as regras sequenciais, se usa X ou Y em cada bifurcação. Não
-chegar com desenho fechado nem tratar o fluxo antigo como base.
+Tocar em **Agendar** leva à escolha do barbeiro (header `Show!`, rodapé
+`Selecione uma opção`, rótulo `Ver barbeiros`), com os nomes vindos de
+`profissionais where ativo`. Escolher um responde uma frase provisória com o nome
+dele — dia e horário são o próximo passo.
 
-Material de partida: `ANEXO_FLUXO_N8N_AGENDAMENTO.md` (seção 14, as 9 perguntas de
-desenho; seção 13, os números do baseline — 7 interações a bater) e
-`ANEXO_BANCO/DECIDIR.md`. O objetivo declarado é um fluxo **melhor, mais eficiente
-e mais rápido** que o antigo; ler o antigo serve para saber o que já foi tentado.
+- `src/fluxo/saudacao.ts` — novo. Faixas 5h/12h/18h no fuso de São Paulo.
+- `src/db/profissionais.ts` — novo. `lerBarbeirosAtivos`, ordenado por id.
+- `src/db/contatos.ts` — o cadastro devolve o nome junto, numa ida só (`union all`
+  sobre a CTE, porque `on conflict do nothing` não devolve nada quando já existe).
+- Migrações aplicadas: `dados_cliente.nomewpp` → `nome`; `webhook_eventos.acao`
+  de `text` para `text[]` (o `ponytail:` disparou — abertura picada = duas ações).
 
-Primeira decisão que aparece pela frente: barbeiro é **dado**, não código (o antigo
-tinha 2 hardcoded e duplicava ~20 nós por barbeiro — foi o que gerou o único bug
-achado na leitura).
+**Estado da verificação:** 85 testes, `npm run typecheck` limpo, fluxo exercitado
+contra o banco real (abertura → escada nos 3 degraus → escolha de barbeiro →
+barbeiro inválido), e handshake da Meta confirmado no endpoint novo.
 
-**Como o novo passo se encaixa no que já existe** (não precisa redescobrir):
+## Próximo passo: DIA E HORÁRIO — e é onde entra a API do calendário
 
-1. Novo id de botão em `montarId('barbeiro', { b: '1' })` — o contexto vai dentro dele.
-2. Nova rota no `switch` de `rotear.ts`, com nome de resposta próprio.
-3. O nome entra em `NOMES_RESPOSTA` (`acoes.ts`) **e no mapa `AJUDA`** — sem a frase
-   de "toque no botão tal", o TypeScript recusa compilar. É de propósito.
-4. A escada de feedback e o cadastro de contato passam a valer no passo novo sem
-   nenhuma alteração: eles leem `webhook_eventos.acao`, seja ela qual for.
-5. Nome do cliente ainda não é aproveitado — a Meta manda em toda mensagem e hoje a
-   gente descarta. É o insumo natural para a tela de confirmação do agendamento.
+O agendamento parou depois da escolha do barbeiro. O próximo nó precisa de
+**disponibilidade real** (dias livres, horários livres), e essa lógica não está em
+função SQL: ela mora no código do `Aplicativo-FULL`, que ainda não tem clone local.
+
+O usuário vai disponibilizar o app de calendário no ambiente para trabalharmos com
+chamada de API de verdade — consultar disponibilidade, data e horário, e testar na
+prática. **Esse é o ponto de partida da próxima sessão.**
+
+Insumos que já existem para esse passo:
+- `agenda_profissional` — `duracao_min` é **por profissional** (60 do Costa, 45 do
+  Eloi), não por serviço; `hora_inicio`/`hora_fim`, `intervalo_*`,
+  `janela_agendamento_dias`, `dias_semana` (jsonb).
+- `dias_bloqueados` e `agendamentos` (com o índice único parcial que já barra
+  double-booking em status ativos).
+- O anexo do n8n tem o baseline a bater: 7 interações do cliente para marcar.
+
+**Como o passo novo se encaixa** (não precisa redescobrir):
+
+1. Novo id em `montarId('dia', { b: '1', d: '2026-08-04' })` — contexto dentro do id.
+2. Nova rota no `switch` de `rotear.ts` + nome novo em `NOMES_RESPOSTA` **e no mapa
+   `AJUDA`** — sem a frase de ajuda, o TypeScript recusa compilar. É de propósito.
+3. O roteador é puro: o que vier da API do calendário entra pelo `ContextoFluxo`,
+   como `barbeiros` já entra hoje.
+4. Escada de feedback, cadastro de contato e dedupe valem no passo novo sem alteração.
 
 ## Fluxo n8n do case antigo: LIDO em 2026-07-30 (as duas partes)
 
@@ -313,16 +339,41 @@ Ainda **não** há clone local do `Aplicativo-FULL`
 de `agenda_profissional` + `dias_bloqueados` + `agendamentos`) mora lá, não em
 função SQL. Só será necessário quando chegarmos na integração.
 
-**Atenção — a URL do ngrok da sessão de 2026-07-29 está morta.** Quando voltar a
-testar recebimento de mensagem, subir o túnel de novo e **recolar a nova URL de
-callback no painel da Meta** (Webhooks → Conta comercial do WhatsApp). O verify
-token continua válido, está no `BARBEARIA/.env`.
+**Atenção — a URL do ngrok morre a cada sessão.** Ao voltar a testar recebimento de
+mensagem, subir o túnel de novo e **recolar a nova URL de callback no painel da Meta**
+(Webhooks → Conta comercial do WhatsApp). O verify token continua válido, está no
+`BARBEARIA/.env`.
+
+**Ao testar do celular, resetar o estado antes.** O bot lembra do que falou com o
+número **no dia corrente**, então retomar um teste no mesmo dia faz o cliente cair na
+escada de feedback (recebe a dica em vez da abertura) — foi exatamente o que
+aconteceu em 2026-07-30 e pareceu bug, mas era a regra funcionando:
+
+```
+cd BARBEARIA && npm run db -- "delete from webhook_eventos where de = '<numero>'" -- --gravar
+```
+
+Isso zera degrau, última resposta e trava de rajada, e **preserva o cadastro** em
+`dados_cliente`. O número de teste do usuário é `553384246770`.
 
 ## Pendências em aberto (não travadas ainda)
 
+- **Cutucão por inatividade — ideia nova do usuário (2026-07-30), não existe ainda.**
+  Ele gostou da escada de feedback e quis "aumentar o tempo" dela. **Cuidado com o
+  mal-entendido:** a escada não é por tempo — ela dispara quando o cliente *digita
+  em vez de tocar*, na hora. O que ele quer é outra coisa: uma mensagem depois de um
+  período de **silêncio** ("você parou no meio, quer continuar?"). Isso não existe em
+  lugar nenhum do código e não sai da escada — precisa de agendamento de envio
+  (outbox `envios_pendentes` + Vercel Cron), porque ninguém está pedindo nada na hora
+  em que ela teria que sair. Combinado explicitamente: **aperfeiçoar mais pra frente.**
+- **Teto de 2 barbeiros do plano não está travado em código.** Se um terceiro for
+  cadastrado e ativado, a lista mostra os três. Hoje é regra comercial; o lugar dela
+  é a futura tabela de barbearias/plano.
 - **Hospedagem definitiva:** hoje é túnel ngrok (URL morre a cada sessão e
   precisa ser recolada no painel da Meta). Migrar pra Vercel quando o fluxo
-  estabilizar.
+  estabilizar. **Antes de subir um túnel novo, conferir se já não há um rodando**
+  (`Get-Process ngrok`) — o plano free aceita uma sessão por vez, e o `ngrok` do
+  PATH só executa pelo PowerShell (`ngrok.cmd`); pelo Bash dá `Exec format error`.
 - **Trocar o token de envio antes da produção** — o que está no `.env` é de teste e
   passou por log de conversa. Produção será outro número e outro ambiente.
 - Confirmar status de licenciamento do AbacatePay antes de reconsiderá-lo.

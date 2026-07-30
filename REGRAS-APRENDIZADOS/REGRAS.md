@@ -151,6 +151,49 @@ real. Substituem o que o fluxo n8n fazia; o anexo do n8n continua não-normativo
 **Por quê importa:** são as formas que todo passo seguinte do fluxo herda. Mudar
 qualquer uma depois custa reescrever o que veio em cima.
 
+## [2026-07-30] Mensagem inicial padronizada e escolha do barbeiro
+- **Formato padrão do menu é `interactive.type = list`**, não os 3 botões de resposta
+  rápida. Custa um toque a mais (o cliente abre "Ver opções") e em troca dá header e
+  footer, que `button` não aceita. Decisão do dono do produto: visual completo.
+- **A abertura do dia é picada em duas mensagens** — saudação como texto normal, menu
+  logo atrás. Numa mensagem só, o "Boa noite" viraria título de cartão. Custa uma
+  chamada HTTP a mais por abertura, e o custo foi aceito explicitamente.
+- **Saudação por faixa de horário** (5h/12h/18h) no fuso de São Paulo, nunca no do
+  servidor — na Vercel o processo roda em UTC e o cliente das 22h receberia "bom dia".
+  Fica fora do roteador: entra pronta no contexto, pra a função continuar pura.
+- **O bot só chama pelo nome quem informou o nome a ele**, na etapa de nome de um
+  agendamento fechado (`dados_cliente.nome`). **O nome do perfil do WhatsApp é
+  descartado de propósito** — é o que a pessoa escreveu no próprio aparelho (apelido,
+  nome de loja, emoji), e chamar cliente por aquilo gera confusão. A coluna herdada
+  `nomewpp` foi renomeada porque prometia exatamente o oposto da regra.
+- **Um único sinal decide a abertura inteira:** tem nome gravado ou não. Some a
+  distinção antiga "já conversou antes" — quem conversou ontem e largou no meio é
+  tratado como novo, e recebe o menu genérico.
+- **`agendamentos.cliente` não é escrita pelo WhatsApp.** Aquela coluna é do
+  agendamento pela internet, fase futura. O cadastro do bot mora em `dados_cliente`.
+- **Barbeiro é dado, não código.** A lista sai de `profissionais where ativo`, e o
+  `profissionais.id` viaja dentro do id da opção (`1.barbeiro?b=2`). No n8n o mapa
+  estava hardcoded em 3 nós e tudo depois de "escolher barbeiro" existia duplicado,
+  uma cópia por profissional (~20 nós) — barbeiro novo era editar o fluxo.
+- **A pergunta "com quem?" só existe quando há escolha real:** 0 ativos → avisa que a
+  agenda está fechada; 1 → pergunta pulada, a escolha acontece sem o cliente ver; 2 →
+  a lista aparece. A regra sai da contagem no banco, sem flag de configuração.
+- **O `b=` do id não vale nada sozinho** — só vira barbeiro depois de bater com a
+  lista de ativos. Barbeiro desativado no meio faz a pergunta voltar com quem sobrou,
+  em vez de escolher alguém no lugar do cliente.
+- **Pergunta do meio de agendamento (WhatsApp ou site) foi eliminada.** Quem está no
+  WhatsApp já respondeu isso ao tocar em Agendar. Era o passo 1 do sub-fluxo antigo.
+- **`webhook_eventos.acao` virou `text[]`.** Era `text` com nomes concatenados por
+  vírgula enquanto o roteador devolvia no máximo uma ação; a abertura picada foi o
+  gatilho de upgrade previsto no `ponytail:`. Sem a troca, a escada de feedback
+  compararia `'saudacao,menu_principal'` por igualdade, não reconheceria degrau
+  nenhum e o bot cairia em silêncio — sem erro e sem log.
+
+**Por quê importa:** a mensagem inicial é a única que 100% dos clientes veem, e o
+formato escolhido aqui (lista com header/footer) é o molde de todo passo seguinte do
+fluxo. As duas regras de dado — nome só do cliente, barbeiro só do banco — são o que
+impede o sistema de herdar os dois defeitos que mais custaram no n8n.
+
 ## [2026-07-29] Processo de curadoria de skills/conhecimento
 - **Regra:** todo repositório, skill ou conhecimento trazido passa por: (1) avaliação
   crítica de encaixe, (2) busca cruzada (find-skills + GitHub) só se fizer sentido,

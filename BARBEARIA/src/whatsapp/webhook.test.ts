@@ -16,6 +16,8 @@ const env: Env = {
 
 const ROTA = '/webhook/whatsapp';
 
+const BARBEIROS = [{ id: 1, nome: 'Lucas Costa' }];
+
 /**
  * Monta o app com dependencias de mentira: o teste nao abre porta, nao fala com
  * o banco e nao chama a Meta. Por padrao o registro diz "evento novo, manda
@@ -27,7 +29,13 @@ function montar(sobrescreve: Partial<Dependencias> = {}) {
   const deps: Dependencias = {
     registrar: async (_evento, decidir) => ({
       novo: true,
-      enviar: decidir({ clienteNovo: true, ultimaResposta: undefined, degrau: 0 }),
+      enviar: decidir({
+        nome: undefined,
+        saudacao: 'Boa noite',
+        barbeiros: BARBEIROS,
+        ultimaResposta: undefined,
+        degrau: 0,
+      }),
       clienteNovo: true,
     }),
     enviar: async (acao) => {
@@ -146,13 +154,14 @@ describe('POST /webhook/whatsapp — assinatura', () => {
 });
 
 describe('POST /webhook/whatsapp — primeira interacao', () => {
-  it('responde "Oi" com o menu de 3 botoes', async () => {
+  it('responde "Oi" com a saudacao picada e o menu em lista', async () => {
     const { app, enviadas } = montar();
 
     expect((await postar(app, MENSAGEM_DE_TEXTO)).status).toBe(200);
-    expect(enviadas).toHaveLength(1);
-    expect(enviadas[0]?.resposta).toBe('menu_principal');
-    expect(enviadas[0]?.para).toBe('5533999999999');
+    expect(enviadas).toHaveLength(2);
+    expect(enviadas.map((acao) => acao.resposta)).toEqual(['saudacao', 'menu_principal']);
+    expect(enviadas.every((acao) => acao.para === '5533999999999')).toBe(true);
+    expect(enviadas[1]?.tipo).toBe('enviar_lista');
   });
 
   it('nao envia nada quando o evento e reentrega da Meta', async () => {
@@ -173,23 +182,35 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
     expect(enviadas).toEqual([]);
   });
 
-  it('a saudacao muda conforme o contato ja esteja cadastrado', async () => {
-    const primeira = montar();
-    await postar(primeira.app, MENSAGEM_DE_TEXTO);
+  it('so chama pelo nome quem tem nome no cadastro — nunca o nome do perfil', async () => {
+    const generico = montar();
+    await postar(generico.app, MENSAGEM_DE_TEXTO);
 
-    const repetida = montar({
+    const comNome = montar({
       registrar: async (_evento, decidir) => ({
+        // `novo` e sobre o EVENTO (nao e reentrega da Meta), nao sobre o contato.
         novo: true,
-        enviar: decidir({ clienteNovo: false, ultimaResposta: undefined, degrau: 0 }),
+        enviar: decidir({
+          nome: 'Victor',
+          saudacao: 'Boa noite',
+          barbeiros: BARBEIROS,
+          ultimaResposta: undefined,
+          degrau: 0,
+        }),
         clienteNovo: false,
       }),
     });
-    await postar(repetida.app, MENSAGEM_DE_TEXTO);
+    await postar(comNome.app, MENSAGEM_DE_TEXTO);
 
-    expect(primeira.enviadas[0]?.texto).not.toBe(repetida.enviadas[0]?.texto);
-    expect(repetida.enviadas[0]?.texto).toContain('de novo');
-    // Mesmo nome de resposta nos dois: e a trava anti-repeticao que depende disso.
-    expect(primeira.enviadas[0]?.resposta).toBe(repetida.enviadas[0]?.resposta);
+    expect(generico.enviadas[0]?.texto).toBe('Boa noite! 👋');
+    expect(comNome.enviadas[0]?.texto).toBe('Boa noite, Victor. 👋');
+    // O envelope traz `profile.name = 'Victor'` nas duas, e mesmo assim a primeira
+    // sai generica: o nome do perfil nao entra em texto nenhum.
+    expect(generico.enviadas.every((acao) => !acao.texto.includes('Victor'))).toBe(true);
+    // Mesmos nomes de resposta nos dois: e a trava anti-repeticao que depende disso.
+    expect(generico.enviadas.map((acao) => acao.resposta)).toEqual(
+      comNome.enviadas.map((acao) => acao.resposta),
+    );
   });
 
   it('nao trata recibo de entrega como mensagem de cliente', async () => {
@@ -232,7 +253,13 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
     const app = criarApp(env, {
       registrar: async (_evento, decidir) => ({
         novo: true,
-        enviar: decidir({ clienteNovo: false, ultimaResposta: undefined, degrau: 0 }),
+        enviar: decidir({
+          nome: undefined,
+          saudacao: 'Boa noite',
+          barbeiros: BARBEIROS,
+          ultimaResposta: undefined,
+          degrau: 0,
+        }),
         clienteNovo: false,
       }),
       enviar: async (acao) => {
@@ -264,8 +291,10 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
       ],
     });
 
+    // A primeira mensagem perde o menu (o erro interrompe a abertura dela no meio),
+    // mas a segunda sai inteira: 1 + 2 = 3 envios.
     expect((await postar(app, rajada)).status).toBe(200);
-    expect(enviadas).toHaveLength(2);
+    expect(enviadas).toHaveLength(3);
   });
 });
 
