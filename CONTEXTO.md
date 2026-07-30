@@ -52,10 +52,46 @@ em função SQL. Duas rotas resolvem o passo:
   um dia
 - `POST /agendamentos` — marca, revalidando tudo e tratando o índice único
 
-**Não decidido ainda:** se o bot fala com o calendário por **HTTP** (reusa a
-lógica pronta, uma fonte de verdade, mas depende do serviço no ar) ou **direto no
-banco** (independente, mas duplica a regra em dois lugares que vão divergir). Essa
-é a primeira pergunta do plano de integração.
+### Decidido em 2026-07-30: o bot fala por HTTP, e os dois rodam local
+
+**Caminho: HTTP na API do calendário.** A regra de disponibilidade não está em
+SQL — são sete funções JavaScript no `server.js`, com sutilezas (o slot tem o
+tamanho da `duracao_min` *daquele* profissional; a fronteira manhã/tarde nasce do
+intervalo de descanso dele). Ir direto ao banco significaria reescrever tudo isso
+no bot e conviver com duas implementações da mesma regra. Elas divergiriam, e o
+sintoma seria o pior tipo: painel mostrando um horário livre e bot oferecendo
+outro, **sem erro e sem log**.
+
+O contra-argumento óbvio — "amarra o bot a um segundo serviço" — não se sustenta:
+o painel do dono não funciona sem essa API, então ela está no ar de qualquer
+jeito. E há precedente: o site público consumia exatamente esses endpoints, por
+HTTP, em produção.
+
+**Endereço: local.** Bot na 3333, calendário na 3334, lado a lado. O bot chama
+`http://localhost:3334`. Só o bot precisa de túnel, porque só ele recebe da Meta.
+
+### Três ajustes na API, adiados com gatilho
+
+Nenhum é urgente no teste local, e fazê-los agora seria defesa contra volume
+inexistente num serviço que ninguém alcança. Ficam registrados para não virarem
+"depois é nunca":
+
+- **Rate limit barra o bot.** `POST /agendamentos` aceita 10/min por IP, e o bot é
+  um IP só atendendo todos os clientes. **Gatilho:** sair de `localhost` — em
+  produção o 11º cliente da hora leva 429 sem ter feito nada.
+- **`POST /agendamentos` é escrita aberta, sem token.** Era assim porque o site
+  marcava sem login; o site morreu e a porta ficou. **Gatilho:** a API ganhar
+  endereço público.
+- **Não há idempotência.** Timeout + repetição devolve `409` sem dizer se o
+  "ocupante" é outra pessoa ou o próprio cliente. **Gatilho: o passo de confirmar
+  horário** — e o conserto mais barato não é na API: o bot consulta se aquele
+  cliente já tem agendamento naquele horário e responde "você já está marcado" em
+  vez de "foi tomado". O toque duplo é real desde o dia um, porque a trava de
+  rajada vale só para texto (`REGRAS.md`): **toque em botão nunca é suprimido.**
+
+**Regra que vira explícita:** `agendamentos.profissional` é texto sem FK, e a
+trava de double-booking depende do nome bater exatamente. O bot já lê
+`profissionais`, então manda o nome de lá — nunca digitado à mão.
 
 Como o passo novo se encaixa no bot, para não redescobrir:
 
