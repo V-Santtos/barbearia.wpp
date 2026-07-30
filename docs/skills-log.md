@@ -34,6 +34,24 @@ Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbeari
 - Ação: Não instalado. Não revisitar a menos que surja um caso de uso concreto que
   as ferramentas nativas não cubram.
 
+## [2026-07-29] muratcankoylan/Agent-Skills-for-Context-Engineering
+- Fonte: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
+- Veredito: ✂️ Adotado parcial
+- Motivo: 17.501 estrelas, MIT, 40 issues abertas (saudável), conteúdo de alta
+  qualidade e substância real (verificado lendo `tool-design` e `evaluation` na
+  íntegra) — nada de marketing vazio. Mas o repositório ensina a projetar sistemas
+  de agentes de IA não-determinísticos (memória, multi-agente, avaliação de
+  pipeline de LLM); o bot da Fase 1 é uma máquina de estados determinística de
+  botões, não um agente de IA livre. Só `tool-design` tem aplicação imediata: ajuda
+  a escrever descrições de ferramenta/skill não-ambíguas, relevante sempre que
+  usarmos `skill-creator` ou desenharmos contratos internos de API/webhook.
+  Complementar ao `skill-creator` (mecânica de empacotar/testar), não redundante.
+- Ação: Extraída só a skill `tool-design` (4 arquivos: SKILL.md + 2 references +
+  1 script) para `.claude/skills/tool-design/`, com nota de origem em `SOURCE.md`.
+  As outras 16 skills mapeadas em
+  `REGRAS-APRENDIZADOS/ANEXO_CONTEXT_ENGINEERING.md`, com gatilhos claros de quando
+  revisitar (V2 com linguagem natural livre, avaliação de lógica não-determinística).
+
 ## [2026-07-29] mcollina/skills@fastify-best-practices
 - Fonte: https://skills.sh/mcollina/skills/fastify-best-practices
 - Veredito: ⏸️ Avaliado, adoção pendente
