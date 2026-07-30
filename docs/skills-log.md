@@ -94,3 +94,26 @@ Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbeari
   teve autoridade suficiente para adoção (ver busca acima).
 - Ação: Nenhuma skill instalada. Documentação oficial do Drizzle é referência
   suficiente por ora.
+
+## [2026-07-29] DietrichGebert/ponytail
+- Fonte: https://github.com/DietrichGebert/ponytail
+- Veredito: ✂️ Adotado parcial
+- Motivo: 91.693 estrelas, MIT, repo pequeno (2.2MB, sem inchaço), proporção de
+  issues saudável (112/91.6k). Tema "yagni" bate direto com regras já registradas
+  neste projeto (V1 custo-benefício, rejeição do ruvnet/ruflo por over-
+  engineering). Conteúdo lido na íntegra (`AGENTS.md`, `hooks.json`,
+  `ponytail-audit`, `ponytail-debt`): substância real, sem marketing vazio,
+  mecanismo simples (grep + relatório, não aplica nada sozinho).
+  - `/ponytail-review` (revisão de diff): **redundante** com a skill `simplify`
+    já disponível neste ambiente — não trazida.
+  - Hooks passivos (lembrete de YAGNI a cada prompt): **redundantes** — essas
+    instruções já estão fixas no system prompt do Claude, sem risco de deriva
+    ao longo da sessão que justifique um hook extra. Adaptadores multi-
+    plataforma (Cursor, Windsurf, Copilot, Qoder) irrelevantes aqui.
+  - `/ponytail-audit` (varredura do repo inteiro) e `/ponytail-debt` (ledger de
+    comentários `ponytail:`): **sem equivalente** no ambiente atual, valor real.
+- Ação: Extraídas `ponytail-audit` e `ponytail-debt` para `.claude/skills/`, com
+  `SOURCE.md`. Convenção do comentário `ponytail:` registrada em
+  `REGRAS-APRENDIZADOS/REGRAS.md`. Core skill de troca de modo (`ponytail`),
+  `ponytail-review`, `ponytail-gain`, `ponytail-help` e os hooks não foram
+  trazidos.

@@ -83,6 +83,19 @@ pasta), não uma sobrescrita silenciosa.
 - **Como aplicar:** toda decisão de código do motor do bot segue isso por padrão.
   Se algo aqui precisar mudar, é uma revisão explícita, não um desvio silencioso.
 
+## [2026-07-29] Convenção `ponytail:` para simplificações deliberadas
+- **Regra:** ao cortar corner conscientemente (lock global, scan O(n²), heurística
+  simples) para manter o código enxuto agora, marcar com um comentário
+  `ponytail: <teto conhecido>, <gatilho de upgrade>` no ponto do código. Ex.:
+  `// ponytail: scan linear, ok até ~500 tenants; migrar pra índice se passar disso`.
+- **Por quê importa:** simplificação deliberada sem registro vira dívida técnica
+  invisível — "depois" vira "nunca". A skill `ponytail-debt` varre esses
+  comentários e monta um ledger, sinalizando quem não tem gatilho de revisão
+  (risco de apodrecer em silêncio).
+- **Como aplicar:** sempre que eu (Claude) escolher a solução mais simples sabendo
+  que ela tem um teto claro, marcar com esse comentário em vez de só confiar na
+  memória do projeto. Rodar `ponytail-debt` periodicamente pra revisar o ledger.
+
 ## [2026-07-29] Processo de curadoria de skills/conhecimento
 - **Regra:** todo repositório, skill ou conhecimento trazido passa por: (1) avaliação
   crítica de encaixe, (2) busca cruzada (find-skills + GitHub) só se fizer sentido,
