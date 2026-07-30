@@ -117,3 +117,24 @@ Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbeari
   `REGRAS-APRENDIZADOS/REGRAS.md`. Core skill de troca de modo (`ponytail`),
   `ponytail-review`, `ponytail-gain`, `ponytail-help` e os hooks não foram
   trazidos.
+
+## [2026-07-29] affaan-m/ECC
+- Fonte: https://github.com/affaan-m/ECC
+- Veredito: ❌ Rejeitado
+- Motivo: 235.582 estrelas (verificadas como atividade genuína — commits reais nas
+  últimas ~28 semanas, 5 releases versionadas de março a 27/07, 100+
+  contribuidores — não é estrela inflada). Mas é a mesma categoria do
+  `ruvnet/ruflo` (já rejeitado), em escala ainda maior: 67 agentes, 281 skills,
+  94 comandos, adaptadores pra praticamente toda ferramenta de IA existente
+  (.cursor, .gemini, .hermes, .kimi, .kiro, .openclaw, .opencode, .qwen, .trae,
+  .vscode, .zed), dashboard Python próprio, segunda versão vivendo junto
+  (`ecc2/`). O "Memory Vault" dele entraria em **conflito direto** com
+  `REGRAS-APRENDIZADOS/` (duas fontes de memória de projeto competindo — o
+  cenário exato que nosso processo de curadoria existe pra evitar). Demais
+  peças (TDD, security-review, hooks de sessão) duplicam skills do
+  `superpowers` e hooks já configurados aqui.
+- Ação: Não instalado, nada extraído. O conceito do `AgentShield` (scanner de
+  config de MCP/hooks/secrets, 102 regras) é uma necessidade futura legítima —
+  mas está amarrado à infraestrutura própria do ECC, não é um arquivo isolado
+  como `tool-design`/`ponytail-audit` foram. Se precisarmos disso, buscar uma
+  ferramenta independente e enxuta depois, não extrair deste repositório.
