@@ -41,12 +41,16 @@ fora e por quê). Repos rejeitados: `Graphify` (parqueado p/ Fase 2),
 
 ## Próximo passo
 
-Nenhum definido/em andamento no momento — aguardando o usuário trazer o
-próximo repositório/conhecimento para avaliar, **ou** dar sinal verde para:
-1. Criar o esqueleto de código dentro de `BARBEARIA/` (package.json, tsconfig,
-   Hono + Drizzle configurados), ou
-2. Trazer o fluxo n8n de referência (mencionado no início do projeto, ainda
-   não entregue) para desenhar o fluxo de botões da Fase 1 de verdade.
+**Decidido em 2026-07-29: começar a codar.** Sinal verde dado pelo usuário para
+sair da fase de mapeamento e criar o esqueleto de código dentro de
+`BARBEARIA/` — package.json, tsconfig, Hono + Drizzle configurados, conforme
+`REGRAS-APRENDIZADOS/REGRAS.md`. Sessão anterior foi resetada logo após esta
+decisão; nenhum arquivo de código foi criado ainda quando o reset aconteceu.
+
+Ao retomar: confirmar com o usuário se o esqueleto inicial é o primeiro passo
+mesmo, ou se ele quer trazer o fluxo n8n de referência antes (mencionado no
+início do projeto, ainda não entregue) para desenhar o fluxo de botões da
+Fase 1 antes de codar a base.
 
 ## Pendências em aberto (não travadas ainda)
 
