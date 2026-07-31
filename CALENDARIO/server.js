@@ -48,6 +48,17 @@ const DEFAULT_AGENDA = {
 // 3334, nao 3333: a 3333 e do bot de WhatsApp (BARBEARIA), e a integracao precisa
 // dos dois servicos no ar ao mesmo tempo.
 const PORT = process.env.PORT || 3334;
+
+// Como esta API manda o dono falar no WhatsApp. Quem tem o token da Meta e o bot,
+// e so ele: pedir que ele envie evita uma segunda implementacao do payload da Cloud
+// API vivendo aqui. Sem barra no fim — quem monta o caminho concatena.
+const BOT_URL = (process.env.BOT_URL || "http://localhost:3333").replace(
+  /\/+$/,
+  "",
+);
+// Segredo DIFERENTE do WHATSAPP_WEBHOOK_TOKEN, que protege a direcao contraria.
+// Vazio => `/send` responde 503 dizendo o que falta, em vez de 500 sem pista.
+const BOT_PAINEL_TOKEN = (process.env.BOT_PAINEL_TOKEN || "").trim();
 // So a porta do painel do calendario. A 3001 saiu junto com o site publico.
 const DEFAULT_CORS_ORIGINS = [
   "http://localhost:3002",
@@ -1667,27 +1678,32 @@ function buildServer() {
 
   // WHATSAPP CRM
 
-  // POST /whatsapp/events - porta de entrada de mensagem no CRM do calendario.
-  // Quem alimentava isso era o n8n; agora e a costura pro nosso bot de botoes,
-  // que ainda nao escreve aqui. Protegida por WHATSAPP_WEBHOOK_TOKEN.
-  fastify.post(
-    "/whatsapp/events",
-    { preHandler: requireWebhookToken },
-    async (request, reply) => {
-      const event = extractInboundEvent(request.body);
+  // A janela de atendimento da Meta dura 24h e **só reinicia com mensagem do
+  // cliente** — resposta da empresa nao estende nada. Quem guarda esse prazo e
+  // `whatsapp_contacts.service_window_until`, gravado so em `inbound` logo abaixo.
+  //
+  // Ate 2026-07-31 os dois filtros olhavam `conversations.last_message_at`, que
+  // avanca com QUALQUER mensagem. O dono responder as 20:00 uma conversa cujo
+  // cliente falou as 08:00 reiniciava o relogio: a conversa seguia aberta no painel
+  // ate as 18:00 do dia seguinte, dez horas depois de a janela real ter fechado.
+  //
+  // A margem existe so pro painel: a conversa sai da lista com 2h de janela ainda
+  // de pe, porque o dono le, pensa e digita — nao responde no instante em que abre.
+  // O agrupamento de mensagens NAO usa margem; ele pergunta se a janela fechou de
+  // verdade, senao uma resposta do bot chegando na hora limite partiria a conversa
+  // viva em duas.
+  const MARGEM_PAINEL_HORAS = 2;
 
-      if (!["inbound", "outbound"].includes(event.direction)) {
-        return reply
-          .status(400)
-          .send({ error: "direction deve ser inbound ou outbound." });
-      }
-
-      if (!event.phone) {
-        return reply
-          .status(400)
-          .send({ error: "phone/Telefone/wa_id e obrigatorio." });
-      }
-
+  /**
+   * Grava uma mensagem no CRM: upsert do contato, agrupamento na conversa certa e
+   * insert da mensagem, tudo numa transacao.
+   *
+   * Extraida da rota em 2026-07-31 porque o `/send` do painel precisa exatamente
+   * disto ao registrar a fala do dono. Uma segunda copia deste upsert seria a
+   * chance perfeita de as duas divergirem — e a que ficasse errada seria a que o
+   * dono le.
+   */
+  async function registrarMensagem(event) {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
@@ -1729,15 +1745,22 @@ function buildServer() {
         const contact = contactRows[0];
 
         let conversation;
+        // A mensagem entra na conversa que ja esta aberta enquanto a janela do
+        // contato nao fechou. O `IS NULL` cobre um caso real: se o espelho da
+        // entrada falhar e o da saida passar, o contato nasce de um `outbound` e
+        // fica sem janela — sem esta linha ele nunca mais agruparia nada.
         const { rows: conversationRows } = await client.query(
           `SELECT id, status
           FROM public.whatsapp_conversations
           WHERE contact_id = $1
             AND status <> 'closed'
-            AND last_message_at > NOW() - INTERVAL '22 hours'
+            AND (
+              $2::timestamptz > NOW()
+              OR ($2::timestamptz IS NULL AND last_message_at > NOW() - INTERVAL '22 hours')
+            )
           ORDER BY created_at DESC
           LIMIT 1`,
-          [contact.id],
+          [contact.id, contact.service_window_until],
         );
 
         if (conversationRows.length) {
@@ -1793,19 +1816,47 @@ function buildServer() {
         );
 
         await client.query("COMMIT");
-        return reply.status(201).send({
+        return {
           contact,
           conversation: { id: conversation.id, status: conversation.status },
           message: mapWhatsAppMessage(messageRows[0]),
-        });
+        };
       } catch (err) {
         await client.query("ROLLBACK").catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+  }
+
+  // POST /whatsapp/events - porta de entrada de mensagem no CRM do calendario.
+  // Quem alimentava isso era o n8n; hoje e o bot de botoes que escreve aqui, os dois
+  // lados da conversa. Protegida por WHATSAPP_WEBHOOK_TOKEN.
+  fastify.post(
+    "/whatsapp/events",
+    { preHandler: requireWebhookToken },
+    async (request, reply) => {
+      const event = extractInboundEvent(request.body);
+
+      if (!["inbound", "outbound"].includes(event.direction)) {
+        return reply
+          .status(400)
+          .send({ error: "direction deve ser inbound ou outbound." });
+      }
+
+      if (!event.phone) {
+        return reply
+          .status(400)
+          .send({ error: "phone/Telefone/wa_id e obrigatorio." });
+      }
+
+      try {
+        return reply.status(201).send(await registrarMensagem(event));
+      } catch (err) {
         fastify.log.error(err);
         return reply
           .status(500)
           .send({ error: "Erro ao registrar evento do WhatsApp." });
-      } finally {
-        client.release();
       }
     },
   );
@@ -1843,10 +1894,16 @@ function buildServer() {
               AND m.direction = 'inbound'
               AND m.read_at IS NULL
           ) uc ON TRUE
-          WHERE c.last_message_at > NOW() - INTERVAL '22 hours'
+          WHERE (
+            ct.service_window_until > NOW() + make_interval(hours => $2)
+            OR (
+              ct.service_window_until IS NULL
+              AND c.last_message_at > NOW() - INTERVAL '22 hours'
+            )
+          )
           ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC
           LIMIT $1`,
-          [limit],
+          [limit, MARGEM_PAINEL_HORAS],
         );
         return rows.map(mapWhatsAppConversation);
       } catch (err) {
@@ -1906,29 +1963,104 @@ function buildServer() {
     },
   );
 
-  // POST /whatsapp/conversations/:id/send — o dono responde pelo painel.
-  // Desligada ate a integracao com o bot; ver o comentario dentro da rota.
+  /**
+   * POST /whatsapp/conversations/:id/send — o dono responde pelo painel.
+   *
+   * O transporte e o bot: ele tem o token da Meta, e so ele monta payload da Cloud
+   * API. Esta API pede que ele fale. O transporte anterior era o n8n, aposentado.
+   *
+   * A ordem dos passos e a regra mais importante daqui: **grava depois de enviar.**
+   * Ao contrario, uma falha da Meta deixaria no painel uma mensagem que nunca
+   * chegou no celular do cliente — e o dono ficaria esperando resposta de algo que
+   * ninguem leu.
+   */
   fastify.post(
     "/whatsapp/conversations/:id/send",
     { preHandler: requireAdmin },
     async (request, reply) => {
+      const { id } = request.params;
       const text = String(request.body?.body ?? "").trim();
 
       if (!text) return reply.status(400).send({ error: "Mensagem vazia." });
 
-      // ponytail: envio desligado ate a integracao com o bot de botoes.
-      // Gatilho de upgrade: a etapa de integracao, que vai por o bot no lugar do
-      // transporte que saiu daqui.
-      //
-      // O transporte antigo era o n8n (`N8N_SEND_WEBHOOK_URL` -> Evolution API),
-      // aposentado no nosso projeto. A rota fica de pe de proposito: e a costura
-      // pronta pro bot, e o contrato que o painel ja chama nao muda. Responder 501
-      // e deliberado — o painel mostra erro claro em vez de fingir que enviou e
-      // gravar uma mensagem outbound que nunca saiu do servidor.
-      return reply.status(501).send({
-        error:
-          "Envio pelo WhatsApp ainda nao esta ligado. O transporte antigo (n8n) foi removido e a integracao com o bot e a proxima etapa.",
-      });
+      if (!BOT_URL || !BOT_PAINEL_TOKEN) {
+        return reply.status(503).send({
+          error:
+            "Envio pelo WhatsApp nao esta configurado. Preencha BOT_URL e BOT_PAINEL_TOKEN no .env desta API.",
+        });
+      }
+
+      try {
+        const { rows } = await pool.query(
+          `SELECT ct.wa_id, ct.phone, ct.service_window_until,
+                  (ct.service_window_until > NOW()) AS janela_aberta
+             FROM public.whatsapp_conversations c
+             JOIN public.whatsapp_contacts ct ON ct.id = c.contact_id
+            WHERE c.id = $1`,
+          [id],
+        );
+
+        const destino = rows[0];
+        if (!destino) {
+          return reply.status(404).send({ error: "Conversa nao encontrada." });
+        }
+
+        // A trava usa a janela CRUA, sem a margem de 2h do painel. A margem existe
+        // pra conversa sumir da lista antes do fim; recusar aqui as 22h seria negar
+        // mensagem que a Meta ainda aceita.
+        if (!destino.janela_aberta) {
+          return reply.status(403).send({
+            error:
+              "A janela de 24h desta conversa fechou. So da pra escrever depois que o cliente mandar uma nova mensagem.",
+            codigo: "janela_fechada",
+            service_window_until: destino.service_window_until,
+          });
+        }
+
+        const envio = await fetch(`${BOT_URL}/mensagens`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-painel-token": BOT_PAINEL_TOKEN,
+          },
+          body: JSON.stringify({ para: destino.wa_id || destino.phone, texto: text }),
+        });
+
+        if (!envio.ok) {
+          const detalhe = await envio.text().catch(() => "");
+          fastify.log.error(
+            `Bot recusou o envio (${envio.status}): ${detalhe}`,
+          );
+          return reply.status(502).send({
+            error: "Nao foi possivel enviar pelo WhatsApp agora.",
+            codigo: "envio_falhou",
+          });
+        }
+
+        const { wamid } = await envio.json().catch(() => ({}));
+
+        // Saiu. Agora sim entra no painel — como `human`, que e o que separa a fala
+        // do dono da fala do bot na mesma conversa.
+        const registro = await registrarMensagem({
+          direction: "outbound",
+          sender_type: "human",
+          phone: normalizeWhatsAppPhone(destino.phone),
+          wa_id: destino.wa_id || destino.phone,
+          name: null,
+          message_type: "text",
+          body: text,
+          whatsapp_message_id: wamid ?? null,
+          raw_payload: { origem: "painel" },
+          occurred_at: new Date(),
+        });
+
+        return reply.status(201).send(registro.message);
+      } catch (err) {
+        fastify.log.error(err);
+        return reply
+          .status(500)
+          .send({ error: "Erro ao enviar mensagem pelo WhatsApp." });
+      }
     },
   );
 

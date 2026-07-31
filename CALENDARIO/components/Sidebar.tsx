@@ -24,105 +24,6 @@ import TimeSelect from "./ui/TimeSelect";
 import { JANELA_MIN_DIAS, JANELA_MAX_DIAS } from "../lib/utils";
 import { usePolling } from "../hooks/usePolling";
 
-const mockConversations: Conversation[] = [
-  {
-    id: 1,
-    name: "João Silva",
-    preview: "Tem horário amanhã cedo?",
-    time: "09:42",
-    unread: 2,
-    color: "#FF5000",
-  },
-  {
-    id: 2,
-    name: "Maria Souza",
-    preview: "Ficou ótimo, obrigada! 👍",
-    time: "ontem",
-    unread: 0,
-    color: "#07FF99",
-  },
-  {
-    id: 3,
-    name: "Carlos M.",
-    preview: "Pode confirmar pra mim?",
-    time: "14:30",
-    unread: 1,
-    color: "#0047FF",
-  },
-  {
-    id: 4,
-    name: "Pedro Alves",
-    preview: "Ok, até lá!",
-    time: "ter",
-    unread: 0,
-    color: "#8400FF",
-  },
-  {
-    id: 5,
-    name: "Ana Clara",
-    preview: "Qual o valor do corte?",
-    time: "seg",
-    unread: 0,
-    color: "#FC00FF",
-  },
-  {
-    id: 6,
-    name: "Lucas Rocha",
-    preview: "Quero marcar pra sábado",
-    time: "dom",
-    unread: 3,
-    color: "#FF2A29",
-  },
-  {
-    id: 7,
-    name: "Fernanda L.",
-    preview: "Tá bom, obrigada!",
-    time: "sáb",
-    unread: 0,
-    color: "#07FFF5",
-  },
-  {
-    id: 8,
-    name: "Rafael S.",
-    preview: "Tem vaga pra barba também?",
-    time: "sex",
-    unread: 0,
-    color: "#2FFF40",
-  },
-  {
-    id: 9,
-    name: "Thiago M.",
-    preview: "Cancelei, desculpa 😅",
-    time: "qui",
-    unread: 0,
-    color: "#FF5000",
-  },
-  {
-    id: 10,
-    name: "Bruno Costa",
-    preview: "Confirma o horário das 10h?",
-    time: "qua",
-    unread: 1,
-    color: "#0047FF",
-  },
-  {
-    id: 11,
-    name: "Isabela F.",
-    preview: "Meu namorado vai aí amanhã",
-    time: "ter",
-    unread: 0,
-    color: "#FC00FF",
-  },
-  {
-    id: 12,
-    name: "Diego Nunes",
-    preview: "Quanto tempo leva o corte?",
-    time: "seg",
-    unread: 0,
-    color: "#8400FF",
-  },
-];
-
 interface SidebarProps {
   onAddEvent: () => void;
   professionals: Professional[];
@@ -257,10 +158,15 @@ const toConversation = (
   return {
     id: item.id,
     name,
+    phone: item.contact.wa_id || item.contact.phone,
     preview:
       item.last_message?.body ||
       item.last_message?.message_type ||
       "Mensagem recebida",
+    // De que lado o preview entra quando o painel abre. Sem isto ele era sempre
+    // tratado como mensagem do cliente, e a última fala do bot piscava à esquerda,
+    // em cinza, antes de o histórico chegar e jogá-la pra direita.
+    previewFromMe: item.last_message?.direction === "outbound",
     time: formatConversationTime(item.last_message_at),
     unread: item.unread_count ?? 0,
     color: COLORS[index % COLORS.length],

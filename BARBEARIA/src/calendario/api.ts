@@ -69,3 +69,55 @@ export async function buscarHorarios(
     return horarios.filter((hora): hora is string => typeof hora === 'string');
   });
 }
+
+/** O que o bot precisa saber depois de tentar marcar. */
+export type Marcacao =
+  | { tipo: 'marcado' }
+  /** Alguem pegou o horario no meio do caminho, ou o cliente tocou duas vezes. */
+  | { tipo: 'ocupado' }
+  | { tipo: 'falhou' };
+
+/**
+ * Marca o agendamento — a mesma rota que o painel do dono usa, entao o horario
+ * aparece na agenda dele sem nenhum caminho paralelo.
+ *
+ * **`profissional` e texto sem FK**, e a trava de double-booking do banco depende do
+ * nome bater exatamente. Por isso o nome vem da tabela `profissionais`, lida pelo
+ * proprio bot, e nunca de algo digitado.
+ *
+ * O `409` e um estado de primeira classe e nao um erro qualquer: e o unico caso em
+ * que a resposta certa ao cliente fala de agenda ("esse horario acabou de ser
+ * pego") em vez de falar do sistema.
+ */
+export async function marcar(
+  base: string,
+  dados: {
+    barbeiro: string;
+    cliente: string;
+    telefone: string;
+    data: string;
+    hora: string;
+  },
+): Promise<Marcacao> {
+  const consulta = await pedir(
+    {
+      url: `${base}/agendamentos`,
+      metodo: 'POST',
+      corpo: {
+        telefone: dados.telefone,
+        cliente: dados.cliente,
+        profissional: dados.barbeiro,
+        dia_marcado: dados.data,
+        hora_marcada: dados.hora,
+        // O painel usa `app-etapas`. Marcar de onde veio separa, na agenda do dono,
+        // o que o bot fechou do que ele mesmo lancou a mao.
+        source: 'bot-whatsapp',
+      },
+    },
+    (corpo) => corpo ?? {},
+  );
+
+  if (consulta.ok) return { tipo: 'marcado' };
+
+  return consulta.status === 409 ? { tipo: 'ocupado' } : { tipo: 'falhou' };
+}

@@ -102,14 +102,14 @@ describe('espelho da entrada', () => {
     expect(chamadas[1]?.corpo.name).toBe('Vitinho 🔥');
   });
 
-  it('toque em botao vira o rotulo que o cliente viu, com o id atras', async () => {
+  it('toque em botao vira so o rotulo que o cliente viu — o id fica no raw_payload', async () => {
     const chamadas = fingirFetch();
     const espelho = criarEspelho(BASE, TOKEN);
 
     await espelho.entrada(botao('1.barbeiro?b=1', 'Lucas Costa'), undefined);
     await espelho.entrada(botao('1.agendar'), undefined);
 
-    expect(chamadas[0]?.corpo.body).toBe('Lucas Costa  (1.barbeiro?b=1)');
+    expect(chamadas[0]?.corpo.body).toBe('Lucas Costa');
     // Sem titulo, o id sozinho ainda conta o que ele escolheu.
     expect(chamadas[1]?.corpo.body).toBe('1.agendar');
   });

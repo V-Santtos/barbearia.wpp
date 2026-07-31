@@ -348,3 +348,92 @@ pede, não escreve direto.
 - **Como aplicar:** ver `docs/skills-log.md` para o processo completo de curadoria de
   skills instaláveis, e o README.md desta pasta para conhecimento não-instalável
   (conceitos, vídeos, decisões).
+
+## [2026-07-31] A janela de 24h da Meta: de onde ela conta
+
+A conversa some do painel do dono **22 horas depois da última mensagem DO CLIENTE**,
+não da última mensagem qualquer. São duas regras diferentes com âncoras diferentes, e
+confundi-las era o defeito:
+
+| O quê | Regra | Fonte |
+|---|---|---|
+| Some da lista do painel | `service_window_until > agora + 2h` | `whatsapp_contacts` |
+| Agrupa na mesma conversa | `service_window_until > agora` | idem, **sem margem** |
+
+- **A janela da Meta só reinicia com mensagem do cliente.** Resposta da empresa não
+  estende nada. `whatsapp_contacts.service_window_until` já guardava isso (gravado só
+  em `inbound`), mas os dois filtros olhavam `conversations.last_message_at`, que
+  avança com qualquer mensagem. O dono responder às 20:00 uma conversa cujo cliente
+  falou às 08:00 reiniciava o relógio: a conversa seguia aberta até as 18:00 do dia
+  seguinte, **dez horas depois de a janela real ter fechado**.
+- **A margem de 2h é do painel, e só dele.** Ela existe para o dono não começar a
+  digitar perto do fim — ele lê, pensa e escreve. O agrupamento de mensagens não pode
+  ter margem: uma resposta do bot chegando na hora limite partiria a conversa viva em
+  duas.
+- **A trava de envio usa a janela crua**, sem margem. Bloquear às 22h recusaria
+  mensagem que a Meta ainda aceita. Janela fechada → `403` com motivo, nunca 500.
+- Nos dois lugares há saída para `service_window_until` nulo, e ela cobre um caminho
+  real: se o espelho da entrada falhar e o da saída passar, o contato nasce de um
+  `outbound` e fica sem janela.
+
+## [2026-07-31] O dono responde pelo painel, e o bot cala
+
+- **Só o bot fala com a Meta.** O calendário chama `POST /mensagens` do bot em vez de
+  montar payload da Cloud API. Duas implementações do mesmo envio divergiriam na
+  primeira mudança de versão da Meta, e o token ficaria em dois lugares.
+- **Segredo por direção, nunca compartilhado.** `CALENDARIO_WEBHOOK_TOKEN` protege
+  bot → calendário; `PAINEL_TOKEN` / `BOT_PAINEL_TOKEN` protege calendário → bot. Um
+  valor só para os dois sentidos faria um vazamento abrir as duas portas.
+- **Grava depois de enviar.** A mensagem do dono só entra no CRM com o `wamid` na
+  mão. Ao contrário, uma falha da Meta deixaria no painel uma mensagem que nunca
+  chegou, e o dono ficaria esperando resposta de algo que ninguém leu.
+- **O silêncio do bot é DERIVADO do histórico, nunca gravado em coluna.** Ele cala
+  enquanto existir mensagem `sender_type = 'human'` para o contato **no dia corrente
+  em São Paulo** e **depois do último toque em botão** — mesmo recorte da escada de
+  feedback.
+  - **Por que não `conversations.status = 'human'`:** aquela coluna é permanente até
+    alguém mudar, e a janela de 24h não fecha na virada do dia. Cliente que fala às
+    14h, recebe resposta do dono, some, e volta às 10h do dia seguinte encontraria o
+    bot mudo com a conversa presa em humano. Com o corte de dia, a meia-noite devolve
+    o atendimento sozinha — e como `ultimaResposta` zera junto, o que ele recebe é a
+    saudação com o menu, do começo.
+  - **Toque em botão devolve a conversa ao bot na hora**, e é checado ANTES do
+    silêncio: tocar no menu é pedir o bot com todas as letras.
+
+## [2026-07-31] A etapa do nome: o único texto livre do fluxo
+
+Em todo o resto o bot roteia por id de botão, que nós mesmos escrevemos — conjunto
+fechado, nada a interpretar. Aqui a pessoa digita o que quiser e não há LLM. O desenho
+troca de objetivo: em vez de **acertar sempre**, garante que **todo erro seja visível e
+custe um toque**.
+
+- **A validação é frouxa de propósito; o cartão de conferência é a trava.** Os custos
+  são assimétricos: recusar um nome verdadeiro prende o cliente redigitando o próprio
+  nome (e cai justo em quem tem nome menos comum); aceitar bobagem aparece no cartão e
+  morre ali. Barra só o certo: dígito, caractere solto, símbolo, link, e a lista de
+  respostas genéricas do n8n.
+- **Uma palavra é aceita.** Pedir o sobrenome sim, **barrar** por causa dele não.
+  Um `Victor` na agenda vale mais que um cliente preso num laço, e o barbeiro tem o
+  telefone ao lado do nome.
+- **O nome é o único campo do cartão que pode estar errado** — barbeiro, dia e hora
+  vieram de ids de botão. Por isso ele sai sozinho na primeira linha, em negrito:
+  cercado de coisa certa, o olho reconhece o conjunto e passa batido pelo único item
+  que precisava de conferência.
+- **Todo texto na etapa produz resposta.** Sem exceção, sem trava de rajada, sem
+  escada. É o que garante que não exista caminho terminando em silêncio.
+  - **A trava de rajada não vale aqui**, e não é gambiarra: ela foi feita para
+    adivinhar se o cliente terminou de falar numa rajada de saudações. Aqui o bot fez
+    uma pergunta específica e está recebendo a resposta dela. Se valesse, quem responde
+    o nome logo depois do botão ficaria sem cartão — e nada o acordaria depois.
+- **Acréscimo fecha sem toque; correção reimprime.** `Victor` + `Santos` agenda
+  direto. `Vicctor` + `Victor` volta ao cartão, porque é ali que a nossa leitura mais
+  erra e pular a conferência seria abrir mão da única que existe. A distinção sai de
+  distância de edição, não de contagem de palavras.
+- **O `motivo_invalido` do n8n finalmente é usado.** Aquele nó calculava o motivo e
+  mandava sempre a mesma frase genérica. A precisão já estava paga.
+- **Nenhuma opção permanente de "corrigir nome" no menu** (decisão do dono do
+  produto): ficaria na frente de 100% dos clientes todos os dias para resolver algo que
+  acontece uma vez na vida de alguns. O lugar dessa correção é o painel do dono.
+- **O bot chama pelo primeiro nome; banco e CRM guardam o completo.**
+- **`alvoDaAgenda` é a única função que autoriza escrita**, e recusa em quatro casos:
+  correção, nome incompleto, Confirmar sem nome ou sem reserva, e texto fora da etapa.

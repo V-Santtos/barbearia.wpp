@@ -12,6 +12,17 @@ export type Env = {
    * conversa. Deve bater com o `WHATSAPP_WEBHOOK_TOKEN` do `.env` do calendario.
    */
   CALENDARIO_WEBHOOK_TOKEN: string;
+  /**
+   * Token do `POST /mensagens`, por onde o painel manda o bot falar quando o dono
+   * responde a mão.
+   *
+   * **Segredo proprio, e nao o `CALENDARIO_WEBHOOK_TOKEN`:** aquele protege a
+   * direcao contraria (bot -> calendario). Um valor so pros dois sentidos faria um
+   * vazamento abrir as duas portas de uma vez.
+   *
+   * Opcional como o outro: sem ele a rota responde 503 e o bot atende igual.
+   */
+  PAINEL_TOKEN: string;
   PORT: number;
 };
 
@@ -44,6 +55,7 @@ export function carregarEnv(fonte: NodeJS.ProcessEnv = process.env): Env {
     // Sem barra no fim: quem monta o caminho concatena, e `//agendamentos` vira 404.
     CALENDARIO_URL: (fonte.CALENDARIO_URL?.trim() || CALENDARIO_PADRAO).replace(/\/+$/, ''),
     CALENDARIO_WEBHOOK_TOKEN: fonte.CALENDARIO_WEBHOOK_TOKEN?.trim() ?? '',
+    PAINEL_TOKEN: fonte.PAINEL_TOKEN?.trim() ?? '',
     PORT: Number(fonte.PORT ?? 3000),
   };
 

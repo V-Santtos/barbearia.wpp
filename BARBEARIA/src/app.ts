@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
-import { buscarDias, buscarHorarios } from './calendario/api.js';
+import { buscarDias, buscarHorarios, marcar } from './calendario/api.js';
 import { criarEspelho } from './calendario/crm.js';
 import type { Env } from './config/env.js';
 import { obterPool } from './db/cliente.js';
 import { registrarEDecidir, type AlvoAgenda } from './db/eventos.js';
 import type { Agenda } from './fluxo/acoes.js';
 import { criarEmissor } from './whatsapp/enviar.js';
+import { criarRotasPainel } from './whatsapp/painel.js';
 import { criarRotasWebhook, type Dependencias } from './whatsapp/webhook.js';
 
 /**
@@ -19,6 +20,7 @@ export function criarApp(env: Env, deps: Dependencias = dependenciasReais(env)):
   app.get('/saude', (c) => c.json({ ok: true, servico: 'barbearia-bot' }));
 
   app.route('/webhook/whatsapp', criarRotasWebhook(env, deps));
+  app.route('/mensagens', criarRotasPainel(env, deps));
 
   return app;
 }
@@ -53,6 +55,40 @@ export function dependenciasReais(env: Env): Dependencias {
  */
 function consultarAgenda(base: string) {
   return async (alvo: AlvoAgenda): Promise<Agenda> => {
+    // Marcar e o unico alvo que ESCREVE. Sai por cima porque ele nao tem `dados` pra
+    // extrair — o que importa e ter dado certo, e o `409` tem frase propria.
+    if (alvo.tipo === 'marcar') {
+      const marcacao = await marcar(base, {
+        // Nome do barbeiro vindo da tabela `profissionais`, nunca digitado: a trava
+        // de double-booking do banco compara texto, e nome torto passaria batido.
+        barbeiro: alvo.barbeiro.nome,
+        cliente: alvo.cliente,
+        telefone: alvo.telefone,
+        data: alvo.data,
+        hora: alvo.hora,
+      });
+
+      if (marcacao.tipo === 'falhou') {
+        console.error(
+          JSON.stringify({ nivel: 'error', evento: 'calendario.marcacao.falhou', alvo }),
+        );
+        return { tipo: 'fora_do_ar' };
+      }
+
+      console.log(
+        JSON.stringify({
+          nivel: 'info',
+          evento: 'calendario.marcacao',
+          resultado: marcacao.tipo,
+          barbeiro: alvo.barbeiro.nome,
+          data: alvo.data,
+          hora: alvo.hora,
+        }),
+      );
+
+      return marcacao;
+    }
+
     const consulta =
       alvo.tipo === 'dias'
         ? await buscarDias(base, alvo.barbeiro)

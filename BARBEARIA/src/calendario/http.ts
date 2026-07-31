@@ -7,7 +7,16 @@
  * e a outra nao.
  */
 
-export type Resultado<T> = { ok: true; dados: T } | { ok: false; motivo: string };
+/**
+ * O `status` so aparece quando a falha veio COM resposta HTTP — rede caida e timeout
+ * nao tem status. Ele existe por um caso unico e importante: o `409` de horario ja
+ * ocupado, que nao e falha do sistema e merece frase propria pro cliente. Todo o
+ * resto continua sendo "nao consegui", porque distinguir 500 de 502 nao muda nada
+ * do que o bot tem a dizer.
+ */
+export type Resultado<T> =
+  | { ok: true; dados: T }
+  | { ok: false; motivo: string; status?: number };
 
 /**
  * Teto de espera. A Meta reentrega o webhook se ele demorar, e pendurar num fetch sem
@@ -70,7 +79,11 @@ export async function pedir<T>(
     // O corpo do erro costuma trazer a mensagem util do Fastify. Sem ele, depurar
     // 400 e 401 vira adivinhacao.
     const detalhe = await resposta.text().catch(() => '');
-    return { ok: false, motivo: `status ${resposta.status}${detalhe ? `: ${detalhe.slice(0, 200)}` : ''}` };
+    return {
+      ok: false,
+      motivo: `status ${resposta.status}${detalhe ? `: ${detalhe.slice(0, 200)}` : ''}`,
+      status: resposta.status,
+    };
   }
 
   let corpo: unknown;

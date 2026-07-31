@@ -13,6 +13,7 @@ const env: Env = {
   DATABASE_URL: 'postgresql://nao-usado-neste-teste',
   CALENDARIO_URL: 'http://localhost:3334',
   CALENDARIO_WEBHOOK_TOKEN: 'token-de-espelho-de-teste',
+  PAINEL_TOKEN: 'token-do-painel-de-teste',
   PORT: 3000,
 };
 
@@ -39,6 +40,9 @@ function montar(sobrescreve: Partial<Dependencias> = {}) {
         agenda: undefined,
         ultimaResposta: undefined,
         degrau: 0,
+        donoAtendendo: false,
+        nomePendente: undefined,
+        reserva: undefined,
       }),
       clienteNovo: true, nome: undefined,
     }),
@@ -203,6 +207,9 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
           agenda: undefined,
           ultimaResposta: undefined,
           degrau: 0,
+          donoAtendendo: false,
+          nomePendente: undefined,
+          reserva: undefined,
         }),
         clienteNovo: false, nome: undefined,
       }),
@@ -268,6 +275,9 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
           agenda: undefined,
           ultimaResposta: undefined,
           degrau: 0,
+          donoAtendendo: false,
+          nomePendente: undefined,
+          reserva: undefined,
         }),
         clienteNovo: false, nome: undefined,
       }),
@@ -350,6 +360,29 @@ describe('POST /webhook/whatsapp — espelho no CRM do painel', () => {
 
     expect(entradas).toHaveLength(1);
     expect(saidas.map((s) => s.resposta)).toEqual(['saudacao', 'menu_principal']);
+  });
+
+  it('espelha uma de cada vez: a lenta na frente nao deixa a rapida passar', async () => {
+    // O painel ordena pelo relogio, entao gravar em paralelo faz as duas mensagens de
+    // um mesmo passo trocarem de lugar pro dono. Aconteceu no teste de 2026-07-30. O
+    // atraso na PRIMEIRA e o que separa sequencial de `Promise.all` — sem ele, um
+    // espelho de mentira sincrono passa nos dois jeitos.
+    const ordem: string[] = [];
+
+    const { app } = montar({
+      espelho: {
+        entrada: async () => ({ ok: true, dados: {} }),
+        saida: async (acao) => {
+          if (acao.resposta === 'saudacao') await new Promise((r) => setTimeout(r, 20));
+          ordem.push(acao.resposta);
+          return { ok: true, dados: {} };
+        },
+      },
+    });
+
+    await postar(app, MENSAGEM_DE_TEXTO);
+
+    expect(ordem).toEqual(['saudacao', 'menu_principal']);
   });
 
   it('leva o wamid de cada envio — e o que impede mensagem duplicada no painel', async () => {

@@ -85,15 +85,16 @@ export function renderizar(acao: Acao): string {
 }
 
 /**
- * Um toque em botao vira o rotulo que o cliente viu, com o id atras. O titulo pode
- * nao vir (a Meta manda so em algumas formas), e ai o id sozinho ja diz o que ele
- * escolheu — quem le o painel precisa entender a conversa, nao depurar o bot.
+ * Um toque em botao vira o rotulo que o cliente viu, e so ele. O id do fluxo
+ * (`1.dia?b=1&d=2026-08-04`) saiu daqui em 2026-07-31: quem le o painel esta lendo
+ * uma conversa, nao depurando o bot. Ele nao se perde — vai inteiro no `raw_payload`.
+ *
+ * O id continua sendo a reserva pro caso do titulo nao vir (a Meta manda so em
+ * algumas formas). Id feio e melhor que bolha vazia.
  */
 function corpoDaEntrada(evento: EventoRecebido): string {
   if (evento.tipo === 'texto') return evento.texto;
-  if (evento.tipo === 'botao') {
-    return evento.titulo ? `${evento.titulo}  (${evento.botaoId})` : evento.botaoId;
-  }
+  if (evento.tipo === 'botao') return evento.titulo ?? evento.botaoId;
 
   return `[${evento.formato}]`;
 }

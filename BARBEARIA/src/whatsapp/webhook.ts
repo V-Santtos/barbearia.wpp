@@ -177,12 +177,16 @@ async function espelhar(
   if (!deps.espelho) return;
 
   try {
-    const resultados = [
-      await deps.espelho.entrada(recebido, nome),
-      ...(await Promise.all(
-        enviadas.map(({ acao, wamid }) => deps.espelho!.saida(acao, wamid)),
-      )),
-    ];
+    // Uma de cada vez, e nao `Promise.all`: o painel ordena pelo `created_at`, entao
+    // gravar em paralelo faz duas mensagens do mesmo passo empatarem no relogio e
+    // aparecerem trocadas pro dono. Aconteceu no teste de 2026-07-30 — o cartao de
+    // dias saiu antes da frase que o cliente leu primeiro. Custa alguns
+    // milissegundos num espelho que ja roda depois da resposta ao cliente.
+    const resultados = [await deps.espelho.entrada(recebido, nome)];
+
+    for (const { acao, wamid } of enviadas) {
+      resultados.push(await deps.espelho.saida(acao, wamid));
+    }
 
     const falhas = resultados.filter((r) => !r.ok);
     if (falhas.length > 0) {

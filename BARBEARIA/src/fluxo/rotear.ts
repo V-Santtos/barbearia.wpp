@@ -2,6 +2,7 @@ import type { EventoRecebido } from '../whatsapp/eventos.js';
 import type { Acao, Barbeiro, ContextoFluxo, NomeResposta, Opcao } from './acoes.js';
 import { lerId, montarId, VERSAO_ID } from './botoes.js';
 import { rotularDia } from './dias.js';
+import { juntarNome, lerNome, palavrasReais, primeiroNome, type MotivoInvalido } from './nome.js';
 
 /**
  * O roteador. Funcao PURA: recebe o evento e o contexto, devolve o que fazer,
@@ -17,7 +18,23 @@ import { rotularDia } from './dias.js';
  *    ja tem toda a informacao e repetir vira ruido.
  */
 export function rotear(evento: EventoRecebido, contexto: ContextoFluxo): Acao[] {
+  // O toque em botao vem ANTES da checagem do dono, e nao e detalhe: e ele que
+  // devolve a conversa ao atendimento automatico. O cliente que toca no menu esta
+  // pedindo o bot com todas as letras, mesmo no meio de uma conversa com o dono.
   if (evento.tipo === 'botao') return rotearBotao(evento.botaoId, evento.de, contexto);
+
+  // Dono atendendo: o bot nao fala por cima. A escada existe pra quem digitou sem
+  // ninguem do outro lado — com o dono ali, ela viraria uma segunda voz mandando o
+  // cliente "tocar em Ver opcoes" enquanto ele conversa com uma pessoa de verdade.
+  if (contexto.donoAtendendo) return [];
+
+  // A etapa do nome e o UNICO lugar em que texto livre vira dado, e por isso ela sai
+  // da escada. Aqui a regra e outra e nao tem excecao: **todo texto produz resposta.**
+  // E o que garante que nao exista caminho terminando em silencio — o cliente que
+  // manda so o primeiro nome e para nunca fica olhando pra uma tela parada.
+  if (naEtapaDoNome(contexto.ultimaResposta) && evento.tipo === 'texto') {
+    return responderNome(evento.texto, evento.de, contexto);
+  }
 
   // Texto e formatos sem suporte entram na escada: os dois sao "o cliente falou
   // fora do trilho do menu".
@@ -113,12 +130,10 @@ const AJUDA: Record<NomeResposta, string> = {
   rota_em_construcao: 'É só tocar em *Ver opções* na mensagem acima. 👆',
   feedback: 'É só tocar em *Ver opções* na mensagem acima. 👆',
   menu_reforcado: 'É só tocar em *Ver opções* na mensagem acima. 👆',
-  // As intersecoes nunca sao a ultima coisa dita — vem sempre uma lista atras. Se uma
-  // delas aparecer aqui, a segunda mensagem falhou no envio, e a dica certa e mandar
-  // o cliente esperar em vez de apontar pra uma tela que nao chegou.
-  barbeiro_escolhido: 'Só um instante que eu já te mostro os dias disponíveis. 🙂',
+  // A intersecao nunca e a ultima coisa dita — vem sempre uma lista atras. Se ela
+  // aparecer aqui, a segunda mensagem falhou no envio, e a dica certa e mandar o
+  // cliente esperar em vez de apontar pra uma tela que nao chegou.
   dia_escolhido: 'Só um instante que eu já te mostro os horários. 🙂',
-  horario_escolhido: 'Só um instante. 🙂',
   escolher_dia: 'Toque em um dos dias na mensagem acima pra continuar. 👆',
   escolher_horario: 'Toque em um dos horários na mensagem acima pra continuar. 👆',
   // ponytail: a etapa de nome ainda nao existe, entao o nome digitado cai aqui em vez
@@ -128,6 +143,15 @@ const AJUDA: Record<NomeResposta, string> = {
   agenda_fora_do_ar: 'Não consegui abrir a agenda agora. Tente de novo daqui a pouco. 🙏',
   sem_dia_disponivel: 'Toque em *Ver opções* pra voltar ao menu. 👆',
   sem_horario_no_dia: 'Toque na opção acima pra escolher outro dia. 👆',
+  // Estes tres nunca chegam a ser usados: na etapa do nome o texto e tratado antes da
+  // escada, porque ali texto e resposta esperada e nao erro de rota. Ficam porque o
+  // `Record<NomeResposta, string>` cobra — e a cobranca e o que garante que nenhum
+  // estado FUTURO vire silencio por descuido.
+  conferir_nome_aviso: 'Confere o nome no cartão acima. 👆',
+  conferir_nome: 'Se o nome estiver certo, toque em *Confirmar*. 👆',
+  nome_invalido: 'Me manda seu nome, assim: *Victor Santos*. 🙂',
+  agendado: 'Seu horário já está marcado! Toque em *Ver opções* se precisar de algo. 👆',
+  horario_ocupado: 'Toque numa das opções acima pra escolher outro horário. 👆',
 };
 
 function rotearBotao(botaoId: string, para: string, contexto: ContextoFluxo): Acao[] {
@@ -160,6 +184,16 @@ function rotearBotao(botaoId: string, para: string, contexto: ContextoFluxo): Ac
         id.params.get('d'),
         id.params.get('h'),
       );
+
+    // Os dois botoes do cartao de conferencia. `confirmar` nao precisa de parametro
+    // no id: o que ele confirma e a reserva e o nome que o contexto ja carrega, lidos
+    // do historico. Poe-los no id duplicaria a verdade, e a copia do id nao passaria
+    // pela revalidacao do barbeiro.
+    case 'confirmar':
+      return [confirmarAgendamento(para, contexto)];
+
+    case 'corrigir':
+      return [pedirNome(para, true)];
 
     case 'reagendar':
     case 'cancelar':
@@ -241,24 +275,19 @@ function perguntarBarbeiro(
       id: montarId('barbeiro', { b: String(barbeiro.id) }),
       // Nome de barbeiro e dado da barbearia: pode chegar maior que o teto da Meta,
       // e titulo estourado faz a Meta recusar a mensagem inteira.
-      titulo: cortar(barbeiro.nome, LIMITE_TITULO),
+      titulo: comIcone(ICONE_BARBEIRO, barbeiro.nome, LIMITE_TITULO),
     })),
   };
 }
 
 /**
- * Barbeiro definido: reconhece a escolha e mostra os dias com vaga.
+ * Barbeiro definido: mostra os dias com vaga.
  *
- * **Sao duas mensagens, e isso e regra.** A primeira e curta, de texto puro, e chega
- * antes; a lista so e postada depois que ela volta da Meta. Se o cartao demorar — por
- * payload maior, throttle ou rede ruim — o cliente ja esta com uma resposta na tela
- * sabendo que o bot esta trabalhando, em vez de encarar silencio e sair digitando ou
- * cacando botao antigo. E o mesmo motivo da abertura do dia sair picada.
- *
- * ponytail: a intersecao sai DEPOIS da consulta ao calendario, entao ela nao cobre a
- * espera da propria consulta. Teto: irrelevante com a API em localhost. Gatilho de
- * upgrade: a API sair de localhost — ai ela precisa ser enviada antes da consulta, o
- * que exige tirar a chamada HTTP de dentro da transacao.
+ * **Uma mensagem so.** Ate 2026-07-31 saiam duas — um texto curto ("Boa! Vamos marcar
+ * com o Fulano") na frente da lista, pra tapar a espera do cartao. O dono do produto
+ * leu isso na tela do celular e cortou: o cartao de dias ja diz com quem e, e a frase
+ * virou ruido entre o toque e a resposta. A espera que ele quis manter coberta e a
+ * outra, a do passo do dia, onde a consulta de horarios demora de verdade.
  */
 function comBarbeiro(para: string, contexto: ContextoFluxo, barbeiro: Barbeiro): Acao[] {
   const agenda = contexto.agenda;
@@ -274,12 +303,6 @@ function comBarbeiro(para: string, contexto: ContextoFluxo, barbeiro: Barbeiro):
 
   return [
     {
-      tipo: 'enviar_texto',
-      para,
-      resposta: 'barbeiro_escolhido',
-      texto: `Boa! Vamos marcar com o *${barbeiro.nome}*. 💈`,
-    },
-    {
       tipo: 'enviar_lista',
       para,
       resposta: 'escolher_dia',
@@ -291,7 +314,7 @@ function comBarbeiro(para: string, contexto: ContextoFluxo, barbeiro: Barbeiro):
       compacta: true,
       opcoes: agenda.dias.slice(0, LIMITE_OPCOES).map((data) => ({
         id: montarId('dia', { b: String(barbeiro.id), d: data }),
-        titulo: cortar(rotularDia(data, contexto.hoje), LIMITE_TITULO_COMPACTO),
+        titulo: comIcone(ICONE_DIA, rotularDia(data, contexto.hoje), LIMITE_TITULO_COMPACTO),
       })),
     },
   ];
@@ -324,21 +347,21 @@ function escolherDia(
 
   if (agenda.horarios.length === 0) return [semHorario(para, barbeiro, d, contexto.hoje)];
 
-  const rotulo = rotularDia(d, contexto.hoje);
-
   return [
     {
       tipo: 'enviar_texto',
       para,
       resposta: 'dia_escolhido',
-      texto: `Show, *${rotulo}*. Só um momento que eu já te mostro os horários. ⏳`,
+      texto: 'Só um momento que eu já te mostro os horários disponíveis. ⏳',
     },
     {
       tipo: 'enviar_lista',
       para,
       resposta: 'escolher_horario',
       cabecalho: CABECALHO_AGENDAMENTO,
-      texto: `Qual horário fica melhor pra você em *${rotulo}*?`,
+      // Sem o dia na frase. O cliente acabou de toca-lo, entao repeti-lo aqui gasta
+      // linha e ainda estoura o corpo do cartao em dia com rotulo longo.
+      texto: 'Qual horário fica melhor pra você?',
       rodape: 'Selecione uma opção',
       abrir: 'Ver horários',
       secao: 'Horários livres',
@@ -351,21 +374,32 @@ function escolherDia(
       // (manha/tarde/noite) antes, que cabe em botao e nao esconde nada.
       opcoes: agenda.horarios.slice(0, LIMITE_OPCOES).map((hora) => ({
         id: montarId('hora', { b: String(barbeiro.id), d, h: hora }),
-        titulo: cortar(hora, LIMITE_TITULO_COMPACTO),
+        titulo: comIcone(ICONE_HORA, hora, LIMITE_TITULO_COMPACTO),
       })),
     },
   ];
 }
 
 /**
- * Tocou num horario. Fim do escopo desta fatia: o bot confirma a escolha e pede o
- * nome.
+ * Tocou num horario. Fim do escopo desta fatia: o bot pede o nome.
+ *
+ * Uma mensagem so. A confirmacao ("Fechou: tal dia as tal hora com o Fulano") foi
+ * cortada em 2026-07-31 pelo dono do produto: o cliente acabou de tocar no horario,
+ * entao repeti-lo de volta e eco, nao confirmacao. A conferencia de verdade e o
+ * cartao do passo seguinte, que ainda nao existe.
  *
  * ponytail: a resposta do cliente a esta pergunta ainda nao e tratada — texto cai na
  * escada de feedback, e a dica de `pedir_nome` avisa que a parte esta sendo montada.
  * Teto: o cliente chega aqui e para, sem agendamento gravado. Gatilho de upgrade: a
  * proxima fatia (nome, conferencia e `POST /agendamentos`), cuja rota ainda vai ser
  * decidida com o dono do produto.
+ *
+ * ponytail: a pergunta do nome sai igual pra todo mundo, inclusive pra quem ja tem
+ * cadastro e cujo nome o bot ja usa na saudacao (`contexto.nome`). Teto: na segunda
+ * vez que agenda, o cliente conhecido le "como voce e novo por aqui". Gatilho de
+ * upgrade: a proxima fatia — decidido com o dono do produto em 2026-07-31 que quem
+ * ja fechou um agendamento **pula esta pergunta**, e o salto so tem pra onde ir
+ * quando o passo de conferencia existir.
  */
 function escolherHora(
   para: string,
@@ -383,16 +417,200 @@ function escolherHora(
     {
       tipo: 'enviar_texto',
       para,
-      resposta: 'horario_escolhido',
-      texto: `Fechou: *${rotularDia(d, contexto.hoje)} às ${h}* com o *${barbeiro.nome}*. 💈`,
+      resposta: 'pedir_nome',
+      texto:
+        'Como você é novo por aqui, me manda seu *nome e sobrenome* que já finalizo seu agendamento. ✍🏻',
     },
+  ];
+}
+
+/**
+ * Os estados em que o bot esta esperando um nome: a pergunta, o cartao de conferencia
+ * (texto ali e sobrenome ou correcao) e a recusa.
+ *
+ * Exportado porque `alvoDaAgenda` precisa do mesmo predicado — e duas listas iguais
+ * escritas separadas divergiriam no dia em que um estado novo entrasse so numa delas.
+ * O sintoma seria o pior: o bot tratando o texto por um caminho e calando pelo outro.
+ */
+export const ESTADOS_DO_NOME: ReadonlySet<NomeResposta> = new Set([
+  'pedir_nome',
+  'conferir_nome',
+  'nome_invalido',
+  'horario_ocupado',
+]);
+
+function naEtapaDoNome(ultima: NomeResposta | undefined): boolean {
+  return ESTADOS_DO_NOME.has(ultima as NomeResposta);
+}
+
+/**
+ * O tratamento do texto na etapa do nome.
+ *
+ * Uma forma de mensagem so — o cartao — e duas saidas de excecao. Nao existe "as
+ * vezes cartao, as vezes bronca, depende do relogio": a trava de rajada nao vale
+ * aqui, porque ela foi feita pra adivinhar se o cliente terminou de falar, e neste
+ * ponto o bot fez uma pergunta especifica e esta recebendo a resposta dela.
+ */
+function responderNome(texto: string, para: string, contexto: ContextoFluxo): Acao[] {
+  const leitura = lerNome(texto);
+
+  if (leitura.tipo === 'quer_corrigir') return [pedirNome(para, true)];
+  if (leitura.tipo === 'invalido') return [nomeInvalido(para, leitura.motivo)];
+
+  const juncao = juntarNome(contexto.nomePendente, leitura.nome);
+  const reserva = contexto.reserva;
+
+  // Sem reserva no contexto o cartao nao tem o que mostrar. Nao ha resposta boa pra
+  // inventar aqui, e inventar um dia ou um horario seria pior que admitir a falha.
+  if (!reserva) return [foraDoAr(para)];
+
+  // Acrescimo com nome completo fecha SEM TOQUE: o cliente acabou de digitar as duas
+  // partes, entao a informacao esta completa e conferida por quem sabe. Correcao nao
+  // fecha — e justo onde a nossa leitura tem mais chance de estar errada, e pular o
+  // cartao ali seria abrir mao da unica conferencia que existe.
+  if (juncao.tipo === 'acrescimo' && palavrasReais(juncao.nome) > 1) {
+    return [fecharAgendamento(para, contexto, juncao.nome)];
+  }
+
+  return cartaoDeConferencia(para, contexto, juncao.nome);
+}
+
+/**
+ * O cartao de conferencia: a peca que sustenta a etapa inteira.
+ *
+ * **O nome e o unico campo aqui que pode estar errado.** Barbeiro, dia e hora vieram
+ * de ids de botao que nos mesmos escrevemos — nao ha caminho em que estejam errados.
+ * Por isso ele sai sozinho na primeira linha, em negrito, longe do resto: cercado de
+ * coisa certa, o olho reconhece o conjunto pelo dia e pela hora e passa batido
+ * justamente pelo unico item que precisava de conferencia.
+ *
+ * A mensagem curta na frente existe pelo mesmo motivo, e e uma ponte deliberada — as
+ * outras tres foram cortadas por serem ruido, esta tem trabalho a fazer. O 👇 e o que
+ * a faz funcionar: sem ele, ela mandaria conferir algo que ainda nao chegou na tela.
+ */
+function cartaoDeConferencia(para: string, contexto: ContextoFluxo, nome: string): Acao[] {
+  const reserva = contexto.reserva!;
+  const completo = palavrasReais(nome) > 1;
+
+  return [
     {
       tipo: 'enviar_texto',
       para,
-      resposta: 'pedir_nome',
-      texto: 'Pra finalizar, me manda seu *nome e sobrenome*. 📝',
+      resposta: 'conferir_nome_aviso',
+      texto: 'Só confere teu nome antes de confirmar 👇',
+    },
+    {
+      tipo: 'enviar_lista',
+      para,
+      resposta: 'conferir_nome',
+      cabecalho: CABECALHO_AGENDAMENTO,
+      texto: `*${nome}*\n\n📅 ${rotularDia(reserva.data, contexto.hoje)} às ${reserva.hora}\n💈 ${reserva.barbeiro.nome}`,
+      // O rodape anuncia a acao provavel de CADA estado. Com uma palavra so, o que
+      // falta e o sobrenome; com o nome completo, o que resta e conferir.
+      rodape: completo
+        ? 'Confira o nome antes de confirmar.'
+        : 'Se tiver sobrenome, é só mandar abaixo.',
+      abrir: 'Ver opções',
+      secao: 'Agendamento',
+      // Dois botoes: sai no formato `button`, com cabecalho e rodape a vista, sem o
+      // cliente precisar tocar em nada pra ler o que vai confirmar.
+      compacta: true,
+      opcoes: [
+        { id: montarId('confirmar'), titulo: '✅ Confirmar' },
+        { id: montarId('corrigir'), titulo: '✏️ Corrigir nome' },
+      ],
     },
   ];
+}
+
+/**
+ * A recusa, com a frase mirada no motivo.
+ *
+ * O `Nome - Tratamento` do n8n calculava exatamente este motivo e **jogava fora**,
+ * mandando sempre a mesma mensagem generica. A precisao ja estava paga.
+ */
+function nomeInvalido(para: string, motivo: MotivoInvalido): Acao {
+  return {
+    tipo: 'enviar_texto',
+    para,
+    resposta: 'nome_invalido',
+    texto: `${MOTIVO[motivo]}\n\nManda assim: *Victor Santos*`,
+  };
+}
+
+const MOTIVO: Record<MotivoInvalido, string> = {
+  vazio: 'Preciso do seu nome pra fechar. 🙂',
+  curto: 'Preciso do nome completo pra fechar. 🙂',
+  tem_numero: 'Nome não leva número. 🙂',
+  caracter_invalido: 'Não consegui ler esse nome. 🙂',
+  resposta_generica: 'Preciso do seu nome pra fechar. 🙂',
+};
+
+function pedirNome(para: string, denovo = false): Acao {
+  return {
+    tipo: 'enviar_texto',
+    para,
+    resposta: 'pedir_nome',
+    texto: denovo
+      ? 'Sem problema! Me manda o nome certo. ✍🏻'
+      : 'Como você é novo por aqui, me manda seu *nome e sobrenome* que já finalizo seu agendamento. ✍🏻',
+  };
+}
+
+/**
+ * Fim do fluxo: o que o cliente ve depois de o agendamento existir na agenda do dono.
+ *
+ * O `✅` fecha o gesto do botao que ele acabou de tocar, e "Tudo certo" responde a
+ * pergunta que o cartao fez. E ele e chamado pelo PRIMEIRO nome — o completo foi
+ * gravado pro dono reconhecer quem e, nao pro bot recitar.
+ */
+/**
+ * Tocou em Confirmar. O nome vem do contexto, nao do id — e se ele nao estiver la, o
+ * cartao foi confirmado sem nome nenhum (id antigo, historico cortado pela virada do
+ * dia). Reperguntar e melhor que gravar um agendamento sem cliente.
+ */
+function confirmarAgendamento(para: string, contexto: ContextoFluxo): Acao {
+  if (!contexto.nomePendente) return pedirNome(para);
+
+  return fecharAgendamento(para, contexto, contexto.nomePendente);
+}
+
+function fecharAgendamento(para: string, contexto: ContextoFluxo, nome: string): Acao {
+  const agenda = contexto.agenda;
+  const reserva = contexto.reserva;
+
+  if (!reserva) return foraDoAr(para);
+  if (agenda?.tipo === 'ocupado') return horarioOcupado(para, reserva);
+  if (agenda?.tipo !== 'marcado') return foraDoAr(para);
+
+  return {
+    tipo: 'enviar_texto',
+    para,
+    resposta: 'agendado',
+    texto: `Tudo certo, ${primeiroNome(nome)}! Tá marcado. ✅\n\n📅 ${rotularDia(reserva.data, contexto.hoje)} às ${reserva.hora}\n💈 ${reserva.barbeiro.nome}\n\nTe espero lá!`,
+  };
+}
+
+/**
+ * O horario foi tomado entre a escolha e a confirmacao. Frase sobre a AGENDA, nunca
+ * sobre o sistema — e com o caminho de volta tratado, nao so oferecido.
+ */
+function horarioOcupado(para: string, reserva: ContextoFluxo['reserva'] & object): Acao {
+  return {
+    tipo: 'enviar_lista',
+    para,
+    resposta: 'horario_ocupado',
+    cabecalho: undefined,
+    texto: `O horário das *${reserva.hora}* acabou de ser pego. 😕`,
+    rodape: 'Selecione uma opção',
+    abrir: 'Ver opções',
+    secao: 'Agendamento',
+    compacta: true,
+    opcoes: [
+      { id: montarId('dia', { b: String(reserva.barbeiro.id), d: reserva.data }), titulo: '🕐 Outro horário' },
+      { id: montarId('barbeiro', { b: String(reserva.barbeiro.id) }), titulo: '📅 Outro dia' },
+    ],
+  };
 }
 
 /** A agenda existe, o barbeiro atende, mas nao ha vaga na janela que o dono abriu. */
@@ -445,7 +663,7 @@ function foraDoAr(para: string): Acao {
   };
 }
 
-const CABECALHO_AGENDAMENTO = 'Agendamento 📅';
+const CABECALHO_AGENDAMENTO = 'Agendamento: 📅';
 
 /** Teto da Meta em linhas por lista: 10 no total, somando todas as secoes. */
 const LIMITE_OPCOES = 10;
@@ -462,6 +680,34 @@ function semAgenda(para: string): Acao {
 function cortar(texto: string, limite: number): string {
   return texto.length <= limite ? texto : `${texto.slice(0, limite - 1).trimEnd()}…`;
 }
+
+/**
+ * Um titulo de opcao com icone na frente.
+ *
+ * O corte acontece ANTES do prefixo, e isso e o ponto: `cortar()` fatia por
+ * `.length`, e nenhum destes icones ocupa uma posicao so — `🔘` e `🕐` sao pares
+ * surrogate, `▫️` e o simbolo mais o seletor de variacao (U+25AB U+FE0F). Cortar a
+ * string ja prefixada partiria o emoji ao meio num nome longo, e titulo com metade de
+ * surrogate faz a Meta recusar a mensagem inteira — com a lista toda junto.
+ */
+function comIcone(icone: string, texto: string, limite: number): string {
+  const prefixo = `${icone} `;
+
+  return `${prefixo}${cortar(texto, limite - prefixo.length)}`;
+}
+
+/**
+ * Os icones que abrem cada linha de lista. Escolha do dono do produto em 2026-07-31,
+ * olhando as telas no celular.
+ *
+ * `ICONE_HORA` e um so pra todos os horarios, de proposito. O Unicode tem carinha de
+ * relogio exata (`🕗`, `🕣`) apenas para `:00` e `:30`, e o slot tem o tamanho da
+ * `duracao_min` daquele profissional — hoje mesmo o Lucas Eloi trabalha em 45 min e
+ * produz 08:45, 09:30, 10:15. Emoji exato so daria certo em parte da lista.
+ */
+const ICONE_BARBEIRO = '▫️';
+const ICONE_DIA = '🔘';
+const ICONE_HORA = '🕐';
 
 /** Teto da Meta no titulo de linha da lista. */
 const LIMITE_TITULO = 24;

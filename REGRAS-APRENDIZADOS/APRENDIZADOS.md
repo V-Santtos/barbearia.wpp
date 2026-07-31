@@ -97,3 +97,60 @@ Formato de cada entrada:
 - Como saber que estou errando: se a pergunta precisa de glossário para ser
   entendida, ela não deveria ter sido feita — deveria ter virado decisão minha com
   justificativa. Uma resposta "não entendi" a uma pergunta minha é erro meu.
+
+## [2026-07-31] Mover o sintoma de lugar em vez de achar a causa
+
+- O que aconteceu: o painel piscava ao abrir uma conversa. Achei a causa da primeira
+  camada (o preview era semeado com `fromMe` fixo em `false`) e consertei. O pisca
+  mudou de forma e continuou: a bolha semeada nascia no topo. Consertei de novo,
+  ancorando a lista no rodapé. **O pisca continuou** — e só então o usuário descreveu
+  o que ele queria de verdade: reabrir uma conversa já vista deveria mostrar o diálogo
+  inteiro de uma vez. A causa real era outra e estava a uma leitura de distância: o
+  componente é montado condicionalmente pelo Sidebar, então fechar a conversa
+  **desmonta** e o estado morre junto. Nenhum ajuste de posição podia resolver isso.
+- Correção: **quando o sintoma reaparece com outra roupa depois do conserto, a causa
+  não foi encontrada.** O segundo ajuste devia ter sido a dica de que eu estava
+  tratando aparência. Perguntar "por que este estado não existe mais?" custava uma
+  leitura do componente pai.
+- Como saber que estou errando: dois consertos seguidos no mesmo sintoma, cada um
+  descrevendo o problema de um jeito diferente.
+
+## [2026-07-31] Propor mecanismo novo sem procurar o que já existe
+
+- O que aconteceu: o usuário desenhou uma "janela de 7 segundos" para juntar mensagens
+  picadas na etapa do nome. Contrapus com uma alternativa própria (juntar por conteúdo,
+  relendo o histórico) e só **depois**, ao explicar, percebi que a trava de rajada já
+  no código era exatamente a janela dele — 15 segundos, funcionando por consulta ao
+  passado em vez de espera. A intuição dele estava certa e o mecanismo estava
+  construído; eu discuti arquitetura antes de conferir o que existia.
+- Correção: quando ele propõe um mecanismo, **procurar no código se ele já existe
+  antes de propor um substituto**. O que parece funcionalidade nova costuma ser um
+  parâmetro de algo que já está lá.
+- Como saber que estou errando: descrever uma solução e, no meio da descrição,
+  reconhecer uma peça do próprio repositório.
+
+## [2026-07-31] Regra de silêncio sem quem a acorde
+
+- O que aconteceu: propus que o bot ficasse calado quando o nome chegasse incompleto
+  dentro de 15s ("ele ainda está digitando"). O usuário perguntou o óbvio: *e se ele
+  mandar só "Victor" e parar?* Não haveria requisição nenhuma depois, então ninguém
+  acordaria o bot — **silêncio permanente** no meio do agendamento.
+- Correção: em bot dirigido por requisição, **toda regra que produz silêncio precisa
+  de um evento futuro garantido que a desfaça.** Se esse evento é uma mensagem do
+  cliente, o silêncio é uma aposta na boa vontade dele. A janela de 7 segundos dele
+  tinha o mesmo furo, e é o mesmo motivo pelo qual o cutucão por inatividade exige
+  outbox e cron.
+- Como saber que estou errando: escrever "o bot não responde" e não conseguir
+  apontar, em uma frase, o que vai fazê-lo responder depois.
+
+## [2026-07-31] Gravar em paralelo o que precisa sair em ordem
+
+- O que aconteceu: o espelho do CRM mandava as saídas com `Promise.all`. O painel
+  ordena por `created_at`, então as duas mensagens de um mesmo passo empataram no
+  relógio e apareceram trocadas para o dono — o cartão de dias antes da frase que o
+  cliente leu primeiro.
+- Correção: sequencial. E o teste precisou de **atraso artificial na primeira**
+  mensagem, senão um espelho de mentira síncrono passaria nos dois jeitos e não
+  provaria nada.
+- Como saber que estou errando: usar `Promise.all` em escrita cujo consumidor ordena
+  por timestamp.

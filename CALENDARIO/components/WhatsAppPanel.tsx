@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X, Send } from "lucide-react";
 import { motion } from "framer-motion";
 import {
+  ApiError,
   getWhatsAppMessages,
   sendWhatsAppMessage,
 } from "../services/calendarApi";
@@ -11,10 +12,29 @@ import { usePolling } from "../hooks/usePolling";
 export interface Conversation {
   id: number;
   name: string;
+  /** `wa_id` do contato, só dígitos, como a Meta manda. */
+  phone: string;
   preview: string;
+  /** Quem mandou a mensagem do preview. Decide de que lado ela abre. */
+  previewFromMe: boolean;
   time: string;
   unread: number;
   color: string;
+}
+
+/**
+ * O telefone como o dono lê, não como a Meta manda.
+ *
+ * Só formata o que reconhece — número brasileiro com DDI 55, DDD e 8 ou 9 dígitos.
+ * Qualquer outra coisa sai crua de propósito: um número estrangeiro picado em
+ * grupos de dois seria mais difícil de ler que o original, e este é o campo que o
+ * dono usa pra achar o cliente na agenda dele.
+ */
+function formatarTelefone(phone: string): string {
+  const grupos = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(phone);
+  if (!grupos) return phone;
+
+  return `+55 (${grupos[1]}) ${grupos[2]}-${grupos[3]}`;
 }
 
 interface Message {
@@ -24,92 +44,117 @@ interface Message {
   time: string;
 }
 
-const mockMessages: Record<number, Message[]> = {
-  1: [
-    { id: 1, text: "Oi, tudo bem?", fromMe: false, time: "10:28" },
-    { id: 2, text: "Boa tarde! Tudo sim 😊", fromMe: true, time: "10:34" },
-    {
-      id: 3,
-      text: "Tem horário disponível amanhã cedo?",
-      fromMe: false,
-      time: "09:40",
-    },
-    {
-      id: 4,
-      text: "Precisaria cortar antes das 9h se possível",
-      fromMe: false,
-      time: "09:42",
-    },
-  ],
-  2: [
-    {
-      id: 1,
-      text: "Boa tarde! Pronto pra te atender às 14h 😊",
-      fromMe: true,
-      time: "ontem",
-    },
-    { id: 2, text: "Ficou ótimo, obrigada! 👍", fromMe: false, time: "ontem" },
-  ],
-  3: [
-    {
-      id: 1,
-      text: "Olá Carlos! Seu horário está confirmado pra hoje às 15h.",
-      fromMe: true,
-      time: "13:00",
-    },
-    { id: 2, text: "Pode confirmar pra mim?", fromMe: false, time: "14:30" },
-  ],
-  6: [
-    { id: 1, text: "Oi! Tem vaga no sábado?", fromMe: false, time: "dom" },
-    { id: 2, text: "Quero marcar pra sábado", fromMe: false, time: "dom" },
-    { id: 3, text: "Que horas você prefere?", fromMe: false, time: "dom" },
-  ],
-  10: [
-    {
-      id: 1,
-      text: "Bom dia! Tô indo pra aí mais tarde",
-      fromMe: false,
-      time: "qua",
-    },
-    { id: 2, text: "Confirma o horário das 10h?", fromMe: false, time: "qua" },
-  ],
-};
+/**
+ * O histórico já carregado de cada conversa, guardado FORA do componente.
+ *
+ * O Sidebar renderiza o painel condicionalmente, então fechar a conversa desmonta
+ * tudo e o estado morre junto. Sem isto, cada reabertura recomeçava do zero: uma
+ * bolha sozinha na tela durante a ida e volta do fetch, e só então o diálogo
+ * inteiro. Reabrir uma conversa já vista agora pinta ela completa no primeiro
+ * quadro, e o polling apenas reconcilia por baixo.
+ *
+ * Vive enquanto a aba viver — é memória de sessão, não cache persistente. Um F5
+ * limpa, e isso está certo: o custo de estar desatualizado é maior que o de uma
+ * carga a mais.
+ */
+const historico = new Map<number, Message[]>();
+
+/**
+ * Por que a mensagem não saiu, na língua de quem vai ler.
+ *
+ * "Não foi possível enviar" servia para tudo e não ajudava em nada: janela de 24h
+ * fechada e Meta fora do ar pedem reações opostas — na primeira não adianta tentar
+ * de novo nunca, só o cliente reabre a janela; na segunda, tentar de novo é
+ * exatamente o certo.
+ */
+function motivoDaFalha(err: unknown): string {
+  if (!(err instanceof ApiError)) {
+    return "Não foi possível enviar a mensagem. Verifique sua conexão e tente de novo.";
+  }
+
+  if (err.status === 403) {
+    return "Passaram-se mais de 24h desde a última mensagem do cliente, e o WhatsApp não deixa mais escrever nesta conversa. Ela volta a aceitar mensagem quando ele te chamar de novo.";
+  }
+
+  if (err.status === 503) {
+    return "O envio pelo painel ainda não está configurado nesta instalação.";
+  }
+
+  // Inclui o 502 do bot: a Meta recusou. Tentar de novo faz sentido.
+  return err.message || "Não foi possível enviar a mensagem. Tente de novo.";
+}
 
 interface Props {
   conversation: Conversation;
   onClose: () => void;
 }
 
+/**
+ * O texto da bolha com o negrito do WhatsApp resolvido.
+ *
+ * O bot escreve `*assim*` porque é o que a Meta renderiza no celular do cliente; aqui
+ * os asteriscos apareciam crus, e o dono lia uma frase diferente da que foi enviada.
+ * As quebras de linha são outra metade do mesmo problema e ficam por conta do
+ * `whitespace-pre-line` da <p>: sem ele, as opções de uma lista saem todas grudadas
+ * numa linha só.
+ *
+ * Sem `dangerouslySetInnerHTML` — esta mesma bolha mostra texto que o cliente digitou.
+ *
+ * ponytail: só negrito. Gatilho de upgrade: o bot passar a usar _itálico_ ou ~riscado~.
+ */
+function comNegrito(texto: string): React.ReactNode[] {
+  // O grupo de captura faz o `split` intercalar: índice par é texto solto, ímpar é o
+  // miolo de um par de asteriscos.
+  //
+  // O `\S` nas pontas é a regra do próprio WhatsApp, e não capricho: sem ela, um
+  // cliente que escreve "2 * 3 = 6 e *isso* conta" tem o asterisco solto casado com o
+  // seguinte, e o dono lê "2 3 = 6 e isso conta" em negrito no meio. Quebra de linha
+  // também não atravessa — negrito é dentro da linha.
+  return texto
+    .split(/\*(\S|\S[^*\n]*\S)\*/g)
+    .map((pedaco, i) => (i % 2 === 1 ? <strong key={i}>{pedaco}</strong> : pedaco));
+}
+
 const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(
+    () => historico.get(conversation.id) ?? [],
+  );
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Qual conversa está na tela AGORA. Serve pra descartar a resposta de um fetch que
+  // saiu antes de o dono trocar de conversa: ela chega depois, com o painel já
+  // mostrando outra pessoa, e pintaria o diálogo errado.
+  const idNaTela = useRef(conversation.id);
+  idNaTela.current = conversation.id;
+
+  // Trocar de conversa pula direto pro fim, sem animação: rolar suavemente uma
+  // conversa que acabou de aparecer é o mesmo tranco visual que estamos tirando.
+  // Mensagem nova numa conversa já aberta continua deslizando.
+  const conversaAnterior = useRef<number | undefined>(undefined);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const trocou = conversaAnterior.current !== conversation.id;
+    conversaAnterior.current = conversation.id;
+    messagesEndRef.current?.scrollIntoView({
+      behavior: trocou ? "auto" : "smooth",
+    });
   }, [conversation.id, messages.length]);
 
-  // Ao trocar de conversa, semeia o preview imediatamente. O polling abaixo
-  // substitui pelo histórico real assim que carrega. Se o carregamento falhar
-  // (ex.: 429), o usuário continua vendo o preview em vez de uma tela vazia,
-  // e mensagens já carregadas NUNCA são apagadas por um erro transitório.
+  // Ao trocar de conversa (sem fechar o painel), mostra o que já foi carregado dela.
+  // Nada em cache: fica vazio por um instante em vez de piscar uma bolha solta — o
+  // preview só entra em cena se a carga FALHAR, logo abaixo.
   useEffect(() => {
-    setMessages([
-      {
-        id: 1,
-        text: conversation.preview,
-        fromMe: false,
-        time: conversation.time,
-      },
-    ]);
-  }, [conversation.id, conversation.preview, conversation.time]);
+    setMessages(historico.get(conversation.id) ?? []);
+  }, [conversation.id]);
 
   usePolling(
     async () => {
-      const data = await getWhatsAppMessages(conversation.id);
-      setMessages(
-        data.map((message) => ({
+      const id = conversation.id;
+
+      try {
+        const data = await getWhatsAppMessages(id);
+        const carregadas = data.map((message) => ({
           id: message.id,
           text: message.body || `[${message.message_type}]`,
           fromMe: message.direction === "outbound",
@@ -117,8 +162,32 @@ const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
             hour: "2-digit",
             minute: "2-digit",
           }),
-        })),
-      );
+        }));
+
+        historico.set(id, carregadas);
+        if (idNaTela.current === id) setMessages(carregadas);
+      } catch (err) {
+        // Tela vazia por falha de carga, nunca. Sem nada pintado ainda, o preview
+        // (a última mensagem, que o Sidebar já tem em mãos) segura o lugar. Com algo
+        // pintado, não se toca: erro transitório não apaga o que já está lendo.
+        if (idNaTela.current === id) {
+          setMessages((prev) =>
+            prev.length > 0
+              ? prev
+              : [
+                  {
+                    id: 1,
+                    text: conversation.preview,
+                    fromMe: conversation.previewFromMe,
+                    time: conversation.time,
+                  },
+                ],
+          );
+        }
+        // Relançado de propósito: é o hook que decide o backoff, e um 429 traz o
+        // Retry-After junto.
+        throw err;
+      }
     },
     { intervalMs: 5000 },
     [conversation.id],
@@ -137,10 +206,14 @@ const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
     if (!text || sending) return;
     setSending(true);
     setInput("");
-    // Otimista: mostra já; o polling de 4s reconcilia com a versão do banco
+    // Otimista: mostra já; o polling reconcilia com a versão do banco.
+    //
+    // A memória de sessão anda junto com a tela nos dois caminhos, senão fechar e
+    // reabrir logo depois de mandar mostraria a conversa sem a mensagem recém-enviada
+    // — o mesmo pisca, só que por outra porta.
     const tempId = -Date.now();
-    setMessages((prev) => [
-      ...prev,
+    const comOtimista = [
+      ...messages,
       {
         id: tempId,
         text,
@@ -150,13 +223,17 @@ const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
           minute: "2-digit",
         }),
       },
-    ]);
+    ];
+    setMessages(comOtimista);
+    historico.set(conversation.id, comOtimista);
     try {
       await sendWhatsAppMessage(conversation.id, text);
     } catch (err) {
       console.error("Erro ao enviar mensagem:", err);
-      window.alert("Não foi possível enviar a mensagem.");
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      window.alert(motivoDaFalha(err));
+      const semOtimista = comOtimista.filter((m) => m.id !== tempId);
+      setMessages(semOtimista);
+      historico.set(conversation.id, semOtimista);
       setInput(text); // devolve o texto pro campo
     } finally {
       setSending(false);
@@ -191,7 +268,15 @@ const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
           <p className="text-sm font-semibold text-white truncate">
             {conversation.name}
           </p>
-          <p className="text-[11px] text-[#25D366]">online</p>
+          {/*
+            Aqui dizia "online", em verde, fixo no código — não havia (nem há) sinal
+            de presença vindo da Meta. Era enfeite que o dono podia ler como
+            "o cliente está com o WhatsApp aberto agora". O telefone é dado real e
+            é o que ele usa pra cruzar com a agenda.
+          */}
+          <p className="text-[11px] text-white/40 truncate">
+            {formatarTelefone(conversation.phone)}
+          </p>
         </div>
         <button
           onClick={onClose}
@@ -203,34 +288,43 @@ const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
       </div>
 
       {/* Messages */}
+      {/*
+        Ancorado no rodapé (`mt-auto` no miolo, não `justify-end` no contêiner — em
+        contêiner rolável o `justify-end` corta o topo). Duas coisas saem daqui:
+        conversa curta encosta embaixo, como no WhatsApp, e o preview semeado nasce
+        já na posição final. Antes ele aparecia colado no topo e o histórico o
+        empurrava pra baixo um instante depois — o pulo que sobrou depois do pisca.
+      */}
       <div
-        className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2 [&::-webkit-scrollbar]:hidden"
+        className="flex-1 min-h-0 overflow-y-auto px-4 py-4 flex flex-col [&::-webkit-scrollbar]:hidden"
         style={{ scrollbarWidth: "none" }}
       >
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.fromMe ? "justify-end" : "justify-start"}`}
-          >
+        <div className="mt-auto space-y-2">
+          {messages.map((msg) => (
             <div
-              className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-snug ${
-                msg.fromMe
-                  ? "bg-[#6B3EFF] text-white rounded-br-sm"
-                  : "bg-[#2a2a2a] text-white/90 rounded-bl-sm"
-              }`}
+              key={msg.id}
+              className={`flex ${msg.fromMe ? "justify-end" : "justify-start"}`}
             >
-              <p>{msg.text}</p>
-              <p
-                className={`text-[10px] mt-1 ${
-                  msg.fromMe ? "text-white/45 text-right" : "text-white/30"
+              <div
+                className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-snug ${
+                  msg.fromMe
+                    ? "bg-[#6B3EFF] text-white rounded-br-sm"
+                    : "bg-[#2a2a2a] text-white/90 rounded-bl-sm"
                 }`}
               >
-                {msg.time}
-              </p>
+                <p className="whitespace-pre-line">{comNegrito(msg.text)}</p>
+                <p
+                  className={`text-[10px] mt-1 ${
+                    msg.fromMe ? "text-white/45 text-right" : "text-white/30"
+                  }`}
+                >
+                  {msg.time}
+                </p>
+              </div>
             </div>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Input */}

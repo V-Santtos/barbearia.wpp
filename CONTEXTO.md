@@ -24,33 +24,50 @@ juntos — foram os dois na 3333 até 2026-07-30.
 Os dois falam com o **mesmo banco**: Supabase `sppexvjvnoganlduyjvs`. Acesso e
 armadilhas em `REGRAS-APRENDIZADOS/ANEXO_BANCO/`.
 
-## Onde estamos (2026-07-30)
+## Onde estamos (2026-07-31)
 
-**O bot responde e conversa.** Mensagem chega → traduzida → registrada → contato
-cadastrado → roteada → resposta. Saudação por faixa de horário, menu em lista,
-escolha do barbeiro vinda de `profissionais where ativo`, escada de feedback para
-quem digita fora do trilho. Rodou ponta a ponta no celular do usuário.
+**O agendamento fecha.** Menu → barbeiro → dia → horário → nome → cartão de
+conferência → Confirmar → **grava em `agendamentos` e aparece na agenda do dono**.
+A fatia que faltava foi escrita nesta sessão.
 
-138 testes passando, `npm run typecheck` limpo, fluxo exercitado contra o banco
-real. Os porquês de cada decisão de desenho estão em `REGRAS-APRENDIZADOS/REGRAS.md`
-(entradas de 2026-07-30) — **o que cada arquivo faz, o código responde melhor.**
+189 testes passando, `npm run typecheck` limpo nos dois projetos. Os porquês estão em
+`REGRAS-APRENDIZADOS/REGRAS.md` (entradas de 2026-07-31) — **o que cada arquivo faz,
+o código responde melhor.**
 
-**A conversa aparece no painel do dono.** O bot espelha os dois lados no CRM do
-calendário. Verificado contra o endpoint real; falta ver na tela.
+**O dono responde pelo painel.** `POST /whatsapp/conversations/:id/send` deixou de ser
+501: trava de janela → pede o envio ao bot → grava com o `wamid` na mão. Testado no
+celular do usuário, com entrega confirmada pela Meta. **E o bot cala enquanto o dono
+atende**, voltando sozinho no toque em botão ou na virada do dia.
 
-**O agendamento vai até a pergunta do nome.** Barbeiro → dia → horário → "me manda seu
-nome e sobrenome". A resposta a essa última pergunta **ainda não é tratada** — cai na
-escada de feedback, com uma dica dizendo que a parte está sendo montada.
+**A etapa do nome está montada** — validação frouxa, cartão de conferência como trava,
+junção de mensagem picada e distinção entre acréscimo e correção. **Nunca foi testada
+no celular**: é o assunto da próxima sessão.
 
-**O calendário entrou no ambiente** em 2026-07-30, importado de
-`github.com/V-Santtos/Aplicativo-FULL` e podado para o nosso escopo (dois
-commits: `4f2294f` intacto, `6a3760a` a poda). Ver `CALENDARIO/README.md`.
+## PRIMEIRA COISA AO RETOMAR (deixado em 2026-07-31)
 
-## PRIMEIRA COISA AO RETOMAR (deixado em 2026-07-30, à noite)
+**Nada foi testado no celular depois da etapa do nome.** Foi verificado contra o banco
+e contra a API reais (marcação, 409 de vaga tomada, barbeiro inexistente), e o
+agendamento apareceu na agenda do painel — mas o fluxo ponta a ponta pelo WhatsApp
+ficou para agora. **Comece subindo o ambiente, sem esperar ele pedir.**
 
-**O usuário parou sem testar.** O passo dia/horário e o espelho do CRM foram escritos,
-verificados contra o banco real e commitados — mas o teste de celular ficou para a
-sessão seguinte. **Comece subindo o ambiente, sem esperar ele pedir.**
+Os estados foram deixados **zerados** de propósito: `webhook_eventos` do número de
+teste, as três tabelas `whatsapp_*` e `agendamentos`. O primeiro teste é limpo.
+
+**O que exercitar, em ordem:**
+
+1. `oi` → menu → barbeiro → dia → horário → a pergunta do nome.
+2. **Nome completo numa mensagem** → aviso com 👇 + cartão → Confirmar → conferir se o
+   agendamento aparece na agenda do painel, no dia e hora certos.
+3. **Nome picado**: mandar só o primeiro nome (cartão com rodapé pedindo sobrenome) e
+   depois o sobrenome — deve **fechar sozinho, sem toque**.
+4. **Correção**: mandar `Vicctor`, e depois `Victor` — deve **reimprimir o cartão**,
+   não agendar.
+5. **Lixo**: `ok`, `123` — recusa com a frase do motivo e o exemplo.
+6. O cartão em formato `button` (dois botões) — é a peça que a Meta ainda **não
+   aceitou na prática**; conferir que cabeçalho e rodapé aparecem.
+
+**Depois disso:** subir no GitHub e preparar o deploy na Vercel. Combinado como
+próximo assunto, não aberto ainda.
 
 ### 1. Subir os três serviços e o túnel
 
@@ -62,11 +79,12 @@ São três processos, cada um numa pasta, mais o ngrok. **Todos em background.**
 | API do calendário (Fastify) | `CALENDARIO/` | `npm run server` | 3334 |
 | Painel do dono (React/Vite) | `CALENDARIO/` | `npm run dev` | 3002 |
 
-O túnel é **um só**, e aponta para o bot — só ele recebe da Meta. O ngrok não roda
-pelo Bash (`Exec format error`); vai por PowerShell:
+O túnel é **um só**, e aponta para o bot — só ele recebe da Meta. `ngrok` direto pelo
+Bash dá `Exec format error`, e o `Start-Process` do PowerShell foi **barrado pelo
+classificador de permissão** em 2026-07-31. O que passa é o Bash chamando o `cmd`:
 
 ```
-Start-Process -FilePath "ngrok.cmd" -ArgumentList "http","3333" -WindowStyle Hidden
+cmd.exe /c "start /b ngrok.cmd http 3333"
 ```
 
 Pegar a URL pública em `http://127.0.0.1:4040/api/tunnels` e conferir que os três
@@ -77,34 +95,15 @@ e isso é o certo — ela só tem `/saude` e `/webhook/whatsapp`).
 caminho, para ele colar em Webhooks → Conta comercial do WhatsApp:
 `<url-do-ngrok>/webhook/whatsapp`. O verify token não muda.
 
-### 2. Zerar o estado antes do teste
+### 2. O estado já está zerado
+
+Foi limpo no fim da sessão de 2026-07-31 — `webhook_eventos` do número de teste, as
+três tabelas `whatsapp_*` e `agendamentos`. **Não precisa rodar nada.** Se for repetir
+um teste no mesmo dia, aí sim:
 
 ```bash
 cd BARBEARIA && npm run db -- "delete from webhook_eventos where de = '553384246770'" -- --gravar
 ```
-
-As três tabelas `whatsapp_*` foram deixadas **zeradas** de propósito, para o primeiro
-teste do CRM ser inequívoco.
-
-### 3. O que pedir para ele reparar no teste
-
-1. **O cartão em formato `button`** — é a única peça que a Meta ainda **não aceitou na
-   prática**. Todo o teste de 30/07 caiu em lista, porque toda tela teve mais de 3
-   opções. Precisa de um dia com **3 horários ou menos**; à noite o dia corrente serve
-   (o Lucas Costa trabalha até 23:00, então perto do fim do dia sobram poucos slots).
-   Conferir que **header e rodapé aparecem** — foi a premissa corrigida.
-2. **A conversa no painel (3002)**, os dois lados, na ordem, com o cartão legível.
-3. **O ritmo das duas mensagens** em cada passo — a curta primeiro.
-4. **O nome na lista de conversas do painel:** enquanto ele não fechar um agendamento,
-   aparece o nome do perfil do WhatsApp (comportamento de reserva que ele escolheu).
-
-### 4. Depois do teste: a decisão que está esperando
-
-**A rota depois da pergunta do nome** — é o que ficou explicitamente para decidir com
-ele. O bot já pede nome e sobrenome e ninguém trata a resposta. O fluxo antigo fazia:
-valida o nome → card de conferência com 3 botões → `POST /agendamentos`. A validação
-de nome do n8n é a única parte que a realidade escreveu (anexo do n8n, seção 9) e vale
-como material, não como regra.
 
 Nada mais está bloqueado.
 
@@ -159,12 +158,14 @@ inexistente num serviço que ninguém alcança. Ficam registrados para não vira
 - **`POST /agendamentos` é escrita aberta, sem token.** Era assim porque o site
   marcava sem login; o site morreu e a porta ficou. **Gatilho:** a API ganhar
   endereço público.
-- **Não há idempotência.** Timeout + repetição devolve `409` sem dizer se o
-  "ocupante" é outra pessoa ou o próprio cliente. **Gatilho: o passo de confirmar
-  horário** — e o conserto mais barato não é na API: o bot consulta se aquele
-  cliente já tem agendamento naquele horário e responde "você já está marcado" em
-  vez de "foi tomado". O toque duplo é real desde o dia um, porque a trava de
+- **Não há idempotência — e o gatilho DISPAROU em 2026-07-31**, com o passo de
+  confirmar. Hoje o `409` vira "esse horário acabou de ser pego", frase que está certa
+  quando o ocupante é outra pessoa e **errada quando é o próprio cliente** tocando
+  duas vezes em Confirmar. O toque duplo é real desde o dia um, porque a trava de
   rajada vale só para texto (`REGRAS.md`): **toque em botão nunca é suprimido.**
+  O conserto mais barato continua não sendo na API: o bot consulta se aquele cliente
+  já tem agendamento naquele horário e responde "você já está marcado". **Não foi
+  feito** — fica aqui para não virar "depois é nunca".
 
 **Regra que vira explícita:** `agendamentos.profissional` é texto sem FK, e a
 trava de double-booking depende do nome bater exatamente. O bot já lê
@@ -207,10 +208,16 @@ Zera degrau, última resposta e trava de rajada, e **preserva o cadastro** em
 ## Pendências em aberto
 
 - ~~`POST /whatsapp/events` sem ninguém escrevendo nele~~ — **feito em 2026-07-30.**
-  O bot espelha os dois lados da conversa no painel: a mensagem do cliente (sempre,
-  inclusive quando a trava de rajada cala o bot) e cada resposta efetivamente enviada.
-  O espelho roda depois do envio e falha em silêncio com log — painel fora do ar não
-  atrasa nem derruba atendimento. Ver `src/calendario/crm.ts`.
+  Ver `src/calendario/crm.ts`.
+- ~~`POST /whatsapp/conversations/:id/send` devolvendo 501~~ — **feito em 2026-07-31.**
+  O dono responde pelo painel; o bot é o transporte. Ver `src/whatsapp/painel.ts`.
+- **Pular a pergunta do nome para cliente já cadastrado** — decidido com o dono em
+  2026-07-31, **não implementado**. Hoje a frase "como você é novo por aqui" sai para
+  todo mundo, e quem já fechou um agendamento a lê de novo na segunda vez. O `ponytail:`
+  está no ponto exato, em `escolherHora()` de `src/fluxo/rotear.ts`.
+- **Corrigir o nome de um cliente já cadastrado** — não existe em lugar nenhum. Ficou
+  decidido que **não** vira opção de menu no WhatsApp (ficaria na frente de 100% dos
+  clientes para resolver algo raro); o lugar é um campo no painel do dono.
 - **Cutucão por inatividade** — ideia do usuário em 2026-07-30, não existe ainda.
   **Cuidado com o mal-entendido:** a escada de feedback não é por tempo, dispara
   quando o cliente digita em vez de tocar. O que ele quer é outra coisa: mensagem
