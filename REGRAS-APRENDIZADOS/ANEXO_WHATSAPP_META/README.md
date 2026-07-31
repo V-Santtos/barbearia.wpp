@@ -12,6 +12,7 @@ entradas de 2026-07-30. Aqui fica só o que é da plataforma.
 |---|---|
 | `README.md` (este) | o ambiente Meta e as armadilhas de plataforma |
 | [`COEXISTENCIA.md`](COEXISTENCIA.md) | a decisão em aberto: usar o número que o dono já tem |
+| [`NOMES_DE_USUARIO.md`](NOMES_DE_USUARIO.md) | **o telefone deixa de ser a chave.** Nomes de usuário + BSUID, já em produção desde abril/2026 e obrigatórios. Ler antes de qualquer decisão sobre identidade de cliente |
 
 ---
 

@@ -218,6 +218,15 @@ Zera degrau, última resposta e trava de rajada, e **preserva o cadastro** em
 - **Corrigir o nome de um cliente já cadastrado** — não existe em lugar nenhum. Ficou
   decidido que **não** vira opção de menu no WhatsApp (ficaria na frente de 100% dos
   clientes para resolver algo raro); o lugar é um campo no painel do dono.
+- **O telefone vai deixar de ser a chave** — nomes de usuário do WhatsApp + BSUID.
+  Não é ideia nossa nem hipótese: está em produção desde abril/2026, é **obrigatório**
+  para quem usa a plataforma, e quem adota nome de usuário some do webhook sem
+  `wa_id`. Hoje o telefone é a chave de `webhook_eventos`, da trava por contato, de
+  `dados_cliente`, do `UNIQUE (phone)` em `whatsapp_contacts` e de `agendamentos`.
+  **Gatilho: antes do deploy em produção** — em localhost a regra dos 30 dias esconde
+  o problema, porque o número de teste já conversou com a gente. Levantamento completo,
+  com o formato do payload e as datas, em
+  `REGRAS-APRENDIZADOS/ANEXO_WHATSAPP_META/NOMES_DE_USUARIO.md`.
 - **Cutucão por inatividade** — ideia do usuário em 2026-07-30, não existe ainda.
   **Cuidado com o mal-entendido:** a escada de feedback não é por tempo, dispara
   quando o cliente digita em vez de tocar. O que ele quer é outra coisa: mensagem
