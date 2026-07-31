@@ -1,6 +1,8 @@
 import type pg from 'pg';
-import type { Acao, ContextoFluxo, NomeResposta } from '../fluxo/acoes.js';
+import type { Acao, Agenda, Barbeiro, ContextoFluxo, NomeResposta } from '../fluxo/acoes.js';
 import type { EventoRecebido } from '../whatsapp/eventos.js';
+import { hojeEmSaoPaulo } from '../fluxo/dias.js';
+import { lerId } from '../fluxo/botoes.js';
 import { saudacaoDe } from '../fluxo/saudacao.js';
 import { registrarContato } from './contatos.js';
 import { lerBarbeirosAtivos } from './profissionais.js';
@@ -25,6 +27,59 @@ export const JANELA_RAJADA_SEGUNDOS = 15;
 
 const FUSO = 'America/Sao_Paulo';
 
+/** O que a agenda precisa responder neste evento — `undefined` quando nao precisa. */
+export type AlvoAgenda =
+  | { tipo: 'dias'; barbeiro: number }
+  | { tipo: 'horarios'; barbeiro: number; data: string };
+
+export type BuscarAgenda = (alvo: AlvoAgenda) => Promise<Agenda>;
+
+/**
+ * Que pergunta este evento faz a agenda. Funcao pura: le o id do botao com o mesmo
+ * `lerId` do roteador — nada de parser paralelo, que e como duas leituras do mesmo
+ * formato comecam a divergir.
+ *
+ * Ela existe porque o roteador e sincrono e puro: alguem precisa descobrir o que
+ * buscar ANTES dele. O caso que obriga esta funcao a conhecer os barbeiros e o do
+ * profissional unico — ali o id e so `1.agendar`, sem dizer com quem, e o roteador
+ * pula a pergunta "com quem?" sozinho. Sem a lista em mãos aqui, esse caminho
+ * chegaria ao passo dos dias sem dias.
+ */
+export function alvoDaAgenda(
+  evento: EventoRecebido,
+  barbeiros: Barbeiro[],
+): AlvoAgenda | undefined {
+  if (evento.tipo !== 'botao') return undefined;
+
+  const id = lerId(evento.botaoId);
+  if (!id) return undefined;
+
+  // Como no roteador, o `b` do id nao vale nada ate bater com a lista de ativos.
+  const doId = (): Barbeiro | undefined => {
+    const b = id.params.get('b');
+    return barbeiros.find((barbeiro) => String(barbeiro.id) === b);
+  };
+
+  if (id.acao === 'agendar') {
+    const [unico, ...resto] = barbeiros;
+    return unico && resto.length === 0 ? { tipo: 'dias', barbeiro: unico.id } : undefined;
+  }
+
+  if (id.acao === 'barbeiro') {
+    const barbeiro = doId();
+    return barbeiro ? { tipo: 'dias', barbeiro: barbeiro.id } : undefined;
+  }
+
+  if (id.acao === 'dia') {
+    const barbeiro = doId();
+    const data = id.params.get('d');
+    return barbeiro && data ? { tipo: 'horarios', barbeiro: barbeiro.id, data } : undefined;
+  }
+
+  // `hora` nao consulta nada: o passo seguinte e a pergunta do nome.
+  return undefined;
+}
+
 export type Decisao = {
   /** `false` quando o `wamid` ja estava gravado: e reentrega da Meta. */
   novo: boolean;
@@ -32,6 +87,11 @@ export type Decisao = {
   enviar: Acao[];
   /** `true` quando esta foi a primeira mensagem que esse numero mandou. */
   clienteNovo: boolean;
+  /**
+   * O nome do cadastro, quando existe. Sai daqui porque o espelho do CRM precisa
+   * dele e ele so e conhecido dentro desta transacao.
+   */
+  nome: string | undefined;
 };
 
 /**
@@ -51,6 +111,7 @@ export async function registrarEDecidir(
   pool: pg.Pool,
   evento: EventoRecebido,
   decidir: (contexto: ContextoFluxo) => Acao[],
+  buscarAgenda: BuscarAgenda,
   janelaSegundos: number = JANELA_RAJADA_SEGUNDOS,
 ): Promise<Decisao> {
   const cliente = await pool.connect();
@@ -76,7 +137,7 @@ export async function registrarEDecidir(
     const linha = inserido.rows[0];
     if (!linha) {
       await cliente.query('commit');
-      return { novo: false, enviar: [], clienteNovo: false };
+      return { novo: false, enviar: [], clienteNovo: false, nome: undefined };
     }
 
     // Cadastro do contato: qualquer mensagem prova que o numero existe, entao vale
@@ -91,10 +152,23 @@ export async function registrarEDecidir(
     // em silencio de quem o chamou: um dia uma rota nova consultaria `barbeiros` num
     // caminho onde ele veio vazio, e a barbearia inteira pareceria estar sem equipe.
     // Sao poucas linhas, na conexao ja aberta, dentro da mesma transacao.
+    const barbeiros = await lerBarbeirosAtivos(cliente);
+
+    // ponytail: a consulta HTTP a API do calendario acontece DENTRO da transacao,
+    // segurando a conexao e a trava por contato enquanto a rede responde. Teto: a API
+    // esta em localhost, onde isso e questao de milissegundos, e a trava e por
+    // contato — nao bloqueia outros clientes. Gatilho de upgrade: a API sair de
+    // localhost, ou conexao de pool virar recurso disputado. O conserto e mover a
+    // busca pra fora da transacao, e o custo dele e reencontrar o barbeiro do caso
+    // "profissional unico" sem a leitura do banco em mãos.
+    const alvo = alvoDaAgenda(evento, barbeiros);
+
     const acoes = decidir({
       nome: contato.nome,
       saudacao: saudacaoDe(evento.recebidoEm),
-      barbeiros: await lerBarbeirosAtivos(cliente),
+      hoje: hojeEmSaoPaulo(evento.recebidoEm),
+      barbeiros,
+      agenda: alvo ? await buscarAgenda(alvo) : undefined,
       ...(await lerEscada(cliente, evento.de)),
     });
 
@@ -114,7 +188,7 @@ export async function registrarEDecidir(
     );
 
     await cliente.query('commit');
-    return { novo: true, enviar, clienteNovo: contato.novo };
+    return { novo: true, enviar, clienteNovo: contato.novo, nome: contato.nome };
   } catch (erro) {
     await cliente.query('rollback').catch(() => undefined);
     throw erro;

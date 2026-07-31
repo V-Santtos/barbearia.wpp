@@ -11,6 +11,8 @@ const env: Env = {
   WHATSAPP_TOKEN: 'token-de-envio-de-teste',
   WHATSAPP_PHONE_NUMBER_ID: '922642447599728',
   DATABASE_URL: 'postgresql://nao-usado-neste-teste',
+  CALENDARIO_URL: 'http://localhost:3334',
+  CALENDARIO_WEBHOOK_TOKEN: 'token-de-espelho-de-teste',
   PORT: 3000,
 };
 
@@ -32,14 +34,17 @@ function montar(sobrescreve: Partial<Dependencias> = {}) {
       enviar: decidir({
         nome: undefined,
         saudacao: 'Boa noite',
+        hoje: '2026-07-30',
         barbeiros: BARBEIROS,
+        agenda: undefined,
         ultimaResposta: undefined,
         degrau: 0,
       }),
-      clienteNovo: true,
+      clienteNovo: true, nome: undefined,
     }),
     enviar: async (acao) => {
       enviadas.push(acao);
+      return `wamid.ENVIADA.${enviadas.length}`;
     },
     ...sobrescreve,
   };
@@ -166,7 +171,7 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
 
   it('nao envia nada quando o evento e reentrega da Meta', async () => {
     const { app, enviadas } = montar({
-      registrar: async () => ({ novo: false, enviar: [], clienteNovo: false }),
+      registrar: async () => ({ novo: false, enviar: [], clienteNovo: false, nome: undefined }),
     });
 
     expect((await postar(app, MENSAGEM_DE_TEXTO)).status).toBe(200);
@@ -175,7 +180,7 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
 
   it('nao envia nada quando a trava anti-repeticao suprime a acao', async () => {
     const { app, enviadas } = montar({
-      registrar: async () => ({ novo: true, enviar: [], clienteNovo: false }),
+      registrar: async () => ({ novo: true, enviar: [], clienteNovo: false, nome: undefined }),
     });
 
     expect((await postar(app, MENSAGEM_DE_TEXTO)).status).toBe(200);
@@ -193,11 +198,13 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
         enviar: decidir({
           nome: 'Victor',
           saudacao: 'Boa noite',
+          hoje: '2026-07-30',
           barbeiros: BARBEIROS,
+          agenda: undefined,
           ultimaResposta: undefined,
           degrau: 0,
         }),
-        clienteNovo: false,
+        clienteNovo: false, nome: undefined,
       }),
     });
     await postar(comNome.app, MENSAGEM_DE_TEXTO);
@@ -256,11 +263,13 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
         enviar: decidir({
           nome: undefined,
           saudacao: 'Boa noite',
+          hoje: '2026-07-30',
           barbeiros: BARBEIROS,
+          agenda: undefined,
           ultimaResposta: undefined,
           degrau: 0,
         }),
-        clienteNovo: false,
+        clienteNovo: false, nome: undefined,
       }),
       enviar: async (acao) => {
         if (enviadas.length === 0) {
@@ -268,6 +277,7 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
           throw new Error('Cloud API fora do ar');
         }
         enviadas.push(acao);
+        return `wamid.ENVIADA.${enviadas.length}`;
       },
     });
 
@@ -305,5 +315,88 @@ describe('GET /saude', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, servico: 'barbearia-bot' });
+  });
+});
+
+describe('POST /webhook/whatsapp — espelho no CRM do painel', () => {
+  /** Espelho de mentira: guarda o que seria mandado pro painel. */
+  function comEspelho(sobrescreve: Partial<Dependencias> = {}, falhar = false) {
+    const entradas: { corpo: string; nome: string | undefined }[] = [];
+    const saidas: { resposta: string; wamid: string | undefined }[] = [];
+
+    const montado = montar({
+      espelho: {
+        entrada: async (evento, nome) => {
+          entradas.push({ corpo: evento.tipo, nome });
+          if (falhar) return { ok: false, motivo: 'painel fora do ar' };
+          return { ok: true, dados: {} };
+        },
+        saida: async (acao, wamid) => {
+          saidas.push({ resposta: acao.resposta, wamid });
+          if (falhar) return { ok: false, motivo: 'painel fora do ar' };
+          return { ok: true, dados: {} };
+        },
+      },
+      ...sobrescreve,
+    });
+
+    return { ...montado, entradas, saidas };
+  }
+
+  it('espelha os DOIS lados: a mensagem do cliente e cada resposta enviada', async () => {
+    const { app, entradas, saidas } = comEspelho();
+
+    await postar(app, MENSAGEM_DE_TEXTO);
+
+    expect(entradas).toHaveLength(1);
+    expect(saidas.map((s) => s.resposta)).toEqual(['saudacao', 'menu_principal']);
+  });
+
+  it('leva o wamid de cada envio — e o que impede mensagem duplicada no painel', async () => {
+    const { app, saidas } = comEspelho();
+
+    await postar(app, MENSAGEM_DE_TEXTO);
+
+    expect(saidas.every((s) => typeof s.wamid === 'string')).toBe(true);
+  });
+
+  it('espelha a entrada mesmo quando o bot fica calado pela trava de rajada', async () => {
+    // E justamente quando o bot cala que o dono mais precisa ver o que o cliente
+    // esta escrevendo — senao a conversa some do painel sem explicacao.
+    const { app, entradas, saidas } = comEspelho({
+      registrar: async () => ({ novo: true, enviar: [], clienteNovo: false, nome: undefined }),
+    });
+
+    await postar(app, MENSAGEM_DE_TEXTO);
+
+    expect(entradas).toHaveLength(1);
+    expect(saidas).toEqual([]);
+  });
+
+  it('nao espelha nada em reentrega da Meta — a primeira passagem ja registrou', async () => {
+    const { app, entradas, saidas } = comEspelho({
+      registrar: async () => ({ novo: false, enviar: [], clienteNovo: false, nome: undefined }),
+    });
+
+    await postar(app, MENSAGEM_DE_TEXTO);
+
+    expect(entradas).toEqual([]);
+    expect(saidas).toEqual([]);
+  });
+
+  it('painel fora do ar NAO atrapalha o cliente — as mensagens saem igual', async () => {
+    const { app, enviadas } = comEspelho({}, true);
+
+    const res = await postar(app, MENSAGEM_DE_TEXTO);
+
+    expect(res.status).toBe(200);
+    expect(enviadas.map((acao) => acao.resposta)).toEqual(['saudacao', 'menu_principal']);
+  });
+
+  it('sem espelho configurado, o bot atende igual', async () => {
+    const { app, enviadas } = montar();
+
+    expect((await postar(app, MENSAGEM_DE_TEXTO)).status).toBe(200);
+    expect(enviadas).toHaveLength(2);
   });
 });

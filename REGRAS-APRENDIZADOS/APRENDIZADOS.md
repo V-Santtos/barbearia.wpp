@@ -45,6 +45,37 @@ Formato de cada entrada:
 - Como saber que estou errando: se eu estou lendo o terceiro arquivo grande e
   ainda não sei qual é o objetivo, parei de trabalhar e comecei a passear.
 
+## [2026-07-30] Apresentar as decisões como se fossem uma lista de problemas
+
+- O que aconteceu: ao fechar o plano do CRM, resumi os três pontos principais como
+  "o espelho precisa do wamid", "o cartão precisa virar texto", "o rate limit vai
+  barrar". Eram as **soluções que eu já tinha escolhido** — mas cada frase foi escrita
+  do lado do problema. Ele leu como uma parede de obstáculos e respondeu:
+  *"parece que é impossível... só você só traz os problemas, e a solução, tem
+  solução???????"*. O plano estava correto e completo; o resumo é que estava invertido.
+- Correção: **na hora de resumir, escrever o que eu vou fazer, não o que pode dar
+  errado.** "Leio o id que a Meta já devolve — 3 linhas" em vez de "sem o id, duplica".
+  O risco entra no código, como comentário, e no plano escrito; o resumo falado é
+  sobre a entrega. Se um ponto **precisa** de decisão dele, aí sim vira pergunta
+  explícita, separada do resto.
+- Como saber que estou errando: se o meu resumo tem três bullets e os três começam
+  pelo defeito, ele vai fechar a leitura achando que o projeto travou.
+
+## [2026-07-30] Afirmar sobre horário lendo um timestamp já convertido
+
+- O que aconteceu: consultei `now() at time zone 'America/Sao_Paulo'`, o driver do
+  `pg` devolveu um `timestamp without time zone` que foi reserializado como UTC
+  (`...T00:15:38.548Z`), e eu li aquilo como hora de São Paulo. Concluí "passou da
+  meia-noite, hoje virou 31/07", **corrigi uma afirmação minha que estava certa**, e
+  ainda mostrei os horários de 31/07 dizendo que eram de hoje. Ele respondeu:
+  *"meu amigo, agora são 21:16 da noite"*.
+- Correção: **para comparar relógio, pedir ao banco já formatado como texto**
+  (`to_char(... , 'YYYY-MM-DD HH24:MI:SS')`). Qualquer valor de data que passe por
+  driver e serialização pode ter sido reconvertido no caminho, e a diferença de 3
+  horas é exatamente do tamanho que passa despercebida.
+- Como saber que estou errando: se uma conclusão sobre "hoje" ou "agora" depende de um
+  timestamp que eu li de um JSON, ela ainda não foi verificada.
+
 ## [2026-07-30] Terceirizar decisão técnica para o usuário
 
 - O que aconteceu: perguntei a ele se três ajustes na API do calendário (isenção

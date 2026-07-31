@@ -19,11 +19,23 @@ export const NOMES_RESPOSTA = [
   'saudacao',
   'menu_principal',
   'escolher_barbeiro',
-  'agendar_inicio',
   'agenda_indisponivel',
   'rota_em_construcao',
   'feedback',
   'menu_reforcado',
+  // As tres intersecoes: o texto curto que reconhece a escolha e sai na frente da
+  // lista seguinte. Sao respostas de primeira classe, com nome proprio, porque a
+  // escada de feedback precisa saber qual foi a ULTIMA coisa dita — e numa mensagem
+  // picada quem vale e a segunda.
+  'barbeiro_escolhido',
+  'dia_escolhido',
+  'horario_escolhido',
+  'escolher_dia',
+  'escolher_horario',
+  'pedir_nome',
+  'agenda_fora_do_ar',
+  'sem_dia_disponivel',
+  'sem_horario_no_dia',
 ] as const;
 
 export type NomeResposta = (typeof NOMES_RESPOSTA)[number];
@@ -48,11 +60,13 @@ type Base = {
 };
 
 /**
- * A lista interativa (`interactive.type = list`) e o formato padrao do menu.
+ * A mensagem de opcoes. Sai como `interactive.type = list` por padrao; com `compacta`
+ * e no maximo 3 opcoes, sai como `button` — os dois com header e footer.
  *
- * Custa um toque a mais que os 3 botoes de resposta rapida (o cliente abre "Ver
- * opcoes" antes de escolher) e ganha em troca header e footer, que o formato
- * `button` nao tem. Foi escolha do dono do produto: visual completo, um toque a mais.
+ * A escolha do formato e declarada por mensagem, nunca deduzida da contagem. O menu de
+ * abertura tem exatamente 3 opcoes e ainda assim e lista: e a unica mensagem que 100%
+ * dos clientes veem, e o dono do produto escolheu o cartao completo com "Ver opcoes"
+ * pra ela. Deduzir pela contagem transformaria essa decisao num acidente.
  */
 export type Acao =
   | (Base & { tipo: 'enviar_texto' })
@@ -62,10 +76,16 @@ export type Acao =
       cabecalho: string | undefined;
       /** Teto de 60. */
       rodape: string;
-      /** O rotulo que abre a lista. Teto de 20. */
+      /** O rotulo que abre a lista. Teto de 20. Ignorado quando vira `button`. */
       abrir: string;
-      /** Titulo da secao dentro da lista. Teto de 24. */
+      /** Titulo da secao. Teto de 24. Ignorado quando vira `button`. */
       secao: string;
+      /**
+       * "Pode virar botoes se couber." Regra do dono do produto: ate 3 opcoes, o
+       * cliente ve tudo na tela sem abrir nada — obriga-lo a tocar em "Ver opcoes"
+       * pra encarar dois horarios cobra um toque por estetica.
+       */
+      compacta: boolean;
       opcoes: Opcao[];
     });
 
@@ -84,6 +104,20 @@ export type Barbeiro = {
   id: number;
   nome: string;
 };
+
+/**
+ * O que a API do calendario respondeu, quando o evento pediu que ela fosse
+ * consultada. `undefined` no resto — a maioria dos eventos nao precisa de agenda.
+ *
+ * `fora_do_ar` e um estado de primeira classe, e nao um `dias: []`, porque as duas
+ * situacoes merecem frases opostas: "nao tenho vaga nos proximos dias" e uma resposta
+ * sobre a agenda, "nao consegui consultar agora" e uma resposta sobre o sistema.
+ * Confundir as duas faria o bot mentir sobre a barbearia quando o problema e nosso.
+ */
+export type Agenda =
+  | { tipo: 'dias'; dias: string[] }
+  | { tipo: 'horarios'; data: string; horarios: string[] }
+  | { tipo: 'fora_do_ar' };
 
 export type ContextoFluxo = {
   /**
@@ -110,6 +144,13 @@ export type ContextoFluxo = {
   nome: string | undefined;
   /** "Bom dia" | "Boa tarde" | "Boa noite", calculado no fuso de Sao Paulo. */
   saudacao: Saudacao;
+  /**
+   * Hoje em `YYYY-MM-DD`, no fuso de Sao Paulo. Serve pra rotular os dias (`Hoje`,
+   * `Amanha`, `Qua 06/08`) sem o roteador olhar o relogio.
+   */
+  hoje: string;
+  /** O que a API do calendario respondeu — so nos eventos que precisam dela. */
+  agenda: Agenda | undefined;
   /** A ultima resposta que o bot deu hoje, depois do ultimo botao tocado. */
   ultimaResposta: NomeResposta | undefined;
   /**

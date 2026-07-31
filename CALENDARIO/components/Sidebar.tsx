@@ -21,6 +21,7 @@ import {
   type AgendaConfig,
 } from "../services/calendarApi";
 import TimeSelect from "./ui/TimeSelect";
+import { JANELA_MIN_DIAS, JANELA_MAX_DIAS } from "../lib/utils";
 import { usePolling } from "../hooks/usePolling";
 
 const mockConversations: Conversation[] = [
@@ -1134,17 +1135,19 @@ const Sidebar: React.FC<SidebarProps> = ({
                             </p>
                           </div>
                           <span className="rounded-full bg-[#6B3EFF]/20 px-2.5 py-1 text-xs font-semibold text-[#c9b8ff]">
-                            {agendaConfig.janela_agendamento_dias === 7
+                            {agendaConfig.janela_agendamento_dias ===
+                            JANELA_MIN_DIAS
                               ? "Mínimo"
-                              : agendaConfig.janela_agendamento_dias === 15
+                              : agendaConfig.janela_agendamento_dias ===
+                                  JANELA_MAX_DIAS
                                 ? "Máximo"
                                 : "Personalizado"}
                           </span>
                         </div>
                         <input
                           type="range"
-                          min={7}
-                          max={15}
+                          min={JANELA_MIN_DIAS}
+                          max={JANELA_MAX_DIAS}
                           step={1}
                           value={agendaConfig.janela_agendamento_dias}
                           aria-label="Dias de abertura da agenda"
@@ -1162,24 +1165,30 @@ const Sidebar: React.FC<SidebarProps> = ({
                                      [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-white"
                           style={{
                             background: `linear-gradient(to right, #6B3EFF 0%, #6B3EFF ${
-                              ((agendaConfig.janela_agendamento_dias - 7) / 8) *
+                              ((agendaConfig.janela_agendamento_dias -
+                                JANELA_MIN_DIAS) /
+                                (JANELA_MAX_DIAS - JANELA_MIN_DIAS)) *
                               100
                             }%, rgba(255,255,255,0.1) ${
-                              ((agendaConfig.janela_agendamento_dias - 7) / 8) *
+                              ((agendaConfig.janela_agendamento_dias -
+                                JANELA_MIN_DIAS) /
+                                (JANELA_MAX_DIAS - JANELA_MIN_DIAS)) *
                               100
                             }%, rgba(255,255,255,0.1) 100%)`,
                           }}
                         />
                         <div className="relative mt-2 h-4 text-[10px] font-medium text-white/35">
-                          <span className="absolute left-0 top-0">7 dias</span>
+                          <span className="absolute left-0 top-0">
+                            {JANELA_MIN_DIAS} dias
+                          </span>
                           <span
                             className="absolute top-0 -translate-x-1/2"
-                            style={{ left: "37.5%" }}
+                            style={{ left: "50%" }}
                           >
-                            10 dias
+                            7 dias
                           </span>
                           <span className="absolute right-0 top-0">
-                            15 dias
+                            {JANELA_MAX_DIAS} dias
                           </span>
                         </div>
                       </div>

@@ -120,8 +120,14 @@ function getRateLimitPolicy(request) {
   if (method === "GET" && path === "/agendamentos/verificar-telefone") {
     return { max: 20, label: "phone-check" };
   }
+  // O espelho da conversa entra por aqui, e quem chama e o bot: UM IP atendendo
+  // todos os clientes da barbearia. Um agendamento inteiro gera ~14 chamadas (cada
+  // mensagem do cliente e cada resposta do bot), entao o teto antigo de 30/min
+  // estourava com dois clientes conversando no mesmo minuto — e o terceiro sumiria
+  // do painel sem ninguem notar, porque o espelho falha em silencio de proposito.
+  // A rota e protegida por token, entao o balde estreito defendia pouco.
   if (method === "POST" && path === "/whatsapp/events")
-    return { max: 30, label: "whatsapp-webhook" };
+    return { max: 600, label: "whatsapp-webhook" };
   if (path.startsWith("/whatsapp/")) {
     // Leitura (polling do CRM) tem balde proprio e generoso para nao
     // esgotar quando varias abas/o painel estao abertos.
@@ -205,13 +211,20 @@ function minutesToTime(totalMinutes) {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
+// Faixa 4..10, espelhando o CHECK da tabela. O teto e o limite de linhas de uma
+// lista do WhatsApp: acima de 10 a Meta recusa a mensagem inteira e o cliente fica
+// sem resposta. Prender aqui e o que permite o bot pedir os dias sem `days=` e
+// confiar no que voltar.
+const JANELA_MIN_DIAS = 4;
+const JANELA_MAX_DIAS = 10;
+
 function normalizeBookingWindowDays(
   value,
   fallback = DEFAULT_AGENDA.janela_agendamento_dias,
 ) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(Math.max(Math.round(parsed), 7), 15);
+  return Math.min(Math.max(Math.round(parsed), JANELA_MIN_DIAS), JANELA_MAX_DIAS);
 }
 
 function isWithinBookingWindow(date, windowDays) {
@@ -789,7 +802,7 @@ function buildServer() {
       );
       if (Number(janela_agendamento_dias) !== bookingWindowDays) {
         return reply.status(400).send({
-          error: "janela_agendamento_dias deve ficar entre 7 e 15.",
+          error: `janela_agendamento_dias deve ficar entre ${JANELA_MIN_DIAS} e ${JANELA_MAX_DIAS}.`,
         });
       }
 

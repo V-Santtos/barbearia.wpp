@@ -1,6 +1,7 @@
 import type { EventoRecebido } from '../whatsapp/eventos.js';
-import type { Acao, ContextoFluxo, NomeResposta, Opcao } from './acoes.js';
+import type { Acao, Barbeiro, ContextoFluxo, NomeResposta, Opcao } from './acoes.js';
 import { lerId, montarId, VERSAO_ID } from './botoes.js';
+import { rotularDia } from './dias.js';
 
 /**
  * O roteador. Funcao PURA: recebe o evento e o contexto, devolve o que fazer,
@@ -108,11 +109,25 @@ const AJUDA: Record<NomeResposta, string> = {
   saudacao: 'É só tocar em *Ver opções* na mensagem acima. 👆',
   menu_principal: 'É só tocar em *Ver opções* na mensagem acima. 👆',
   escolher_barbeiro: 'Pra continuar, toque em *Ver barbeiros* na mensagem acima e escolha um. 👆',
-  agendar_inicio: 'Pra seguir com o agendamento, toque em *Ver opções* na mensagem acima. 👆',
   agenda_indisponivel: 'A agenda está fechada agora — assim que abrir, é só me chamar. 🙂',
   rota_em_construcao: 'É só tocar em *Ver opções* na mensagem acima. 👆',
   feedback: 'É só tocar em *Ver opções* na mensagem acima. 👆',
   menu_reforcado: 'É só tocar em *Ver opções* na mensagem acima. 👆',
+  // As intersecoes nunca sao a ultima coisa dita — vem sempre uma lista atras. Se uma
+  // delas aparecer aqui, a segunda mensagem falhou no envio, e a dica certa e mandar
+  // o cliente esperar em vez de apontar pra uma tela que nao chegou.
+  barbeiro_escolhido: 'Só um instante que eu já te mostro os dias disponíveis. 🙂',
+  dia_escolhido: 'Só um instante que eu já te mostro os horários. 🙂',
+  horario_escolhido: 'Só um instante. 🙂',
+  escolher_dia: 'Toque em um dos dias na mensagem acima pra continuar. 👆',
+  escolher_horario: 'Toque em um dos horários na mensagem acima pra continuar. 👆',
+  // ponytail: a etapa de nome ainda nao existe, entao o nome digitado cai aqui em vez
+  // de ser aproveitado. Teto: o cliente chega ao fim do fluxo e para. Gatilho de
+  // upgrade: a proxima fatia, que trata a resposta de texto neste estado.
+  pedir_nome: 'Essa última parte ainda está sendo montada por aqui — já já eu volto pra concluir. 🙂',
+  agenda_fora_do_ar: 'Não consegui abrir a agenda agora. Tente de novo daqui a pouco. 🙏',
+  sem_dia_disponivel: 'Toque em *Ver opções* pra voltar ao menu. 👆',
+  sem_horario_no_dia: 'Toque na opção acima pra escolher outro dia. 👆',
 };
 
 function rotearBotao(botaoId: string, para: string, contexto: ContextoFluxo): Acao[] {
@@ -133,6 +148,18 @@ function rotearBotao(botaoId: string, para: string, contexto: ContextoFluxo): Ac
 
     case 'barbeiro':
       return escolherBarbeiro(para, contexto, id.params.get('b'));
+
+    case 'dia':
+      return escolherDia(para, contexto, id.params.get('b'), id.params.get('d'));
+
+    case 'hora':
+      return escolherHora(
+        para,
+        contexto,
+        id.params.get('b'),
+        id.params.get('d'),
+        id.params.get('h'),
+      );
 
     case 'reagendar':
     case 'cancelar':
@@ -165,7 +192,7 @@ function comecarAgendamento(para: string, contexto: ContextoFluxo): Acao[] {
 
   // Um barbeiro so: perguntar "com quem?" seria pedir pro cliente confirmar o
   // obvio. A escolha acontece, ele so nao ve a pergunta.
-  if (resto.length === 0) return [comBarbeiro(para, unico)];
+  if (resto.length === 0) return comBarbeiro(para, contexto, unico);
 
   return [perguntarBarbeiro(para, contexto, PERGUNTA_BARBEIRO, 'Show!')];
 }
@@ -183,7 +210,7 @@ const PERGUNTA_BARBEIRO = 'Com qual profissional você deseja agendar seu horár
 function escolherBarbeiro(para: string, contexto: ContextoFluxo, b: string | null): Acao[] {
   const escolhido = contexto.barbeiros.find((barbeiro) => String(barbeiro.id) === b);
 
-  if (escolhido) return [comBarbeiro(para, escolhido)];
+  if (escolhido) return comBarbeiro(para, contexto, escolhido);
   if (contexto.barbeiros.length === 0) return [semAgenda(para)];
 
   // Sem cabecalho aqui: "Show!" comemora, e isto e uma correcao de rota.
@@ -207,6 +234,9 @@ function perguntarBarbeiro(
     rodape: 'Selecione uma opção',
     abrir: 'Ver barbeiros',
     secao: 'Barbeiros',
+    // Lista mesmo com 2 opcoes: esta tela ja foi validada no celular com a cara de
+    // cartao, e o formato compacto entrou pra dia e horario, nao pra ela.
+    compacta: false,
     opcoes: contexto.barbeiros.map((barbeiro) => ({
       id: montarId('barbeiro', { b: String(barbeiro.id) }),
       // Nome de barbeiro e dado da barbearia: pode chegar maior que o teto da Meta,
@@ -216,16 +246,209 @@ function perguntarBarbeiro(
   };
 }
 
-/** ponytail: o passo seguinte (dia e horario) ainda nao existe. Teto: o cliente
- * escolhe o barbeiro e para aqui. Gatilho de upgrade: a proxima fatia do fluxo. */
-function comBarbeiro(para: string, barbeiro: { nome: string }): Acao {
+/**
+ * Barbeiro definido: reconhece a escolha e mostra os dias com vaga.
+ *
+ * **Sao duas mensagens, e isso e regra.** A primeira e curta, de texto puro, e chega
+ * antes; a lista so e postada depois que ela volta da Meta. Se o cartao demorar — por
+ * payload maior, throttle ou rede ruim — o cliente ja esta com uma resposta na tela
+ * sabendo que o bot esta trabalhando, em vez de encarar silencio e sair digitando ou
+ * cacando botao antigo. E o mesmo motivo da abertura do dia sair picada.
+ *
+ * ponytail: a intersecao sai DEPOIS da consulta ao calendario, entao ela nao cobre a
+ * espera da propria consulta. Teto: irrelevante com a API em localhost. Gatilho de
+ * upgrade: a API sair de localhost — ai ela precisa ser enviada antes da consulta, o
+ * que exige tirar a chamada HTTP de dentro da transacao.
+ */
+function comBarbeiro(para: string, contexto: ContextoFluxo, barbeiro: Barbeiro): Acao[] {
+  const agenda = contexto.agenda;
+
+  if (!agenda || agenda.tipo === 'fora_do_ar') return [foraDoAr(para)];
+
+  // Um `horarios` chegando aqui significa que quem montou o contexto leu o id de um
+  // jeito e o roteador leu de outro. Nao ha resposta boa pra inventar, e mentir sobre
+  // a agenda seria pior que admitir a falha.
+  if (agenda.tipo !== 'dias') return [foraDoAr(para)];
+
+  if (agenda.dias.length === 0) return [semDia(para, barbeiro)];
+
+  return [
+    {
+      tipo: 'enviar_texto',
+      para,
+      resposta: 'barbeiro_escolhido',
+      texto: `Boa! Vamos marcar com o *${barbeiro.nome}*. 💈`,
+    },
+    {
+      tipo: 'enviar_lista',
+      para,
+      resposta: 'escolher_dia',
+      cabecalho: CABECALHO_AGENDAMENTO,
+      texto: 'Qual dia você prefere?',
+      rodape: 'Selecione uma opção',
+      abrir: 'Ver dias',
+      secao: 'Dias disponíveis',
+      compacta: true,
+      opcoes: agenda.dias.slice(0, LIMITE_OPCOES).map((data) => ({
+        id: montarId('dia', { b: String(barbeiro.id), d: data }),
+        titulo: cortar(rotularDia(data, contexto.hoje), LIMITE_TITULO_COMPACTO),
+      })),
+    },
+  ];
+}
+
+/**
+ * Tocou num dia. O `b` e revalidado aqui pelo mesmo motivo de sempre: o id diz o que
+ * o cliente quis, nunca o que ele pode.
+ */
+function escolherDia(
+  para: string,
+  contexto: ContextoFluxo,
+  b: string | null,
+  d: string | null,
+): Acao[] {
+  const barbeiro = contexto.barbeiros.find((candidato) => String(candidato.id) === b);
+
+  if (!barbeiro) return escolherBarbeiro(para, contexto, b);
+
+  const agenda = contexto.agenda;
+
+  // Sem `d`, ou com `d` que a API nao entendeu, o caminho de volta e o mesmo: mostrar
+  // os dias de novo. O n8n oferecia esse botao ("Escolher outro dia") e nenhuma rota
+  // reconhecia o id — botao morto. Aqui ele leva pra rota do barbeiro, que ja sabe
+  // buscar os dias.
+  if (!d) return [semHorario(para, barbeiro, undefined)];
+
+  if (!agenda || agenda.tipo === 'fora_do_ar') return [foraDoAr(para)];
+  if (agenda.tipo !== 'horarios') return [foraDoAr(para)];
+
+  if (agenda.horarios.length === 0) return [semHorario(para, barbeiro, d, contexto.hoje)];
+
+  const rotulo = rotularDia(d, contexto.hoje);
+
+  return [
+    {
+      tipo: 'enviar_texto',
+      para,
+      resposta: 'dia_escolhido',
+      texto: `Show, *${rotulo}*. Só um momento que eu já te mostro os horários. ⏳`,
+    },
+    {
+      tipo: 'enviar_lista',
+      para,
+      resposta: 'escolher_horario',
+      cabecalho: CABECALHO_AGENDAMENTO,
+      texto: `Qual horário fica melhor pra você em *${rotulo}*?`,
+      rodape: 'Selecione uma opção',
+      abrir: 'Ver horários',
+      secao: 'Horários livres',
+      compacta: true,
+      // ponytail: corta nos 10 primeiros e o resto do dia nao aparece — decisao
+      // explicita do dono do produto (2026-07-30), com o custo a vista. Teto: uma
+      // agenda de 08h as 23h gera 13 slots, entao as marcacoes da noite ficam
+      // invisiveis num dia vazio. Gatilho de upgrade: reclamacao de dono ou de
+      // cliente que nao achou horario que existia; o conserto e perguntar o periodo
+      // (manha/tarde/noite) antes, que cabe em botao e nao esconde nada.
+      opcoes: agenda.horarios.slice(0, LIMITE_OPCOES).map((hora) => ({
+        id: montarId('hora', { b: String(barbeiro.id), d, h: hora }),
+        titulo: cortar(hora, LIMITE_TITULO_COMPACTO),
+      })),
+    },
+  ];
+}
+
+/**
+ * Tocou num horario. Fim do escopo desta fatia: o bot confirma a escolha e pede o
+ * nome.
+ *
+ * ponytail: a resposta do cliente a esta pergunta ainda nao e tratada — texto cai na
+ * escada de feedback, e a dica de `pedir_nome` avisa que a parte esta sendo montada.
+ * Teto: o cliente chega aqui e para, sem agendamento gravado. Gatilho de upgrade: a
+ * proxima fatia (nome, conferencia e `POST /agendamentos`), cuja rota ainda vai ser
+ * decidida com o dono do produto.
+ */
+function escolherHora(
+  para: string,
+  contexto: ContextoFluxo,
+  b: string | null,
+  d: string | null,
+  h: string | null,
+): Acao[] {
+  const barbeiro = contexto.barbeiros.find((candidato) => String(candidato.id) === b);
+
+  if (!barbeiro) return escolherBarbeiro(para, contexto, b);
+  if (!d || !h) return [semHorario(para, barbeiro, undefined)];
+
+  return [
+    {
+      tipo: 'enviar_texto',
+      para,
+      resposta: 'horario_escolhido',
+      texto: `Fechou: *${rotularDia(d, contexto.hoje)} às ${h}* com o *${barbeiro.nome}*. 💈`,
+    },
+    {
+      tipo: 'enviar_texto',
+      para,
+      resposta: 'pedir_nome',
+      texto: 'Pra finalizar, me manda seu *nome e sobrenome*. 📝',
+    },
+  ];
+}
+
+/** A agenda existe, o barbeiro atende, mas nao ha vaga na janela que o dono abriu. */
+function semDia(para: string, barbeiro: Barbeiro): Acao {
   return {
     tipo: 'enviar_texto',
     para,
-    resposta: 'agendar_inicio',
-    texto: `Boa! Vamos marcar com o *${barbeiro.nome}*. 💈\n\nEssa parte ainda está sendo montada — já já eu volto com os dias e horários.`,
+    resposta: 'sem_dia_disponivel',
+    texto: `O *${barbeiro.nome}* está sem horário livre nos próximos dias. 😕\n\nSe quiser, me chame de novo mais tarde ou escolha outro profissional pelo menu.`,
   };
 }
+
+/**
+ * O dia escolhido nao tem horario. Diferente de `semDia`, aqui existe caminho de
+ * volta — e ele e tratado de verdade, nao so oferecido.
+ */
+function semHorario(para: string, barbeiro: Barbeiro, dia: string | undefined, hoje?: string): Acao {
+  const rotulo = dia && hoje ? rotularDia(dia, hoje) : undefined;
+
+  return {
+    tipo: 'enviar_lista',
+    para,
+    resposta: 'sem_horario_no_dia',
+    cabecalho: undefined,
+    texto: rotulo
+      ? `Os horários de *${rotulo}* acabaram de encher. 😕`
+      : 'Não consegui identificar esse dia. 😕',
+    rodape: 'Selecione uma opção',
+    abrir: 'Ver opções',
+    secao: 'Agendamento',
+    compacta: true,
+    opcoes: [
+      { id: montarId('barbeiro', { b: String(barbeiro.id) }), titulo: '📅 Ver outros dias' },
+      { id: montarId('agendar'), titulo: '↩️ Recomeçar' },
+    ],
+  };
+}
+
+/**
+ * A API do calendario nao respondeu. Frase deliberadamente diferente de `semDia`: uma
+ * fala sobre a agenda da barbearia, a outra sobre o nosso sistema. Trocar as duas
+ * faria o bot dizer que o barbeiro esta lotado quando o problema e nosso.
+ */
+function foraDoAr(para: string): Acao {
+  return {
+    tipo: 'enviar_texto',
+    para,
+    resposta: 'agenda_fora_do_ar',
+    texto: 'Não consegui abrir a agenda agora. 😕\n\nTenta de novo daqui a pouquinho, por favor.',
+  };
+}
+
+const CABECALHO_AGENDAMENTO = 'Agendamento 📅';
+
+/** Teto da Meta em linhas por lista: 10 no total, somando todas as secoes. */
+const LIMITE_OPCOES = 10;
 
 function semAgenda(para: string): Acao {
   return {
@@ -243,6 +466,13 @@ function cortar(texto: string, limite: number): string {
 /** Teto da Meta no titulo de linha da lista. */
 const LIMITE_TITULO = 24;
 
+/**
+ * Teto do titulo de um botao de resposta rapida: 20, contra 24 da linha de lista.
+ * Toda opcao marcada `compacta` usa o menor, porque ela pode sair nos dois formatos e
+ * so se sabe qual na hora do envio.
+ */
+const LIMITE_TITULO_COMPACTO = 20;
+
 function menu(para: string, texto: string, resposta: NomeResposta, cabecalho?: string): Acao {
   return {
     tipo: 'enviar_lista',
@@ -253,6 +483,9 @@ function menu(para: string, texto: string, resposta: NomeResposta, cabecalho?: s
     rodape: RODAPE,
     abrir: ABRIR,
     secao: SECAO,
+    // O menu tem exatamente 3 opcoes e ainda assim e lista, por decisao do dono do
+    // produto: e a unica mensagem que 100% dos clientes veem.
+    compacta: false,
     opcoes: OPCOES_MENU,
   };
 }

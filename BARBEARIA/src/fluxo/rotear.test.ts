@@ -25,13 +25,27 @@ const DOIS = [
 const SEM_NOME: ContextoFluxo = {
   nome: undefined,
   saudacao: 'Boa noite',
+  hoje: '2026-07-30',
   barbeiros: DOIS,
+  agenda: undefined,
   ultimaResposta: undefined,
   degrau: 0,
 };
 
 /** Quem ja fechou: o nome foi dito por ele, na etapa de nome do agendamento. */
 const COM_NOME: ContextoFluxo = { ...SEM_NOME, nome: 'Victor' };
+
+/** O que a API do calendario devolveu — `hoje` do contexto e 2026-07-30. */
+const DIAS: ContextoFluxo['agenda'] = {
+  tipo: 'dias',
+  dias: ['2026-07-30', '2026-07-31', '2026-08-03', '2026-08-04'],
+};
+
+const HORARIOS = (horarios: string[], data = '2026-08-04'): ContextoFluxo['agenda'] => ({
+  tipo: 'horarios',
+  data,
+  horarios,
+});
 
 const texto = (texto: string): EventoRecebido => ({ ...BASE, tipo: 'texto', texto });
 const botao = (botaoId: string): EventoRecebido => ({
@@ -158,11 +172,11 @@ describe('rotear — escolha do barbeiro', () => {
     ]);
   });
 
-  it('com 1 barbeiro, a pergunta NAO e feita — a escolha e obvia', () => {
-    const acoes = rotear(botao(montarId('agendar')), comBarbeiros([DOIS[0]!]));
+  it('com 1 barbeiro, a pergunta NAO e feita — vai direto pros dias', () => {
+    const contexto = { ...comBarbeiros([DOIS[0]!]), agenda: DIAS };
+    const acoes = rotear(botao(montarId('agendar')), contexto);
 
-    expect(acoes).toHaveLength(1);
-    expect(acoes[0]?.resposta).toBe('agendar_inicio');
+    expect(acoes.map((acao) => acao.resposta)).toEqual(['barbeiro_escolhido', 'escolher_dia']);
     expect(acoes[0]?.texto).toContain('Lucas Costa');
   });
 
@@ -172,9 +186,9 @@ describe('rotear — escolha do barbeiro', () => {
   });
 
   it('escolher um barbeiro valido segue com o nome dele', () => {
-    const [acao] = rotear(botao(montarId('barbeiro', { b: '2' })), SEM_NOME);
+    const [acao] = rotear(botao(montarId('barbeiro', { b: '2' })), { ...SEM_NOME, agenda: DIAS });
 
-    expect(acao?.resposta).toBe('agendar_inicio');
+    expect(acao?.resposta).toBe('barbeiro_escolhido');
     expect(acao?.texto).toContain('Lucas Eloi');
     expect(acao?.texto).not.toContain('Lucas Costa');
   });
@@ -290,12 +304,12 @@ describe('rotear — escada de feedback', () => {
     const noMenu = rotear(texto('oi'), { ...SEM_NOME, ultimaResposta: 'menu_principal', degrau: 0 });
     const noAgendamento = rotear(texto('oi'), {
       ...SEM_NOME,
-      ultimaResposta: 'agendar_inicio',
+      ultimaResposta: 'escolher_dia',
       degrau: 0,
     });
 
     expect(noMenu[0]?.texto).not.toBe(noAgendamento[0]?.texto);
-    expect(noAgendamento[0]?.texto).toContain('agendamento');
+    expect(noAgendamento[0]?.texto).toContain('dias');
   });
 
   it('degrau 1: insistiu, entao reenvia o menu — sem repetir a saudacao', () => {
@@ -332,7 +346,7 @@ describe('rotear — escada de feedback', () => {
   it('audio no meio do fluxo sobe a escada igual a texto', () => {
     const [acao] = rotear(naoSuportado('audio'), {
       ...SEM_NOME,
-      ultimaResposta: 'agendar_inicio',
+      ultimaResposta: 'escolher_dia',
       degrau: 0,
     });
     expect(acao?.resposta).toBe('feedback');
@@ -372,5 +386,125 @@ describe('rotear — garantias que valem pra toda entrada', () => {
 
   it('e pura: chamar duas vezes com a mesma entrada da o mesmo resultado', () => {
     for (const evento of todos) expect(rotear(evento, SEM_NOME)).toEqual(rotear(evento, SEM_NOME));
+  });
+});
+
+describe('rotear — escolha do dia', () => {
+  const tocaBarbeiro = (agenda: ContextoFluxo['agenda']) =>
+    rotear(botao(montarId('barbeiro', { b: '1' })), { ...SEM_NOME, agenda });
+
+  it('manda a intersecao ANTES da lista — nessa ordem, sempre', () => {
+    const acoes = tocaBarbeiro(DIAS);
+
+    expect(acoes.map((acao) => acao.tipo)).toEqual(['enviar_texto', 'enviar_lista']);
+    expect(acoes.map((acao) => acao.resposta)).toEqual(['barbeiro_escolhido', 'escolher_dia']);
+  });
+
+  it('rotula hoje, amanha e o resto com dia da semana e data', () => {
+    const lista = tocaBarbeiro(DIAS)[1];
+    if (lista?.tipo !== 'enviar_lista') throw new Error('esperava lista');
+
+    expect(lista.opcoes).toEqual([
+      { id: '1.dia?b=1&d=2026-07-30', titulo: 'Hoje' },
+      { id: '1.dia?b=1&d=2026-07-31', titulo: 'Amanhã' },
+      { id: '1.dia?b=1&d=2026-08-03', titulo: 'Seg 03/08' },
+      { id: '1.dia?b=1&d=2026-08-04', titulo: 'Ter 04/08' },
+    ]);
+  });
+
+  it('o contexto viaja no id: o dia carrega o barbeiro junto', () => {
+    const lista = tocaBarbeiro(DIAS)[1];
+    if (lista?.tipo !== 'enviar_lista') throw new Error('esperava lista');
+
+    for (const opcao of lista.opcoes) expect(opcao.id).toContain('b=1');
+  });
+
+  it('pede formato compacto — a regra de <=3 vale pro dia', () => {
+    const lista = tocaBarbeiro(DIAS)[1];
+    expect(lista?.tipo === 'enviar_lista' && lista.compacta).toBe(true);
+  });
+
+  it('nenhum dia com vaga nao e a mesma coisa que agenda fora do ar', () => {
+    const semVaga = tocaBarbeiro({ tipo: 'dias', dias: [] });
+    const quebrada = tocaBarbeiro({ tipo: 'fora_do_ar' });
+
+    expect(semVaga[0]?.resposta).toBe('sem_dia_disponivel');
+    expect(semVaga[0]?.texto).toContain('Lucas Costa');
+    expect(quebrada[0]?.resposta).toBe('agenda_fora_do_ar');
+    // A frase da falha nossa nao pode culpar a agenda do barbeiro.
+    expect(quebrada[0]?.texto).not.toContain('Lucas Costa');
+  });
+
+  it('nunca oferece mais de 10 dias — a Meta recusa a mensagem inteira acima disso', () => {
+    const doze = Array.from({ length: 12 }, (_, i) => `2026-08-${String(i + 1).padStart(2, '0')}`);
+    const lista = tocaBarbeiro({ tipo: 'dias', dias: doze })[1];
+
+    expect(lista?.tipo === 'enviar_lista' && lista.opcoes).toHaveLength(10);
+  });
+});
+
+describe('rotear — escolha do horario', () => {
+  const tocaDia = (agenda: ContextoFluxo['agenda'], d = '2026-08-04') =>
+    rotear(botao(montarId('dia', { b: '1', d })), { ...SEM_NOME, agenda });
+
+  it('intersecao com o dia escolhido, e a lista de horarios atras', () => {
+    const acoes = tocaDia(HORARIOS(['08:00', '09:00', '13:00', '14:00']));
+
+    expect(acoes.map((acao) => acao.resposta)).toEqual(['dia_escolhido', 'escolher_horario']);
+    expect(acoes[0]?.texto).toContain('Ter 04/08');
+
+    const lista = acoes[1];
+    if (lista?.tipo !== 'enviar_lista') throw new Error('esperava lista');
+    expect(lista.opcoes[0]).toEqual({ id: '1.hora?b=1&d=2026-08-04&h=08%3A00', titulo: '08:00' });
+  });
+
+  it('corta nos 10 primeiros horarios — decisao explicita, com custo conhecido', () => {
+    const treze = Array.from({ length: 13 }, (_, i) => `${String(i + 8).padStart(2, '0')}:00`);
+    const lista = tocaDia(HORARIOS(treze))[1];
+
+    expect(lista?.tipo === 'enviar_lista' && lista.opcoes).toHaveLength(10);
+  });
+
+  it('dia sem horario oferece a volta — e a volta e uma rota que existe', () => {
+    const [acao] = tocaDia(HORARIOS([]));
+
+    expect(acao?.resposta).toBe('sem_horario_no_dia');
+    if (acao?.tipo !== 'enviar_lista') throw new Error('esperava lista');
+
+    // O n8n oferecia "Escolher outro dia" com um id que nenhuma rota reconhecia.
+    const volta = acao.opcoes[0]!;
+    expect(volta.id).toBe('1.barbeiro?b=1');
+    expect(rotear(botao(volta.id), { ...SEM_NOME, agenda: DIAS })[0]?.resposta).toBe(
+      'barbeiro_escolhido',
+    );
+  });
+
+  it('barbeiro desativado no meio derruba o `b` do id e volta a pergunta', () => {
+    const acoes = rotear(botao(montarId('dia', { b: '9', d: '2026-08-04' })), {
+      ...SEM_NOME,
+      agenda: HORARIOS(['08:00']),
+    });
+
+    expect(acoes[0]?.resposta).toBe('escolher_barbeiro');
+  });
+});
+
+describe('rotear — pergunta do nome (fim desta fatia)', () => {
+  const tocaHora = (params: Record<string, string>) =>
+    rotear(botao(montarId('hora', params)), SEM_NOME);
+
+  it('confirma a escolha inteira e pede nome e sobrenome', () => {
+    const acoes = tocaHora({ b: '1', d: '2026-08-04', h: '13:00' });
+
+    expect(acoes.map((acao) => acao.resposta)).toEqual(['horario_escolhido', 'pedir_nome']);
+    expect(acoes[0]?.texto).toContain('Ter 04/08');
+    expect(acoes[0]?.texto).toContain('13:00');
+    expect(acoes[0]?.texto).toContain('Lucas Costa');
+    expect(acoes[1]?.texto).toContain('nome e sobrenome');
+  });
+
+  it('sem dia ou sem hora no id, oferece a volta em vez de inventar', () => {
+    expect(tocaHora({ b: '1', h: '13:00' })[0]?.resposta).toBe('sem_horario_no_dia');
+    expect(tocaHora({ b: '1', d: '2026-08-04' })[0]?.resposta).toBe('sem_horario_no_dia');
   });
 });

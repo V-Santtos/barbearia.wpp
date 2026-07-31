@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Espelho } from '../calendario/crm.js';
 import type { Env } from '../config/env.js';
 import type { Acao, ContextoFluxo } from '../fluxo/acoes.js';
 import { rotear } from '../fluxo/rotear.js';
@@ -16,8 +17,16 @@ export type Dependencias = {
   registrar: (
     evento: EventoRecebido,
     decidir: (contexto: ContextoFluxo) => Acao[],
-  ) => Promise<{ novo: boolean; enviar: Acao[]; clienteNovo: boolean }>;
+  ) => Promise<{
+    novo: boolean;
+    enviar: Acao[];
+    clienteNovo: boolean;
+    /** Nome do cadastro, quando existe. Vai pro espelho identificar a conversa. */
+    nome: string | undefined;
+  }>;
   enviar: Emissor;
+  /** Copia a conversa pro painel do dono. Opcional: sem ele, o bot funciona igual. */
+  espelho?: Espelho;
 };
 
 export function criarRotasWebhook(env: Env, deps: Dependencias): Hono {
@@ -128,9 +137,12 @@ async function processar(recebido: EventoRecebido, deps: Dependencias): Promise<
   // a reentrega da Meta cai no dedupe e a mensagem se perde (com log de erro).
   // Gatilho de upgrade: quando existir a tabela `envios_pendentes` (outbox), o
   // envio passa por ela e ganha retentativa de graca.
+  const enviadas: { acao: Acao; wamid: string | undefined }[] = [];
   for (const acao of decisao.enviar) {
-    await deps.enviar(acao);
+    enviadas.push({ acao, wamid: await deps.enviar(acao) });
   }
+
+  await espelhar(recebido, decisao.nome, enviadas, deps);
 
   console.log(
     JSON.stringify({
@@ -143,4 +155,56 @@ async function processar(recebido: EventoRecebido, deps: Dependencias): Promise<
       enviadas: decisao.enviar.map((acao) => acao.resposta),
     }),
   );
+}
+
+/**
+ * Copia a conversa pro painel do dono — os dois lados.
+ *
+ * Roda DEPOIS do envio, de proposito: o painel atrasar alguns segundos e chato, o
+ * cliente esperar por causa do painel e inaceitavel. E o `catch` daqui e o que garante
+ * que calendario fora do ar nunca vire mensagem perdida.
+ *
+ * A entrada e espelhada mesmo quando `enviadas` esta vazio. Vazio quer dizer que a
+ * trava de rajada calou o bot — e e exatamente nessa hora que o dono mais quer ver o
+ * que o cliente esta escrevendo.
+ */
+async function espelhar(
+  recebido: EventoRecebido,
+  nome: string | undefined,
+  enviadas: { acao: Acao; wamid: string | undefined }[],
+  deps: Dependencias,
+): Promise<void> {
+  if (!deps.espelho) return;
+
+  try {
+    const resultados = [
+      await deps.espelho.entrada(recebido, nome),
+      ...(await Promise.all(
+        enviadas.map(({ acao, wamid }) => deps.espelho!.saida(acao, wamid)),
+      )),
+    ];
+
+    const falhas = resultados.filter((r) => !r.ok);
+    if (falhas.length > 0) {
+      console.error(
+        JSON.stringify({
+          nivel: 'error',
+          evento: 'crm.espelho.falhou',
+          wamid: recebido.wamid,
+          falhas: falhas.map((r) => (r.ok ? '' : r.motivo)),
+        }),
+      );
+    }
+  } catch (erro) {
+    // `pedir()` ja engole tudo, entao chegar aqui e defeito nosso — nao pode virar
+    // mensagem nao entregue por causa do painel.
+    console.error(
+      JSON.stringify({
+        nivel: 'error',
+        evento: 'crm.espelho.quebrou',
+        wamid: recebido.wamid,
+        erro: erro instanceof Error ? erro.message : String(erro),
+      }),
+    );
+  }
 }

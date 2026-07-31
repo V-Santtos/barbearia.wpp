@@ -154,7 +154,10 @@ qualquer uma depois custa reescrever o que veio em cima.
 ## [2026-07-30] Mensagem inicial padronizada e escolha do barbeiro
 - **Formato padrão do menu é `interactive.type = list`**, não os 3 botões de resposta
   rápida. Custa um toque a mais (o cliente abre "Ver opções") e em troca dá header e
-  footer, que `button` não aceita. Decisão do dono do produto: visual completo.
+  footer. Decisão do dono do produto: visual completo. ⚠️ **A justificativa original
+  dizia que `button` não aceita header nem footer, e isso está errado** — ver a
+  correção na entrada "Dia e horário" desta mesma data. A decisão continua de pé pelo
+  que sobrou dela (o cartão com "Ver opções" e título de seção), não pela premissa.
 - **A abertura do dia é picada em duas mensagens** — saudação como texto normal, menu
   logo atrás. Numa mensagem só, o "Boa noite" viraria título de cartão. Custa uma
   chamada HTTP a mais por abertura, e o custo foi aceito explicitamente.
@@ -226,6 +229,113 @@ As decisões que valem daqui pra frente:
 
 **Por quê importa:** os dois sistemas dividem o mesmo banco, e foi exatamente aí
 que nasceram os defeitos — cada tabela precisa de um dono declarado.
+
+## [2026-07-30] Dia e horário: formato do botão e a janela da agenda
+
+- **Exceção declarada ao "formato padrão é `list`":** com **3 opções ou menos**, a
+  mensagem vai como `interactive.type = button`; com **mais de 3**, como `list`. Vale
+  para o dia e para o horário. O padrão de 2026-07-30 (lista com header e footer)
+  continua valendo em todo o resto — inclusive no menu de abertura, que tem número
+  fixo de opções, e na escolha do barbeiro, que tem 2 e mesmo assim segue em lista
+  porque aquela tela já foi validada no celular.
+  - **Premissa corrigida:** `button` **aceita** header e footer. A
+    [documentação da Meta](https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-reply-buttons-messages/)
+    lista os dois como opcionais no objeto `interactive`, junto de `body` e até 3
+    botões. A frase contrária veio do fluxo n8n, entrou aqui como justificativa da
+    padronização em lista, e foi repetida ao dono do produto quando ele decidiu a
+    regra dos 3 — ele aceitou perder o cartão, e não precisava. O que `button`
+    realmente não tem é o rótulo "Ver opções" e o título de seção; e o título de cada
+    opção cai de 24 para 20 caracteres.
+  - **A escolha é declarada por mensagem, nunca deduzida da contagem.** É um campo
+    `compacta` na ação. Deduzir pelo número de opções transformaria a decisão sobre o
+    menu de abertura (3 opções, e ainda assim lista) num acidente.
+  - Origem: é a regra do nó `Padrão dos Botões` do n8n (anexo, seção 11), preservada.
+- **Cada passo sai em duas mensagens: interseção curta em texto, depois a lista.**
+  Regra do dono do produto, mesma forma da abertura do dia (saudação + menu).
+  - **Por que é margem de segurança e não enfeite:** o envio é sequencial, uma
+    chamada HTTP por mensagem. A interseção é texto puro, chega primeiro, e a lista só
+    é postada depois. Se o cartão demorar, o cliente já tem resposta na tela em vez de
+    silêncio — e silêncio é o que faz gente digitar solto ou caçar botão antigo.
+  - **O que ela ainda não cobre:** a consulta ao calendário acontece antes das duas
+    mensagens. Medido em 2026-07-30 contra o banco real: **4805 ms na primeira chamada
+    do processo, ~900 ms nas seguintes** — a API está em `localhost`, mas o banco dela
+    é o Supabase, pela internet. Cobrir essa janela exige mandar a interseção antes da
+    consulta, o que significa tirar a chamada HTTP de dentro da transação. Marcado com
+    `ponytail:` no código.
+- **Um horário só, ou até três, viram botão direto.** Verificado contra o banco real:
+  o dia corrente com 1 vaga saiu em `button`; um dia cheio, com 13, saiu em lista.
+- **A lista mostra no máximo 10 horários, e o resto do dia não aparece.** Decisão
+  explícita do dono do produto, com o custo à vista: a agenda do profissional 1 vai
+  até 23:00 e gera 13 slots, então 20:00, 21:00 e 22:00 ficam invisíveis num dia
+  vazio. É o mesmo corte que o n8n fazia, com a diferença de estar declarado. O
+  conserto, quando doer, é perguntar o período (manhã/tarde/noite) antes — cabe em
+  botão e não esconde nada.
+- **A janela da agenda é do barbeiro, e vai de 4 a 10 dias.** A coluna
+  `agenda_profissional.janela_agendamento_dias` já existia, por profissional, e a API
+  já a respeitava nas três rotas. Mudou a faixa: era 7 a 15.
+  - **Por que o teto caiu para 10:** uma seção de `list` do WhatsApp aceita no máximo
+    10 linhas, e acima disso a Meta recusa a mensagem **inteira**. Com o teto em 10,
+    tudo que o dono configura é exibível — não existe dia com vaga que o cliente não
+    consegue ver.
+  - **Por que o piso caiu para 4:** com o teto em 10, a faixa 7..10 daria uma barra de
+    três passos. E quem quer agenda curta não tinha como pedir menos de uma semana.
+  - **O bot não manda `days=`.** A rota `dias-disponiveis` usa a configuração do
+    profissional quando o parâmetro vem ausente. É isso que impede o defeito do n8n,
+    onde três tetos diferentes brigavam (15 pedido à API, `slice(0,7)` no código,
+    `slice(0,10)` no payload) e o menor vencia em silêncio. Uma régua só: o slider do
+    dono.
+  - A faixa está escrita em três lugares que mudam juntos — o `CHECK` da tabela
+    (migração `20260730190000`), `normalizeBookingWindowDays` no `server.js` e
+    `JANELA_MIN_DIAS`/`JANELA_MAX_DIAS` em `CALENDARIO/lib/utils.ts`. A barra existe
+    **duas vezes** na interface (`AgendaSettingsModal` e o painel do `Sidebar`); as
+    duas passaram a ler a constante em vez de repetir os números.
+
+**Por quê importa:** é a primeira regra que atravessa os dois sistemas — o dono
+configura no painel e o cliente vê no WhatsApp. O teto de 10 não é preferência de
+layout, é limite da Meta; afrouxá-lo no calendário quebra o bot, e o sintoma seria a
+mensagem não chegar.
+
+## [2026-07-30] O espelho da conversa no painel do dono
+
+O bot copia a conversa para o CRM do calendário (`POST /whatsapp/events`), que estava
+de pé e sem ninguém escrevendo desde que os nós `Saída #N` do n8n morreram.
+
+- **Os dois lados, sempre.** A mensagem do cliente **e** cada resposta que o bot
+  realmente enviou. Só um lado deixaria o painel contando meia conversa.
+- **A entrada é espelhada mesmo quando o bot fica calado.** A trava de rajada existe
+  para calar o bot, e é justamente aí que o dono mais precisa ver o que o cliente está
+  escrevendo. O que a trava suprimiu não foi para o cliente e não vai para o painel.
+- **O espelho nunca atrasa nem derruba o atendimento.** Roda depois do envio, e toda
+  falha vira log. Painel atrasado é chato; cliente esperando por causa do painel é
+  inaceitável.
+- **Idempotência pelo `whatsapp_message_id`**, nas duas pontas: o `wamid` da Meta na
+  entrada, e **o `wamid` que a Meta devolve no envio** na saída — por isso
+  `criarEmissor` passou a ler `messages[0].id` em vez de descartar a resposta. Sem id
+  estável, uma repetição duplicaria a fala do bot e a conversa apareceria gaguejando
+  para o dono. Verificado contra o banco real: a mesma entrada mandada duas vezes
+  produziu **uma** linha.
+- **O texto do painel sai da própria ação enviada**, nunca de uma paráfrase. No n8n o
+  espelho era escrito à mão num nó separado, e as duas versões divergiam — o painel
+  dizia `"Qual dia você prefere? para o agendamento"` e o WhatsApp dizia
+  `"*Qual dia você prefere?*"`. Duas verdades para a mesma frase, e a errada era a que
+  o dono lia.
+- **O nome do painel é o do cadastro, com o perfil do WhatsApp como reserva**
+  (decisão do dono do produto). Isto **não** afrouxa a regra de que o bot só chama
+  pelo nome quem se apresentou: no painel o nome é para o dono **ler**, nunca para o
+  bot **dizer**.
+- **O rate limit da rota subiu de 30 para 600/min.** O bot é um IP só atendendo todos
+  os clientes, e um agendamento inteiro gera ~14 chamadas — dois clientes no mesmo
+  minuto estouravam o teto antigo, e o terceiro sumiria do painel sem ninguém notar,
+  porque o espelho falha em silêncio de propósito. A rota é protegida por token, então
+  o balde estreito defendia pouco.
+- **O token é opcional no bot** (`CALENDARIO_WEBHOOK_TOKEN`). Sem ele o espelho
+  simplesmente não existe e o atendimento continua igual — melhor que derrubar o
+  serviço na subida por causa de uma integração acessória.
+
+**Por quê importa:** é a segunda costura entre os dois sistemas, e a primeira em que o
+bot escreve no território do calendário. A regra de dono de tabela continua valendo —
+quem escreve nas tabelas `whatsapp_*` é a API do calendário, pela rota dela; o bot
+pede, não escreve direto.
 
 ## [2026-07-29] Processo de curadoria de skills/conhecimento
 - **Regra:** todo repositório, skill ou conhecimento trazido passa por: (1) avaliação
