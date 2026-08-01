@@ -85,8 +85,8 @@ export type Acao =
       tipo: 'enviar_lista';
       /** Teto de 60. Opcional: so a abertura do dia tem cabecalho. */
       cabecalho: string | undefined;
-      /** Teto de 60. */
-      rodape: string;
+      /** Teto de 60. Opcional: o cartao de conferencia dispensa rodape. */
+      rodape: string | undefined;
       /** O rotulo que abre a lista. Teto de 20. Ignorado quando vira `button`. */
       abrir: string;
       /** Titulo da secao. Teto de 24. Ignorado quando vira `button`. */

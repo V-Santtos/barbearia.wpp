@@ -480,9 +480,9 @@ function responderNome(texto: string, para: string, contexto: ContextoFluxo): Ac
  *
  * **O nome e o unico campo aqui que pode estar errado.** Barbeiro, dia e hora vieram
  * de ids de botao que nos mesmos escrevemos — nao ha caminho em que estejam errados.
- * Por isso ele sai sozinho na primeira linha, em negrito, longe do resto: cercado de
- * coisa certa, o olho reconhece o conjunto pelo dia e pela hora e passa batido
- * justamente pelo unico item que precisava de conferencia.
+ * Por isso ele sai sozinho na primeira linha, rotulado e em negrito, longe do resto:
+ * cercado de coisa certa, o olho reconhece o conjunto pelo dia e pela hora e passa
+ * batido justamente pelo unico item que precisava de conferencia.
  *
  * A mensagem curta na frente existe pelo mesmo motivo, e e uma ponte deliberada — as
  * outras tres foram cortadas por serem ruido, esta tem trabalho a fazer. O 👇 e o que
@@ -490,7 +490,6 @@ function responderNome(texto: string, para: string, contexto: ContextoFluxo): Ac
  */
 function cartaoDeConferencia(para: string, contexto: ContextoFluxo, nome: string): Acao[] {
   const reserva = contexto.reserva!;
-  const completo = palavrasReais(nome) > 1;
 
   return [
     {
@@ -504,12 +503,10 @@ function cartaoDeConferencia(para: string, contexto: ContextoFluxo, nome: string
       para,
       resposta: 'conferir_nome',
       cabecalho: CABECALHO_AGENDAMENTO,
-      texto: `*${nome}*\n\n📅 ${rotularDia(reserva.data, contexto.hoje)} às ${reserva.hora}\n💈 ${reserva.barbeiro.nome}`,
-      // O rodape anuncia a acao provavel de CADA estado. Com uma palavra so, o que
-      // falta e o sobrenome; com o nome completo, o que resta e conferir.
-      rodape: completo
-        ? 'Confira o nome antes de confirmar.'
-        : 'Se tiver sobrenome, é só mandar abaixo.',
+      texto: `Nome: *${nome}*\n\n📅 ${rotularDia(reserva.data, contexto.hoje)} às ${reserva.hora}\n💈 ${reserva.barbeiro.nome}`,
+      // Sem rodape: ele repetia o que a mensagem curta na frente do cartao ja diz, e
+      // duas instrucoes para o mesmo gesto competem em vez de somar.
+      rodape: undefined,
       abrir: 'Ver opções',
       secao: 'Agendamento',
       // Dois botoes: sai no formato `button`, com cabecalho e rodape a vista, sem o
@@ -517,7 +514,7 @@ function cartaoDeConferencia(para: string, contexto: ContextoFluxo, nome: string
       compacta: true,
       opcoes: [
         { id: montarId('confirmar'), titulo: '✅ Confirmar' },
-        { id: montarId('corrigir'), titulo: '✏️ Corrigir nome' },
+        { id: montarId('corrigir'), titulo: 'Corrigir nome' },
       ],
     },
   ];

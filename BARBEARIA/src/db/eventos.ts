@@ -6,7 +6,7 @@ import { lerId } from '../fluxo/botoes.js';
 import { juntarNome, lerNome, palavrasReais } from '../fluxo/nome.js';
 import { ESTADOS_DO_NOME } from '../fluxo/rotear.js';
 import { saudacaoDe } from '../fluxo/saudacao.js';
-import { registrarContato } from './contatos.js';
+import { guardarNome, registrarContato } from './contatos.js';
 import { lerBarbeirosAtivos } from './profissionais.js';
 
 /**
@@ -230,8 +230,15 @@ export async function registrarEDecidir(
     };
 
     const alvo = alvoDaAgenda(evento, base);
+    const agenda = alvo ? await buscarAgenda(alvo) : undefined;
 
-    const acoes = decidir({ ...base, agenda: alvo ? await buscarAgenda(alvo) : undefined });
+    // O nome so vai pro cadastro depois que a agenda confirmou: gravar antes deixaria
+    // o cliente registrado por um agendamento que o `409` de vaga tomada recusou.
+    if (alvo?.tipo === 'marcar' && agenda?.tipo === 'marcado') {
+      await guardarNome(cliente, evento.de, alvo.cliente);
+    }
+
+    const acoes = decidir({ ...base, agenda });
 
     // A trava de rajada vale so pra texto: dois toques em botao seguidos sao uso
     // normal do fluxo, nao insistencia.
@@ -322,45 +329,86 @@ async function lerEscada(
 /**
  * O nome que o cliente vem montando e a reserva que ele ja fechou por botao.
  *
- * As duas saem do MESMO recorte do resto do estado — hoje em Sao Paulo, e o corte no
- * ultimo botao —, e e esse corte que faz `Corrigir nome` funcionar sem apagar nada:
- * ele e um botao, entao as tentativas anteriores ficam do lado de fora sozinhas.
- *
- * As pecas do nome sao juntadas na ordem em que chegaram, com as mesmas regras que o
- * roteador usa (`juntarNome`), pra que "Victor" + "Santos" vire `Victor Santos` e
- * "Vicctor" + "Victor" vire `Victor` — nunca `Vicctor Victor`.
+ * As duas saem do MESMO recorte do resto do estado — hoje em Sao Paulo, e o corte que
+ * `inicioDaEtapa` decide. O SQL so entrega o dia: quem sabe o que cada acao significa
+ * e o TypeScript, com o mesmo `lerId` do roteador.
  */
 async function lerEtapaDoNome(
   cliente: pg.PoolClient,
   de: string,
   barbeiros: Barbeiro[],
 ): Promise<{ nomePendente: string | undefined; reserva: Reserva | undefined }> {
-  const { rows } = await cliente.query<{ tipo: string; payload: unknown }>(
+  const { rows } = await cliente.query<LinhaDoDia>(
     `with inicio as (
        select date_trunc('day', now() at time zone $2) at time zone $2 as momento
-     ),
-     ultimo_botao as (
-       select coalesce(max(e.id), 0) as id
-         from webhook_eventos e, inicio
-        where e.de = $1 and e.tipo = 'botao' and e.recebido_em >= inicio.momento
      )
      select e.tipo, e.payload
-       from webhook_eventos e, inicio, ultimo_botao
+       from webhook_eventos e, inicio
       where e.de = $1
         and e.recebido_em >= inicio.momento
-        and e.id >= ultimo_botao.id
       order by e.id`,
     [de, FUSO],
   );
 
-  let nomePendente: string | undefined;
-  let reserva: Reserva | undefined;
+  return etapaDoNome(rows, barbeiros);
+}
 
-  for (const linha of rows) {
-    if (linha.tipo === 'botao') {
-      reserva = lerReserva(linha.payload, barbeiros) ?? reserva;
-      continue;
-    }
+export type LinhaDoDia = { tipo: string; payload: unknown };
+
+/**
+ * Onde a etapa do nome comeca, dentro do dia.
+ *
+ * O corte NAO pode ser "o ultimo botao": quando o evento que estamos processando e o
+ * proprio toque em Confirmar, ele ja esta gravado, vira o ultimo botao, e a janela
+ * passa a excluir o nome que o cliente digitou logo antes. Era esse o bug de
+ * 2026-08-01 — Confirmar reperguntava o nome.
+ *
+ * `confirmar` nao abre etapa nenhuma: ele FECHA a que esta em curso, entao e
+ * transparente pro corte. Todo outro botao continua sendo fronteira, e e isso que faz
+ * `Corrigir nome` descartar as tentativas anteriores sem precisar apagar nada.
+ */
+function inicioDaEtapa(linhas: LinhaDoDia[]): number {
+  for (let i = linhas.length - 1; i >= 0; i -= 1) {
+    const linha = linhas[i];
+    if (linha?.tipo !== 'botao') continue;
+
+    const id = lerId(botaoDoPayload(linha.payload) ?? '');
+    if (id?.acao === 'confirmar') continue;
+
+    return i;
+  }
+
+  return 0;
+}
+
+/**
+ * O nome e a reserva NAO tem o mesmo tempo de vida, e confundir os dois foi o segundo
+ * bug de 2026-08-01:
+ *
+ * - o **nome** recomeca a cada fronteira — e exatamente isso que `Corrigir nome` faz;
+ * - a **reserva** nasce no toque do horario e vale pelo agendamento inteiro. Corrigir
+ *   o nome nao desmarca o horario. Sem ela, o bot responde "nao consegui abrir a
+ *   agenda" com a agenda no ar.
+ *
+ * Por isso a reserva varre o dia (vale o ultimo horario escolhido, que e o que o
+ * cliente ve no cartao) e so o nome respeita o corte.
+ *
+ * As pecas do nome sao juntadas na ordem em que chegaram, com as mesmas regras que o
+ * roteador usa (`juntarNome`), pra que "Victor" + "Santos" vire `Victor Santos` e
+ * "Vicctor" + "Victor" vire `Victor` — nunca `Vicctor Victor`.
+ */
+export function etapaDoNome(
+  linhas: LinhaDoDia[],
+  barbeiros: Barbeiro[],
+): { nomePendente: string | undefined; reserva: Reserva | undefined } {
+  let reserva: Reserva | undefined;
+  for (const linha of linhas) {
+    if (linha.tipo === 'botao') reserva = lerReserva(linha.payload, barbeiros) ?? reserva;
+  }
+
+  let nomePendente: string | undefined;
+  for (const linha of linhas.slice(inicioDaEtapa(linhas))) {
+    if (linha.tipo === 'botao') continue;
 
     const texto = textoDoPayload(linha.payload);
     if (!texto) continue;

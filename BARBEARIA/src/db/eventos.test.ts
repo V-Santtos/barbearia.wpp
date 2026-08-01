@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ContextoFluxo } from '../fluxo/acoes.js';
 import { montarId } from '../fluxo/botoes.js';
 import type { EventoRecebido } from '../whatsapp/eventos.js';
-import { alvoDaAgenda } from './eventos.js';
+import { alvoDaAgenda, etapaDoNome, type LinhaDoDia } from './eventos.js';
 
 /**
  * `alvoDaAgenda` decide o que perguntar — e, desde a etapa do nome, o que ESCREVER.
@@ -125,5 +125,88 @@ describe('alvoDaAgenda — quando NAO escrever', () => {
     expect(
       alvoDaAgenda(botao(montarId('confirmar')), { ...NO_CARTAO, reserva: undefined }),
     ).toBeUndefined();
+  });
+});
+
+/**
+ * A janela da etapa do nome — a peca que nenhum teste cobria ate 2026-08-01, e onde
+ * morava o bug de Confirmar reperguntar o nome.
+ */
+const linhaBotao = (id: string): LinhaDoDia => ({
+  tipo: 'botao',
+  payload: { interactive: { button_reply: { id } } },
+});
+
+const linhaTexto = (body: string): LinhaDoDia => ({ tipo: 'texto', payload: { text: { body } } });
+
+const HORA = montarId('hora', { b: '1', d: '2026-08-04', h: '09:00' });
+
+describe('etapaDoNome — onde a janela comeca', () => {
+  it('Confirmar enxerga o nome digitado antes dele', () => {
+    // A sequencia exata do teste no celular: horario, nome, Confirmar. O toque em
+    // Confirmar ja esta gravado quando o contexto e montado — se ele contasse como
+    // fronteira, cortaria fora justamente o nome que veio para ser confirmado.
+    const { nomePendente, reserva } = etapaDoNome(
+      [linhaBotao(HORA), linhaTexto('Victor Cardoso'), linhaBotao(montarId('confirmar'))],
+      [LUCAS],
+    );
+
+    expect(nomePendente).toBe('Victor Cardoso');
+    expect(reserva).toEqual({ barbeiro: LUCAS, data: '2026-08-04', hora: '09:00' });
+  });
+
+  it('Corrigir nome continua descartando as tentativas anteriores', () => {
+    expect(
+      etapaDoNome(
+        [linhaBotao(HORA), linhaTexto('Vicctor'), linhaBotao(montarId('corrigir'))],
+        [LUCAS],
+      ).nomePendente,
+    ).toBeUndefined();
+  });
+
+  it('o sobrenome picado junta com o primeiro nome', () => {
+    expect(
+      etapaDoNome([linhaBotao(HORA), linhaTexto('Victor'), linhaTexto('Cardoso')], [LUCAS])
+        .nomePendente,
+    ).toBe('Victor Cardoso');
+  });
+
+  it('o que veio antes do horario fica de fora', () => {
+    // "Victor Cardoso" dito no meio do menu, antes de escolher horario, nao pode
+    // reaparecer como nome pendente depois.
+    expect(
+      etapaDoNome([linhaTexto('Victor Cardoso'), linhaBotao(HORA)], [LUCAS]).nomePendente,
+    ).toBeUndefined();
+  });
+});
+
+describe('etapaDoNome — a reserva sobrevive a correcao', () => {
+  it('Corrigir nome apaga o nome, nunca o horario ja escolhido', () => {
+    // Sequencia real de 2026-08-01: horario, nome, Confirmar, Corrigir, nome de novo.
+    // O corte existe para o nome recomecar; a reserva nasceu no toque do horario e
+    // continua valendo — sem ela o bot responde "nao consegui abrir a agenda".
+    const { nomePendente, reserva } = etapaDoNome(
+      [
+        linhaBotao(HORA),
+        linhaTexto('Victor Cardoso'),
+        linhaBotao(montarId('confirmar')),
+        linhaBotao(montarId('corrigir')),
+        linhaTexto('Victor Cardoso'),
+      ],
+      [LUCAS],
+    );
+
+    expect(reserva).toEqual({ barbeiro: LUCAS, data: '2026-08-04', hora: '09:00' });
+    expect(nomePendente).toBe('Victor Cardoso');
+  });
+
+  it('trocar de horario troca a reserva — vale o ultimo escolhido', () => {
+    const outro = montarId('hora', { b: '1', d: '2026-08-05', h: '14:00' });
+
+    expect(etapaDoNome([linhaBotao(HORA), linhaBotao(outro)], [LUCAS]).reserva).toEqual({
+      barbeiro: LUCAS,
+      data: '2026-08-05',
+      hora: '14:00',
+    });
   });
 });

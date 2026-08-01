@@ -154,3 +154,50 @@ Formato de cada entrada:
   provaria nada.
 - Como saber que estou errando: usar `Promise.all` em escrita cujo consumidor ordena
   por timestamp.
+
+## [2026-08-01] Executar procedimento escrito pela metade e chamar de pronto
+
+- O que aconteceu: o `CONTEXTO.md` diz, com todas as letras, que resetar o estado
+  de teste é `webhook_eventos` **+ as três tabelas `whatsapp_*` + `agendamentos`**.
+  Eu li esse arquivo no início da sessão, rodei **só a primeira linha** e anunciei
+  "estado zerado". O usuário descobriu a sobra sozinho, vendo a conversa antiga
+  ainda no painel — 21 mensagens, 1 conversa e 1 contato que eu tinha deixado para
+  trás. Aconteceu duas vezes no mesmo dia: na segunda, ainda faltou `agendamentos`.
+- Correção: **procedimento que está escrito, executa inteiro e confere o resultado
+  antes de dizer que acabou.** Rodar um `select count(*)` nas tabelas envolvidas e
+  mostrar o retrato, em vez de deduzir pelo comando que eu acabei de digitar. O
+  reset completo, escopado no número de teste, está no `CONTEXTO.md`.
+- Como saber que estou errando: se eu digo "pronto/zerado/feito" sem ter olhado o
+  estado depois da ação, é palpite, não verificação.
+
+## [2026-08-01] Devolver ao usuário trabalho de execução que é meu
+
+- O que aconteceu: o classificador de permissão barrou o `ngrok`. Em vez de
+  insistir, entreguei o comando para ele rodar no terminal dele — e isso o prendeu
+  a uma janela aberta, porque processo iniciado por terminal morre com o terminal.
+  Ele ficou irritado, com razão: nas sessões anteriores **eu** subia o túnel em
+  background e ele nunca via terminal nenhum. Quando ele mandou eu executar, passou
+  de primeira. O mesmo padrão se repetiu depois com a verificação de uma escrita no
+  banco: eu disse "a verificação é você testar no celular" tendo acesso de leitura
+  **e escrita** ao banco — dava para provar na hora, em modo ensaio.
+- Correção: **bloqueio do classificador não é veredito final.** Dizer numa frase
+  que fui barrado e tentar de novo; a instrução explícita dele no histórico muda a
+  decisão. Só passar a bola no que só ele pode fazer: OAuth, senha, tela
+  interativa. E nunca confundir "não tenho teste automatizado" com "não consigo
+  verificar" — com banco na mão, `npm run db` em modo ensaio (rollback) prova o SQL
+  sem gravar nada. Fricção recorrente se resolve na raiz: regra em
+  `.claude/settings.local.json` (foi assim que `Bash(ngrok:*)` entrou).
+
+## [2026-08-01] Inventar requisito que a arquitetura dele já tinha resolvido
+
+- O que aconteceu: ao gravar o nome do cliente em `dados_cliente`, escrevi a função
+  **sobrescrevendo** nome anterior e apresentei isso como decisão deliberada
+  ("vale o mais recente"). Ele desmontou em uma pergunta: se o cliente cadastrado
+  nunca mais é perguntado sobre o nome, **quem** produziria um nome diferente? E
+  pior: correção de nome de cliente cadastrado é do painel do dono, então
+  reescrever ali passaria por cima da correção feita à mão. A regra virou escrita
+  única (`and nome is null`).
+- Correção: antes de "decidir" um comportamento, checar se a decisão já existe nas
+  regras dele. Um caso que eu não consigo descrever com um cenário concreto
+  ("quem, quando, como chega aqui?") provavelmente não existe — e defender-se de um
+  cenário inexistente é exatamente o over-engineering que o `REGRAS.md` proíbe.

@@ -55,3 +55,33 @@ export async function registrarContato(
 
   return { novo: linha?.novo ?? false, nome: linha?.nome ?? undefined };
 }
+
+/**
+ * Guarda o nome no cadastro, no momento em que o agendamento entrou na agenda.
+ *
+ * Por que aqui e nao junto com o agendamento: `agendamentos` e registro de um
+ * atendimento, e vai ser podado um dia — o cadastro do cliente nao. Sem esta escrita, o
+ * nome vive so na linha do agendamento, e o cliente que voltar depois da poda seria
+ * tratado como desconhecido de novo, tendo que repetir o nome que ja deu.
+ *
+ * Escreve UMA vez, e so quando o cadastro esta vazio. O bot nunca reescreve por dois
+ * motivos que se somam: quem ja tem nome nao vai ser perguntado de novo, e corrigir
+ * nome de cliente cadastrado e do painel do dono — reescrever aqui passaria por cima
+ * da correcao que ele fez a mao.
+ *
+ * A correcao DENTRO do fluxo continua valendo: `Corrigir nome` acontece antes do
+ * Confirmar, e o que chega aqui e o nome que o cliente conferiu no cartao.
+ */
+export async function guardarNome(
+  cliente: pg.PoolClient,
+  telefone: string,
+  nome: string,
+): Promise<void> {
+  await cliente.query(
+    `update dados_cliente
+        set nome = $2
+      where telefone = $1
+        and nome is null`,
+    [telefone, nome],
+  );
+}

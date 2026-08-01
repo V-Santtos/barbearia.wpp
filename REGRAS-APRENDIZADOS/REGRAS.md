@@ -437,3 +437,71 @@ custe um toque**.
 - **O bot chama pelo primeiro nome; banco e CRM guardam o completo.**
 - **`alvoDaAgenda` é a única função que autoriza escrita**, e recusa em quatro casos:
   correção, nome incompleto, Confirmar sem nome ou sem reserva, e texto fora da etapa.
+
+## [2026-08-01] A janela da etapa do nome: o corte é de quem sabe o que a ação significa
+
+Contexto: o primeiro teste ponta a ponta no celular derrubou dois bugs, os dois na
+mesma peça — a janela que decide o que o bot enxerga da conversa do dia ao montar a
+etapa do nome (`lerEtapaDoNome`, `src/db/eventos.ts`).
+
+**O corte não mora mais no SQL.** Ele era `id >= (último botão do dia)`, dentro da
+query. O toque em Confirmar é gravado **antes** de o contexto ser montado (o insert
+está no começo da transação, a leitura do contexto vem depois), então ele virava o
+próprio corte e a janela `id >= ele mesmo` excluía o nome que o cliente tinha digitado
+logo antes. Sintoma: Confirmar reperguntava o nome. Hoje o SQL só entrega o dia, e
+`inicioDaEtapa()` faz o corte em TypeScript, lendo o id com o mesmo `lerId` do
+roteador. **Regra que fica: o SQL não conhece o significado das ações; quem conhece é
+o TypeScript, e é lá que o corte se decide** — pôr `'1.confirmar'` numa string SQL
+seria o parser paralelo que este projeto proíbe.
+
+**A fronteira é "o último botão que não seja `confirmar`".** `confirmar` não abre etapa
+nenhuma: ele fecha a que está em curso. Todo outro botão continua sendo fronteira, e é
+isso que faz `Corrigir nome` descartar as tentativas anteriores sem precisar apagar
+nada.
+
+**Nome e reserva têm tempos de vida diferentes, e confundi-los foi o segundo bug.** O
+nome recomeça a cada fronteira — é o sentido do Corrigir. A reserva nasce no toque do
+horário e vale pelo agendamento inteiro: corrigir o nome não desmarca o horário. Com
+os dois no mesmo corte, tocar em `Corrigir nome` apagava a reserva junto, e o bot
+respondia "não consegui abrir a agenda" com a agenda no ar. Hoje a reserva varre o dia
+(vale o último horário escolhido) e só o nome respeita o corte.
+
+**Por que 189 testes não pegaram nada disso:** a janela vivia inteira dentro da query,
+e nenhum teste toca banco. Ela virou função pura (`etapaDoNome`), com teste — e os
+testes foram escritos e **vistos falhar** antes do conserto entrar.
+
+## [2026-08-01] O nome do cliente pertence ao cadastro, e é escrito uma vez
+
+`agendamentos` é registro de um atendimento e vai ser podado um dia; `dados_cliente` é
+cadastro e não. Enquanto o nome vivia só na linha do agendamento, o cliente que
+voltasse depois da poda seria tratado como desconhecido e teria que repetir o nome que
+já deu. Por isso `guardarNome()` (`src/db/contatos.ts`) grava em `dados_cliente` no
+mesmo momento em que a agenda confirma a marcação — **depois** da confirmação, nunca
+antes: gravar na intenção deixaria o cliente cadastrado por um agendamento que o `409`
+de vaga tomada recusou.
+
+**Escrita única (`and nome is null`), e o motivo não é performance.** O bot nunca
+reescreve porque (a) cliente com nome não vai ser perguntado de novo, e (b) corrigir
+nome de cliente cadastrado é do **painel do dono** — reescrever pelo bot passaria por
+cima da correção feita à mão. A correção dentro do fluxo continua valendo: `Corrigir
+nome` acontece antes do Confirmar, e o que chega ao cadastro é o nome que o cliente
+conferiu no cartão.
+
+## [2026-08-01] O cartão de conferência: rótulo no nome, sem rodapé, botão sem emoji
+
+Decisões do dono do produto, tomadas vendo o cartão real no celular:
+
+- O nome sai rotulado — `Nome: *Victor Cardoso*` — e não solto na primeira linha.
+- **Sem rodapé.** Ele repetia o que a mensagem curta na frente do cartão já diz, e duas
+  instruções para o mesmo gesto competem em vez de somar. Consequência conhecida e
+  aceita: o cartão de nome incompleto perdeu a dica "se tiver sobrenome, é só mandar
+  abaixo"; se ficar mudo demais no teste, o conserto é na mensagem da frente, **não**
+  trazendo o rodapé de volta.
+- `Corrigir nome` sem emoji. Seguro porque **o roteador roteia pelo id, jamais pelo
+  título** — o fluxo n8n antigo comparava `button_title === '✅ Confirmar'` e trocar o
+  emoji quebrava o bot em silêncio.
+
+**Armadilha que isso destravou:** o `footer` era mandado sempre. A Meta rejeita o envio
+inteiro (400) quando a chave está presente com valor vazio — mesmo motivo pelo qual o
+`header` já era condicional. `rodape` virou opcional no tipo e o `footer` só entra
+quando há texto (`src/whatsapp/enviar.ts`).

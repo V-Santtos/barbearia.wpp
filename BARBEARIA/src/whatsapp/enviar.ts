@@ -62,12 +62,12 @@ function montarCorpo(acao: Acao): Record<string, unknown> {
     return { ...base, type: 'text', text: { preview_url: false, body: acao.texto } };
   }
 
-  // Header e opcional, e mandar `header: undefined` nao serve — a Meta rejeita a
-  // chave presente com valor vazio.
+  // Header e footer sao opcionais, e mandar a chave com valor vazio nao serve — a Meta
+  // rejeita o envio inteiro. Os dois so entram quando ha texto.
   const moldura = {
     ...(acao.cabecalho ? { header: { type: 'text', text: acao.cabecalho } } : {}),
     body: { text: acao.texto },
-    footer: { text: acao.rodape },
+    ...(acao.rodape ? { footer: { text: acao.rodape } } : {}),
   };
 
   // Tetos da Meta, todos silenciosos (ela recusa o envio inteiro com 400): header 60,

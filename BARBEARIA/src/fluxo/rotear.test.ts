@@ -99,7 +99,7 @@ describe('rotear — abertura', () => {
       for (const opcao of menu.opcoes) expect(opcao.titulo.length).toBeLessThanOrEqual(24);
       expect(menu.abrir.length).toBeLessThanOrEqual(20);
       expect(menu.secao.length).toBeLessThanOrEqual(24);
-      expect(menu.rodape.length).toBeLessThanOrEqual(60);
+      expect(menu.rodape?.length ?? 0).toBeLessThanOrEqual(60);
       expect(menu.cabecalho?.length ?? 0).toBeLessThanOrEqual(60);
     }
   });
@@ -586,7 +586,7 @@ describe('rotear — a etapa do nome', () => {
     // O 👇 amarra o aviso ao cartao: sem ele, a frase manda conferir algo que ainda
     // nao chegou na tela.
     expect(acoes[0]?.texto).toContain('👇');
-    expect(cartao(acoes).texto.startsWith('*Victor Santos*')).toBe(true);
+    expect(cartao(acoes).texto.startsWith('Nome: *Victor Santos*')).toBe(true);
     expect(cartao(acoes).texto).toContain('Ter 04/08 às 08:00');
     expect(cartao(acoes).texto).toContain('Lucas Costa');
   });
@@ -597,20 +597,20 @@ describe('rotear — a etapa do nome', () => {
     expect(lista.compacta).toBe(true);
     expect(lista.opcoes).toEqual([
       { id: '1.confirmar', titulo: '✅ Confirmar' },
-      { id: '1.corrigir', titulo: '✏️ Corrigir nome' },
+      { id: '1.corrigir', titulo: 'Corrigir nome' },
     ]);
   });
 
-  it('o rodape anuncia a acao provavel de cada estado', () => {
-    expect(cartao(rotear(texto('victor'), PEDIU)).rodape).toContain('sobrenome');
-    expect(cartao(rotear(texto('victor santos'), PEDIU)).rodape).toContain('Confira o nome');
+  it('o cartao nao tem rodape: a mensagem na frente dele ja diz o que fazer', () => {
+    expect(cartao(rotear(texto('victor'), PEDIU)).rodape).toBeUndefined();
+    expect(cartao(rotear(texto('victor santos'), PEDIU)).rodape).toBeUndefined();
   });
 
   it('uma palavra so tambem vira cartao — recusar prenderia o cliente', () => {
     const acoes = rotear(texto('victor'), PEDIU);
 
     expect(acoes.map((acao) => acao.resposta)).toEqual(['conferir_nome_aviso', 'conferir_nome']);
-    expect(cartao(acoes).texto.startsWith('*Victor*')).toBe(true);
+    expect(cartao(acoes).texto.startsWith('Nome: *Victor*')).toBe(true);
   });
 
   it('sobrenome depois do cartao FECHA sem toque nenhum', () => {
@@ -642,7 +642,7 @@ describe('rotear — a etapa do nome', () => {
     const acoes = rotear(texto('Victor'), comCartao);
 
     expect(acoes.map((acao) => acao.resposta)).toEqual(['conferir_nome_aviso', 'conferir_nome']);
-    expect(cartao(acoes).texto.startsWith('*Victor*')).toBe(true);
+    expect(cartao(acoes).texto.startsWith('Nome: *Victor*')).toBe(true);
   });
 
   it('"errei o nome" escrito vale o mesmo que o botao', () => {

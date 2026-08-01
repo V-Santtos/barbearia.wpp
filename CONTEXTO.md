@@ -24,15 +24,33 @@ juntos — foram os dois na 3333 até 2026-07-30.
 Os dois falam com o **mesmo banco**: Supabase `sppexvjvnoganlduyjvs`. Acesso e
 armadilhas em `REGRAS-APRENDIZADOS/ANEXO_BANCO/`.
 
-## Onde estamos (2026-07-31)
+## Onde estamos (2026-08-01)
 
-**O agendamento fecha.** Menu → barbeiro → dia → horário → nome → cartão de
-conferência → Confirmar → **grava em `agendamentos` e aparece na agenda do dono**.
-A fatia que faltava foi escrita nesta sessão.
+**O agendamento fecha NO CELULAR, ponta a ponta.** Testado de verdade pelo WhatsApp
+em 2026-08-01: `oi` → menu → barbeiro → dia → horário → nome → cartão → Confirmar →
+linha em `agendamentos` (`Victor Cardoso / Lucas Costa / 2026-08-03 16:00 /
+confirmado / bot-whatsapp`), batendo com o id do botão tocado.
 
-189 testes passando, `npm run typecheck` limpo nos dois projetos. Os porquês estão em
-`REGRAS-APRENDIZADOS/REGRAS.md` (entradas de 2026-07-31) — **o que cada arquivo faz,
-o código responde melhor.**
+**Dois bugs foram achados e consertados nesse teste** — os dois na janela da etapa do
+nome, em `src/db/eventos.ts`. Os porquês estão no `REGRAS.md` (2026-08-01); em uma
+linha cada:
+
+1. **Confirmar reperguntava o nome.** O corte da janela era "último botão do dia",
+   feito em SQL. O toque em Confirmar é gravado ANTES de o contexto ser montado, virava
+   o próprio corte, e a janela excluía o nome digitado logo antes.
+2. **Corrigir nome derrubava o horário.** O mesmo corte governava nome e reserva, que
+   têm vidas diferentes. Só apareceu depois que o primeiro saiu da frente.
+
+O corte saiu do SQL e virou `inicioDaEtapa()` em TypeScript, com `lerId` — o SQL agora
+só entrega o dia. **195 testes**, `npm run typecheck` limpo.
+
+**O nome vai para `dados_cliente`** desde 2026-08-01 (`guardarNome()` em
+`src/db/contatos.ts`), escrita **única** (`and nome is null`), disparada só quando a
+agenda confirma. Antes disso o nome vivia só na linha do agendamento — e some quando o
+agendamento for podado. É o insumo de duas coisas: pular a pergunta do nome para
+cliente cadastrado e o botão personalizado com o primeiro nome. O SQL foi provado
+contra o banco em modo ensaio; **o gatilho ainda não foi visto disparar numa rodada
+real.**
 
 **O dono responde pelo painel.** `POST /whatsapp/conversations/:id/send` deixou de ser
 501: trava de janela → pede o envio ao bot → grava com o `wamid` na mão. Testado no
@@ -43,28 +61,41 @@ atende**, voltando sozinho no toque em botão ou na virada do dia.
 junção de mensagem picada e distinção entre acréscimo e correção. **Nunca foi testada
 no celular**: é o assunto da próxima sessão.
 
-## PRIMEIRA COISA AO RETOMAR (deixado em 2026-07-31)
+## PRIMEIRA COISA AO RETOMAR (deixado em 2026-08-01)
 
-**Nada foi testado no celular depois da etapa do nome.** Foi verificado contra o banco
-e contra a API reais (marcação, 409 de vaga tomada, barbeiro inexistente), e o
-agendamento apareceu na agenda do painel — mas o fluxo ponta a ponta pelo WhatsApp
-ficou para agora. **Comece subindo o ambiente, sem esperar ele pedir.**
+**Ele está no meio de um teste no celular e vai colar o resultado.** A sessão foi
+resetada com o teste em andamento. Não recomeçar do zero: leia o que já passou, suba o
+ambiente se ele estiver caído, e espere o relato dele.
 
-Os estados foram deixados **zerados** de propósito: `webhook_eventos` do número de
-teste, as três tabelas `whatsapp_*` e `agendamentos`. O primeiro teste é limpo.
+**O ambiente ficou de pé** ao fim da sessão (bot 3333, API 3334, painel 3002, túnel).
+Conferir antes de assumir: `curl -s -o /dev/null -w "%{http_code}" localhost:3333/saude`
+e `curl -s localhost:4040/api/tunnels`. **A URL do ngrok muda toda vez que o túnel
+sobe** — se ele subir de novo, entregar a URL nova com o caminho, para colar em
+Webhooks → Conta comercial do WhatsApp. Subir o túnel é **meu** trabalho, nunca no
+terminal dele (`Bash(ngrok:*)` está liberado; ver a seção do túnel abaixo).
 
-**O que exercitar, em ordem:**
+**O estado foi zerado nas cinco tabelas** antes do reset, e `dados_cliente.nome`
+continua `NULL` de propósito — é o ponto de partida que prova a escrita nova.
 
-1. `oi` → menu → barbeiro → dia → horário → a pergunta do nome.
-2. **Nome completo numa mensagem** → aviso com 👇 + cartão → Confirmar → conferir se o
-   agendamento aparece na agenda do painel, no dia e hora certos.
-3. **Nome picado**: mandar só o primeiro nome (cartão com rodapé pedindo sobrenome) e
-   depois o sobrenome — deve **fechar sozinho, sem toque**.
-4. **Correção**: mandar `Vicctor`, e depois `Victor` — deve **reimprimir o cartão**,
-   não agendar.
-5. **Lixo**: `ok`, `123` — recusa com a frase do motivo e o exemplo.
-6. O cartão em formato `button` (dois botões) — é a peça que a Meta ainda **não
-   aceitou na prática**; conferir que cabeçalho e rodapé aparecem.
+**Já validado no celular (não repetir sem motivo):**
+
+- `oi` → menu → barbeiro → dia → horário → pergunta do nome
+- Nome completo numa mensagem → cartão → Confirmar → **agendamento gravado**
+- Cartão em formato `button`: **a Meta aceitou**, com cabeçalho à vista
+
+**O que falta exercitar:**
+
+1. **Nome picado**: mandar só o primeiro nome e depois o sobrenome — deve **fechar
+   sozinho, sem toque**. Atenção: o cartão **não tem mais rodapé** (removido a pedido
+   dele em 2026-08-01), então o cartão de nome incompleto ficou sem a dica "se tiver
+   sobrenome, é só mandar abaixo". Ele quer ver se fica mudo demais; se ficar, o
+   conserto combinado é na mensagem curta da frente, **não** trazendo o rodapé de volta.
+2. **Correção**: `Vicctor` e depois `Victor` — deve **reimprimir o cartão**, não
+   agendar. O caminho do botão `Corrigir nome` rodou uma vez em cima do código com o
+   bug da reserva; **depois do conserto ele não voltou a rodar.**
+3. **Lixo**: `ok`, `123` — recusa com a frase do motivo e o exemplo.
+4. **`dados_cliente.nome`**: depois de qualquer agendamento fechar, conferir que o
+   nome caiu na tabela. `npm run db -- "select telefone, nome from dados_cliente"`.
 
 **Depois disso:** subir no GitHub e preparar o deploy na Vercel. Combinado como
 próximo assunto, não aberto ainda.
@@ -79,13 +110,20 @@ São três processos, cada um numa pasta, mais o ngrok. **Todos em background.**
 | API do calendário (Fastify) | `CALENDARIO/` | `npm run server` | 3334 |
 | Painel do dono (React/Vite) | `CALENDARIO/` | `npm run dev` | 3002 |
 
-O túnel é **um só**, e aponta para o bot — só ele recebe da Meta. `ngrok` direto pelo
-Bash dá `Exec format error`, e o `Start-Process` do PowerShell foi **barrado pelo
-classificador de permissão** em 2026-07-31. O que passa é o Bash chamando o `cmd`:
+O túnel é **um só**, e aponta para o bot — só ele recebe da Meta. Subir é comigo,
+**nunca pelo terminal do usuário** (processo iniciado num terminal morre quando ele
+fecha a janela — foi o que aconteceu em 2026-08-01 e irritou, com razão).
+
+`ngrok` sem extensão dá `Exec format error` no Bash (shim npm). O que executa é o
+`.cmd`, em background:
 
 ```
-cmd.exe /c "start /b ngrok.cmd http 3333"
+ngrok.cmd http 3333
 ```
+
+`Bash(ngrok:*)` e `Bash(ngrok.cmd:*)` estão liberados em `.claude/settings.local.json`
+desde 2026-08-01. As formas antigas — `Start-Process` e `cmd.exe /c "start /b …"` —
+foram barradas pelo classificador; não insistir nelas.
 
 Pegar a URL pública em `http://127.0.0.1:4040/api/tunnels` e conferir que os três
 respondem (`3333/saude` → 200, `3334/` → 200, `3002/` → 200; a raiz da 3333 dá 404,
@@ -95,17 +133,46 @@ e isso é o certo — ela só tem `/saude` e `/webhook/whatsapp`).
 caminho, para ele colar em Webhooks → Conta comercial do WhatsApp:
 `<url-do-ngrok>/webhook/whatsapp`. O verify token não muda.
 
-### 2. O estado já está zerado
+### 2. O reset do estado de teste — SÃO CINCO TABELAS
 
-Foi limpo no fim da sessão de 2026-07-31 — `webhook_eventos` do número de teste, as
-três tabelas `whatsapp_*` e `agendamentos`. **Não precisa rodar nada.** Se for repetir
-um teste no mesmo dia, aí sim:
+Foi limpo no fim da sessão de 2026-08-01. **Não precisa rodar nada** para o primeiro
+teste. Para repetir um teste no mesmo dia, roda os cinco, de dentro de `BARBEARIA/`.
+A ordem importa: as chaves estrangeiras exigem mensagem → conversa → contato.
 
 ```bash
-cd BARBEARIA && npm run db -- "delete from webhook_eventos where de = '553384246770'" -- --gravar
+npm run db -- "delete from agendamentos where telefone = '553384246770'" -- --gravar
+```
+```bash
+npm run db -- "delete from webhook_eventos where de = '553384246770'" -- --gravar
+```
+```bash
+npm run db -- "delete from whatsapp_messages where conversation_id in (select c.id from whatsapp_conversations c join whatsapp_contacts ct on ct.id = c.contact_id where ct.phone = '553384246770')" -- --gravar
+```
+```bash
+npm run db -- "delete from whatsapp_conversations where contact_id in (select id from whatsapp_contacts where phone = '553384246770')" -- --gravar
+```
+```bash
+npm run db -- "delete from whatsapp_contacts where phone = '553384246770'" -- --gravar
 ```
 
-Nada mais está bloqueado.
+**Um comando só, com `delete from` sem `where`, é barrado pelo classificador** — e o
+bloqueio está certo. Escopar no telefone passa.
+
+**Conferir depois, sempre** — `select count(*)` nas cinco. Rodar o delete e anunciar
+"zerado" sem olhar já deu errado duas vezes no mesmo dia
+(`REGRAS-APRENDIZADOS/APRENDIZADOS.md`, 2026-08-01).
+
+`webhook_eventos` é a memória do bot; as `whatsapp_*` são o espelho que alimenta a tela
+de conversas do painel. **São independentes**: limpar só a primeira deixa a conversa
+antiga visível no painel.
+
+`dados_cliente` **não entra no reset** — é o cadastro, e preservá-lo é o ponto. Mas
+depois que um agendamento fechar, `nome` deixa de ser `NULL`; para repetir o teste da
+escrita do nome, zerar só esse campo:
+
+```bash
+npm run db -- "update dados_cliente set nome = null where telefone = '553384246770'" -- --gravar
+```
 
 ## O passo DIA E HORÁRIO: feito em 2026-07-30
 
@@ -194,14 +261,9 @@ callback no painel da Meta. Detalhes em `ANEXO_WHATSAPP_META/README.md`.
 
 **Resetar o estado antes de testar do celular.** O bot lembra do que falou com o
 número **no dia corrente**, então retomar um teste no mesmo dia faz o cliente cair
-na escada de feedback e parecer bug:
-
-```bash
-cd BARBEARIA && npm run db -- "delete from webhook_eventos where de = '553384246770'" -- --gravar
-```
-
-Zera degrau, última resposta e trava de rajada, e **preserva o cadastro** em
-`dados_cliente`. `553384246770` é o número de teste do usuário.
+na escada de feedback e parecer bug. **São cinco tabelas, e o comando completo está
+na seção "O reset do estado de teste"** — limpar só `webhook_eventos` deixa a conversa
+antiga no painel e o agendamento velho na agenda. `553384246770` é o número de teste.
 
 **Estrutura de tabela se pergunta ao banco**, nunca a um markdown (`npm run db`).
 
@@ -215,6 +277,9 @@ Zera degrau, última resposta e trava de rajada, e **preserva o cadastro** em
   2026-07-31, **não implementado**. Hoje a frase "como você é novo por aqui" sai para
   todo mundo, e quem já fechou um agendamento a lê de novo na segunda vez. O `ponytail:`
   está no ponto exato, em `escolherHora()` de `src/fluxo/rotear.ts`.
+  **O que faltava já existe:** desde 2026-08-01 o nome é gravado em `dados_cliente`
+  (`guardarNome()`), e `registrarContato()` já devolve esse nome no `ContextoFluxo`
+  (`contexto.nome`). Falta só o roteador usar.
 - **Corrigir o nome de um cliente já cadastrado** — não existe em lugar nenhum. Ficou
   decidido que **não** vira opção de menu no WhatsApp (ficaria na frente de 100% dos
   clientes para resolver algo raro); o lugar é um campo no painel do dono.
