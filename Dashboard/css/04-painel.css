@@ -1,0 +1,65 @@
+/* A caixa `Panel` (cabecalho, corpo) e a grade de fileiras. */
+
+/* =========================================================================
+   PANELS
+   ========================================================================= */
+.db-panel {
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card), var(--inset-top);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.db-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.db-panel__head-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.db-panel__icon {
+  display: flex; align-items: center;
+  color: rgba(255,255,255,0.42);
+  flex-shrink: 0;
+}
+.db-panel__title { margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--text-strong); letter-spacing: 0.01em; }
+.db-panel__sub { margin: 2px 0 0; font-size: 11px; line-height: 14px; color: var(--text-muted); }
+.db-panel__actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.db-panel__body { flex: 1; min-width: 0; }
+
+.db-linkbtn {
+  font-size: 11px; font-weight: 500; color: var(--primary-soft);
+  background: transparent; border: 0; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-family: inherit;
+}
+.db-linkbtn:hover { background: rgba(167, 139, 250, 0.1); }
+
+/* Spacing utilities for panel body */
+.p-0 { padding: 0; }
+.p-3 { padding: 12px; }
+.p-4 { padding: 16px; }
+.p-5 { padding: 18px; }
+
+/* =========================================================================
+   ROWS / GRID
+   ========================================================================= */
+.db-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  padding: 0 32px 14px;
+}
+.db-row {
+  display: grid;
+  gap: 14px;
+  padding: 0 32px 14px;
+}
+.db-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }

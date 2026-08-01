@@ -1,0 +1,151 @@
+/* Casca do desktop: topbar, cabecalho da pagina, keyframes. */
+
+/* =========================================================================
+   DESKTOP SHELL
+   ========================================================================= */
+.db-shell {
+  width: 100%;
+  min-width: 0;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* ---- Top app bar ---- */
+.db-topbar {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border);
+  gap: 32px;
+  position: sticky; top: 0; z-index: 10;
+}
+.db-topbar__brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex-shrink: 0; white-space: nowrap; }
+.db-topbar__logo {
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  background: linear-gradient(135deg, #6B3EFF 0%, #4520c4 100%);
+  color: #fff;
+  border-radius: 8px;
+  box-shadow: var(--purple-glow);
+}
+.db-topbar__brand-name { font-weight: 600; color: var(--text-strong); letter-spacing: 0.04em; font-size: 12px; }
+.db-topbar__brand-sub { color: var(--text-faint); font-size: 12px; }
+
+.db-topbar--calendar { gap: 22px; }
+.db-topbar__calendar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.db-topbar__today {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: default;
+}
+.db-topbar__today:hover { color: var(--text-strong); background: var(--surface-hover); border-color: var(--border); }
+.db-iconbtn--compact { width: 28px; height: 28px; }
+.db-topbar__date {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.db-topbar__nav { display: flex; gap: 4px; flex: 1; }
+.db-topbar__nav-item {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease-out;
+}
+.db-topbar__nav-item:hover { color: var(--text-strong); background: var(--surface-hover); }
+.db-topbar__nav-item.is-active {
+  color: var(--text-strong);
+  background: rgba(106, 61, 255, 0.14);
+  box-shadow: inset 0 0 0 1px var(--border-purple);
+}
+.db-navbadge {
+  background: var(--warning);
+  color: #1a1300;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-left: 2px;
+}
+
+.db-topbar__right { display: flex; align-items: center; gap: 8px; }
+.db-iconbtn {
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  border-radius: 8px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease-out;
+}
+.db-iconbtn:hover { background: var(--surface-hover); color: var(--text-strong); border-color: var(--border); }
+.db-iconbtn__dot {
+  position: absolute; top: 6px; right: 6px;
+  width: 7px; height: 7px;
+  background: var(--warning);
+  border: 1.5px solid var(--bg-deep);
+  border-radius: 50%;
+}
+.db-avatar-me {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6B3EFF, #FC00FF);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  display: grid; place-items: center;
+  margin-left: 4px;
+}
+
+/* ---- Page header ---- */
+.db-pagehead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 28px 32px 18px;
+  gap: 24px;
+}
+.db-pagehead__title { font-size: 24px; line-height: 32px; font-weight: 600; color: var(--text-strong); margin: 0; letter-spacing: -0.01em; }
+.db-pagehead__sub { margin: 4px 0 0; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.db-pulse {
+  display: inline-block;
+  width: 6px; height: 6px;
+  background: #07FF99;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #07FF9988;
+  animation: pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.85); } }
+
+.db-pagehead__filters { display: flex; gap: 10px; align-items: center; }

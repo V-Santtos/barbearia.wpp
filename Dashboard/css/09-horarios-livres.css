@@ -1,0 +1,33 @@
+/* Proximos encaixes por barbeiro. */
+
+/* =========================================================================
+   FIRST FREE LIST
+   ========================================================================= */
+.firstfree { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.firstfree__row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(255,255,255,0.05);
+}
+.firstfree__row:last-child { border-bottom: 0; }
+.firstfree__dot { width: 8px; height: 8px; border-radius: 50%; }
+.firstfree__name { color: var(--text); font-weight: 500; }
+.firstfree__slots { display: inline-flex; align-items: center; gap: 6px; }
+.firstfree__when {
+  font-size: 11px;
+  color: var(--primary-soft);
+  background: rgba(106,61,255,0.08);
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* O segundo e a alternativa, nao a resposta: entra mais apagado. */
+.firstfree__when.is-segundo {
+  color: rgba(255,255,255,0.42);
+  background: rgba(255,255,255,0.04);
+}

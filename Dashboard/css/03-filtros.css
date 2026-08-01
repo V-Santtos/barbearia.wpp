@@ -1,0 +1,75 @@
+/* Chips de periodo e filtro de profissional. */
+
+/* ---- Chips (period) ---- */
+.chips {
+  display: inline-flex;
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+.chip {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 0;
+  cursor: pointer;
+  transition: all 0.18s ease-out;
+  font-family: inherit;
+}
+.chip:hover { color: var(--text-strong); }
+.chip--on {
+  background: var(--surface-raised);
+  color: var(--text-strong);
+  box-shadow: var(--inset-top), 0 1px 0 rgba(0,0,0,0.2);
+}
+
+/* ---- Prof filter ---- */
+.proffilter { position: relative; }
+.proffilter__btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease-out;
+}
+.proffilter__btn:hover { background: var(--surface-hover); }
+.proffilter__btn.is-open { border-color: var(--border-purple); box-shadow: 0 0 0 3px rgba(106,61,255,0.1); }
+.proffilter__dot { width: 8px; height: 8px; border-radius: 50%; }
+.proffilter__menu {
+  position: absolute; top: calc(100% + 4px); right: 0;
+  min-width: 200px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: var(--shadow-panel);
+  z-index: 20;
+}
+.proffilter__opt {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: left;
+}
+.proffilter__opt:hover { background: var(--surface-hover); }
+.proffilter__opt.is-active { background: rgba(106,61,255,0.12); color: var(--text-strong); }
+.proffilter__opt-dot { width: 8px; height: 8px; border-radius: 50%; }
