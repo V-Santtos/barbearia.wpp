@@ -16,26 +16,9 @@ const PROF_BY_ID = Object.fromEntries(PROFISSIONAIS.map(p => [p.id, p]));
 
 // --- KPIs [period][profKey] ---------------------------------------------------
 const KPIS_BASE = {
-  hoje: {
-    all: {
-      agendamentos: { value: 32,    sub: "18 concluídos · 14 ativos",    trend: "+12%",  trendDir: "up"   },
-      ocupacao:     { value: "78%", sub: "2 profissionais ativos",        trend: "+6 pp", trendDir: "up"   },
-      slotsLivres:  { value: 14,    sub: "de 23 horários no dia",            trend: "-3",    trendDir: "down" },
-      bloqueios:    { value: 2,     sub: "bloqueios manuais",             trend: "-1",    trendDir: "down" },
-    },
-    1: {
-      agendamentos: { value: 18,    sub: "10 concluídos · 8 ativos",      trend: "+8%",   trendDir: "up"   },
-      ocupacao:     { value: "82%", sub: "Lucas Costa",                   trend: "+4 pp", trendDir: "up"   },
-      slotsLivres:  { value: 5,     sub: "de 12 horários no dia",            trend: "-2",    trendDir: "down" },
-      bloqueios:    { value: 1,     sub: "bloqueio manual",               trend: "0",     trendDir: "down" },
-    },
-    2: {
-      agendamentos: { value: 14,    sub: "8 concluídos · 6 ativos",       trend: "+15%",  trendDir: "up"   },
-      ocupacao:     { value: "73%", sub: "Lucas Eloi",                    trend: "+8 pp", trendDir: "up"   },
-      slotsLivres:  { value: 9,     sub: "de 11 horários no dia",            trend: "-1",    trendDir: "down" },
-      bloqueios:    { value: 1,     sub: "bloqueio manual",               trend: "-1",    trendDir: "down" },
-    },
-  },
+  // `hoje` NÃO é escrito à mão: é calculado mais abaixo, depois que a agenda do
+  // dia, a capacidade e as vagas existem. Escrever à mão foi o que produziu três
+  // respostas diferentes para "quantos horários livres hoje" na mesma tela.
   "7d": {
     all: {
       agendamentos: { value: 184,   sub: "média 26,3/dia",                trend: "+9%",   trendDir: "up"   },
@@ -140,11 +123,12 @@ const AGENDA_HOJE = [
   { hora: "17:30", duracao: 45, profId: 2, cliente: "Igor Brandão",       telefone: "(11) 99•••5582", origem: "whatsapp",   status: "agendado" },
 ];
 
-// --- Ocupação hoje (sempre "hoje", independente do período) ------------------
-const OCUPACAO_HOJE = [
-  { profId: 1, ocupados: 9, total: 12, proximosLivres: ["Hoje 18:30", "Amanhã 09:00"], diasLotados: 3 },
-  { profId: 2, ocupados: 8, total: 11, proximosLivres: ["Hoje 19:00", "Hoje 19:45"],   diasLotados: 2 },
-];
+// Os dois próximos encaixes de cada um. O resto de "ocupação hoje" NÃO mora
+// aqui: é derivado da capacidade e das vagas, mais abaixo. Ver `OCUPACAO_HOJE`.
+const PROXIMOS_LIVRES = {
+  1: ["Hoje 18:30", "Amanhã 09:00"],
+  2: ["Hoje 19:00", "Hoje 19:45"],
+};
 
 const WHATSAPP_QUEUE = [
   { nome: "Marcos Vieira",   telefone: "(11) 98•••4412", preview: "Tem horário pra hoje à tarde?",       tempo: "2h 14m", status: "aguardando", urgent: true,  cor: "#FF5000" },
@@ -194,12 +178,17 @@ const DIAS_CORRIDOS = [
 ];
 
 const WD_LABEL = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+// Por extenso só onde o dia não é uma linha da grade e sobra largura para ele.
+const WD_LONGO = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
 // Vagas livres por profissional, na ordem de DIAS_CORRIDOS.
 // null = bloqueio manual (dias_bloqueados).
+// A PRIMEIRA coluna (hoje) não é livre: ela tem que bater com a agenda do dia.
+// Costa tem 9 linhas hoje, 1 cancelada -> 8 de 9 ocupados -> 1 vaga.
+// Eloi tem 9 linhas hoje, 1 cancelada -> 8 de 13 ocupados -> 5 vagas.
 const VAGAS = {
-  1: [3, 5, 0, 2, 1, 0, 7, 4, 6, 9],
-  2: [6, 0, 1, 8, null, 0, 5, 3, 8, 11],
+  1: [1, 5, 0, 2, 1, 0, 7, 4, 6, 9],
+  2: [5, 0, 1, 8, null, 0, 5, 3, 8, 11],
 };
 
 // Um dia só pode estar num destes cinco estados, e cada um tem símbolo próprio.
@@ -214,6 +203,41 @@ const estadoDoDia = (profId, i) => {
   if (v === null || v === undefined) return { tipo: "bloqueio" };
   if (v === 0) return { tipo: "lotado", vagas: 0 };
   return { tipo: "vagas", vagas: v };
+};
+
+// --- Hoje sai de UMA fonte só -------------------------------------------------
+// Antes eram três constantes independentes, e elas discordavam na tela: o KPI
+// dizia 14 horários livres, a Disponibilidade somava 9 e a ocupação implicava 6.
+// Agora tudo que fala de hoje é calculado da agenda do dia + capacidade + vagas.
+const doDia   = id => AGENDA_HOJE.filter(a => a.profId === id);
+const capacidade = id => AGENDA_CONFIG[id]?.capacidade ?? 0;
+const vagasHoje  = id => VAGAS[id]?.[0] ?? 0;
+
+const OCUPACAO_HOJE = PROFISSIONAIS.map(p => ({
+  profId: p.id,
+  total: capacidade(p.id),
+  ocupados: capacidade(p.id) - vagasHoje(p.id),
+  proximosLivres: PROXIMOS_LIVRES[p.id] ?? [],
+}));
+
+const kpisDeHoje = ids => {
+  const linhas     = ids.flatMap(doDia);
+  const concluidos = linhas.filter(a => a.status === "concluido").length;
+  const cancelados = linhas.filter(a => a.status === "cancelado").length;
+  const ativos     = linhas.length - concluidos - cancelados;
+  const livres     = ids.reduce((s, id) => s + vagasHoje(id), 0);
+  const cheia      = ids.reduce((s, id) => s + capacidade(id), 0);
+  return {
+    agendamentos: { value: linhas.length, sub: `${concluidos} concluídos · ${ativos} ativos · ${cancelados} cancelados` },
+    ocupacao:     { value: `${Math.round((cheia - livres) / cheia * 100)}%`, sub: ids.length > 1 ? "2 profissionais ativos" : PROF_BY_ID[ids[0]].short },
+    slotsLivres:  { value: livres, sub: `de ${cheia} horários no dia` },
+  };
+};
+
+KPIS_BASE.hoje = {
+  all: kpisDeHoje(PROFISSIONAIS.map(p => p.id)),
+  1:   kpisDeHoje([1]),
+  2:   kpisDeHoje([2]),
 };
 
 Object.assign(window, {
@@ -246,7 +270,6 @@ const Icon = ({ name, size = 16, stroke = 1.6, className = "", style }) => {
     case "trend-down":   return <svg {...common}><path d="M3 7l6 6 4-4 8 8"/><path d="M14 17h7v-7"/></svg>;
     case "more":         return <svg {...common}><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>;
     case "search":       return <svg {...common}><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>;
-    case "bell":         return <svg {...common}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>;
     case "settings":     return <svg {...common}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
     case "filter":       return <svg {...common}><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>;
     case "scissors":     return <svg {...common}><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></svg>;
@@ -256,7 +279,12 @@ const Icon = ({ name, size = 16, stroke = 1.6, className = "", style }) => {
     case "bot":          return <svg {...common}><rect x="3" y="8" width="18" height="12" rx="3"/><path d="M12 8V4M8 4h8M9 14h.01M15 14h.01"/></svg>;
     case "user-check":   return <svg {...common}><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="m17 11 2 2 4-4"/></svg>;
     case "block":        return <svg {...common}><circle cx="12" cy="12" r="9"/><path d="M4.93 4.93l14.14 14.14"/></svg>;
-    case "menu":         return <svg {...common}><path d="M4 6h16M4 12h16M4 18h16"/></svg>;
+    /* Os três da barra do celular são cópia fiel do lucide-react — os mesmos que
+       `MobileBottomNav.tsx` importa. Desenhar "parecido" faria a barra mudar de
+       cara sozinha na hora de portar. */
+    case "calendar-days":return <svg {...common}><path d="M8 2v4M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></svg>;
+    case "message-circle":return <svg {...common}><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/></svg>;
+    case "chart-column": return <svg {...common}><path d="M5 21v-6M12 21V3M19 21V9"/></svg>;
     case "home":         return <svg {...common}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/></svg>;
     case "bar-chart":    return <svg {...common}><path d="M3 3v18h18"/><path d="M7 14v4M12 9v9M17 5v13"/></svg>;
     case "sparkle":      return <svg {...common}><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/></svg>;
@@ -266,14 +294,19 @@ const Icon = ({ name, size = 16, stroke = 1.6, className = "", style }) => {
   }
 };
 
-const Panel = ({ title, subtitle, icon, actions, children, className = "", padding = "p-5", innerPadding, style, bodyStyle }) => (
+// `meta` é a contagem que muda todo dia e fica na MESMA linha do título.
+// `subtitle` continua existindo para o celular, mas no desktop ele saiu: se a
+// linha não muda quando o dado muda, ela não é subtítulo, é documentação — e
+// documentação não paga 14px de altura para sempre no cabeçalho.
+const Panel = ({ title, subtitle, meta, icon, actions, children, className = "", padding = "p-5", innerPadding, style, bodyStyle }) => (
   <section className={`db-panel ${className}`} style={style}>
     {(title || actions) && (
       <header className="db-panel__head">
         <div className="db-panel__head-left">
           {icon && <span className="db-panel__icon"><Icon name={icon} size={19} /></span>}
-          <div>
-            <h3 className="db-panel__title">{title}</h3>
+          <div className="db-panel__titling">
+            <h2 className="db-panel__title">{title}</h2>
+            {meta && <span className="db-panel__meta">{meta}</span>}
             {subtitle && <p className="db-panel__sub">{subtitle}</p>}
           </div>
         </div>
@@ -284,26 +317,27 @@ const Panel = ({ title, subtitle, icon, actions, children, className = "", paddi
   </section>
 );
 
-// Rótulo em caixa alta no topo, ícone à esquerda do número na mesma linha,
-// detalhe embaixo. `tone` só entra quando o card é alerta — os normais são neutros.
-const KpiCard = ({ icon, label, value, sub, tone, compact }) => (
-  <div className={`kpi ${compact ? "kpi--compact" : ""} ${tone ? `kpi--${tone}` : ""}`}>
-    <span className="kpi__icon"><Icon name={icon} size={compact ? 24 : 30} stroke={1.5} /></span>
-    <div className="kpi__body">
-      <span className="kpi__label">{label}</span>
-      <div className="kpi__value">{value}</div>
-      {sub && <div className="kpi__sub">{sub}</div>}
-    </div>
+// Três linhas alinhadas à esquerda, sem coluna de ícone. O ladrilho arredondado
+// saiu em 2026-08-02: ocupava 18,6% da largura do card no desktop e ~30% no
+// celular para não carregar informação nenhuma, e vencia a primeira fixação do
+// olho sem recompensar. `destaque` é o único card com tratamento diferente.
+const KpiCard = ({ label, value, sub, destaque, compact }) => (
+  <div className={`kpi ${compact ? "kpi--compact" : ""} ${destaque ? "kpi--destaque" : ""}`}>
+    <span className="kpi__label">{label}</span>
+    <div className="kpi__value">{value}</div>
+    {sub && <div className="kpi__sub">{sub}</div>}
   </div>
 );
 
+// Não é `tablist`: não existe `tabpanel` nem `aria-controls`, e leitor de tela
+// anunciava "aba" e ia procurar um painel que não existe. É um grupo de rádio.
 const PeriodChips = ({ value, onChange, options }) => (
-  <div className="chips" role="tablist">
+  <div className="chips" role="radiogroup" aria-label="Período">
     {options.map(o => (
       <button
         key={o.value}
-        role="tab"
-        aria-selected={value === o.value}
+        role="radio"
+        aria-checked={value === o.value}
         className={`chip ${value === o.value ? "chip--on" : ""}`}
         onClick={() => onChange(o.value)}
       >
@@ -374,12 +408,26 @@ const StatusPill = ({ status }) => {
   );
 };
 
-const CelulaDispo = ({ estado, prof }) => {
-  if (estado.tipo === "fora")     return <span className="dcell dcell--nao" title={`Fora da janela de ${prof.short}`} />;
-  if (estado.tipo === "fechado")  return <span className="dcell dcell--nao" title={`${prof.short} não trabalha neste dia`} />;
-  if (estado.tipo === "bloqueio") return <span className="dcell dcell--nao" title={`${prof.short}: dia bloqueado`} />;
-  if (estado.tipo === "lotado")   return <span className="dcell dcell--lotado" title={`${prof.short}: sem vaga`}>0</span>;
-  return <span className="dcell dcell--vagas" title={`${prof.short}: ${estado.vagas} vaga${estado.vagas > 1 ? "s" : ""}`}>{estado.vagas}</span>;
+// `rotulo` escreve o motivo de não dar dentro da célula, em vez de escondê-lo no
+// `title`. É o modo do celular: tela de toque não tem hover, então a faixa de
+// células apagadas ficava sem explicação nenhuma.
+// `rotulo` escreve o motivo de não dar dentro da célula, em vez de escondê-lo no
+// `title`. Passa a valer também no desktop desde 2026-08-02: os três motivos
+// desenhavam pixels idênticos, e no mock duas dessas células aparecem LADO A
+// LADO com significados opostos.
+const CelulaDispo = ({ estado, prof, hoje = false }) => {
+  const cls = `dcell${hoje ? " is-today" : ""}`;
+  if (estado.tipo === "fora")
+    return <span className={`${cls} dcell--nao dcell--rot`} title={`Fora da janela de ${prof.short}`}>—</span>;
+  if (estado.tipo === "fechado")
+    return <span className={`${cls} dcell--nao dcell--rot`} title={`${prof.short} não trabalha neste dia`}>folga</span>;
+  if (estado.tipo === "bloqueio")
+    return <span className={`${cls} dcell--nao dcell--rot`} title={`${prof.short}: dia bloqueado`}>bloqueio</span>;
+  // Dia sem vaga é a melhor notícia do mês para o dono. O `0` em âmbar pintava
+  // de alerta a vitória — e âmbar já significa "Reagendado" no painel colado.
+  if (estado.tipo === "lotado")
+    return <span className={`${cls} dcell--cheio`} title={`${prof.short}: sem vaga`}>cheio</span>;
+  return <span className={`${cls} dcell--vagas`} title={`${prof.short}: ${estado.vagas} vaga${estado.vagas > 1 ? "s" : ""}`}>{estado.vagas}</span>;
 };
 
 // Desktop: um bloco por barbeiro, cada um com a janela que ELE configurou.
@@ -402,10 +450,15 @@ const DispoStrip = ({ profFilter = "all" }) => {
 
         return (
           <div key={p.id} className="dblock">
+            {/* A capacidade fica aqui, uma vez por barbeiro, e não em cada
+                célula: é ela que torna "3" e "6" comparáveis sem o leitor saber
+                de cabeça a configuração de ninguém. Costa e Eloi têm dias de
+                tamanhos diferentes, e é por isso que cor por ocupação mentiria. */}
             <div className="dblock__head">
               <span className="dstrip__dot" style={{ background: p.color }} />
               <span className="dblock__name">{p.short}</span>
-              <span className="dblock__janela">{janela} dias</span>
+              <span className="dblock__cap">{AGENDA_CONFIG[p.id]?.capacidade} vagas/dia</span>
+              <span className="dblock__janela">janela de {janela} dias</span>
             </div>
 
             <div className="dstrip__row dstrip__row--head" style={cols}>
@@ -418,7 +471,7 @@ const DispoStrip = ({ profFilter = "all" }) => {
             </div>
 
             <div className="dstrip__row" style={cols}>
-              {dias.map((_, i) => <CelulaDispo key={i} estado={estadoDoDia(p.id, i)} prof={p} />)}
+              {dias.map((d, i) => <CelulaDispo key={i} estado={estadoDoDia(p.id, i)} prof={p} hoje={d.hoje} />)}
             </div>
           </div>
         );
@@ -427,37 +480,92 @@ const DispoStrip = ({ profFilter = "all" }) => {
   );
 };
 
-// Celular: 10 colunas não cabem. Gira — uma linha por dia, uma coluna por profissional.
+// Celular: 10 colunas não cabem. Gira — uma linha por dia, uma coluna por barbeiro.
+// O nome dele vive no CABEÇALHO da coluna, uma vez. Antes se repetia célula a
+// célula: dois por linha, dez linhas, vinte repetições para dizer a coisa menos
+// variável da tela.
 const DispoList = ({ profFilter = "all" }) => {
   const profs  = profFilter === "all" ? PROFISSIONAIS : PROFISSIONAIS.filter(p => p.id === profFilter);
   const janela = Math.max(...profs.map(p => AGENDA_CONFIG[p.id]?.janela ?? 0));
   const dias   = DIAS_CORRIDOS.slice(0, janela);
+  const cols   = { gridTemplateColumns: `1fr repeat(${profs.length}, 58px)` };
+
+  // Dia em que nenhum deles atende não merece uma linha de tamanho normal com
+  // duas células vazias dentro: vira um risco fino, que segura a sequência das
+  // datas sem pesar como dia útil.
+  const ninguemAtende = i => profs.every(p => {
+    const t = estadoDoDia(p.id, i).tipo;
+    return t === "fechado" || t === "fora";
+  });
 
   return (
     <div className="dlist">
-      {dias.map((d, i) => (
-        <div key={i} className={`dlist__row${d.hoje ? " is-today" : ""}`}>
+      <div className="dlist__head" style={cols}>
+        <span />
+        {profs.map(p => (
+          <span key={p.id} className="dlist__prof">
+            <span className="dlist__dot" style={{ background: p.color }} />
+            {p.short.split(" ")[1] ?? p.short}
+          </span>
+        ))}
+      </div>
+
+      {dias.map((d, i) => ninguemAtende(i) ? (
+        <div key={i} className="dlist__fechado">{WD_LONGO[d.wd]} {d.dd}</div>
+      ) : (
+        <div key={i} className={`dlist__row${d.hoje ? " is-today" : ""}`} style={cols}>
           <span className="dlist__day">
             <b>{d.hoje ? "Hoje" : WD_LABEL[d.wd]}</b> {d.dd}
           </span>
-          <span className="dlist__profs">
-            {/* Dia além da janela DELE não vira célula morta: some da linha. */}
-            {profs.filter(p => i < (AGENDA_CONFIG[p.id]?.janela ?? 0)).map(p => (
-              <span key={p.id} className="dlist__cell">
-                <span className="dlist__dot" style={{ background: p.color }} />
-                <span className="dlist__name">{p.short.split(" ")[1] ?? p.short}</span>
-                <CelulaDispo estado={estadoDoDia(p.id, i)} prof={p} />
-              </span>
-            ))}
-          </span>
+          {profs.map(p => (
+            <CelulaDispo key={p.id} estado={estadoDoDia(p.id, i)} prof={p} />
+          ))}
         </div>
-      ))}    </div>
+      ))}
+    </div>
   );
 };
 
+// As MESMAS três abas do app, na mesma ordem — conferido em
+// `CALENDARIO/components/MobileBottomNav.tsx`. O protótipo tinha inventado um
+// "Mais" que não existe em lugar nenhum e perdido "Conversas", que é tela real e
+// a única com badge. Validar a barra antiga era validar uma barra que não existe.
+const ABAS_MOBILE = [
+  { id: "calendar",      icone: "calendar-days",  label: "Agenda" },
+  { id: "conversations", icone: "message-circle", label: "Conversas", badge: 3 },
+  { id: "dashboard",     icone: "chart-column",   label: "Dashboard" },
+];
+
+// Dock flutuante: pílula solta da borda, vidro fosco, ícone sem rótulo.
+// Duas coisas da referência ficaram de fora, de propósito:
+//   - o rótulo por tooltip, que depende de hover e não existe em tela de toque.
+//     Quem diz onde você está é a cor + o ponto, não um balão que nunca abre.
+//   - a flutuação em laço e o rotateX de perspectiva, que são graça de dock de
+//     vitrine. Isto aqui é a navegação do app: fica parada.
+const DockNav = ({ atual, onChange }) => (
+  <nav className="mb-dock" aria-label="Navegação">
+    {ABAS_MOBILE.map(a => {
+      const ativo = a.id === atual;
+      return (
+        <button
+          key={a.id}
+          className={`mb-dock__item${ativo ? " is-active" : ""}`}
+          onClick={() => onChange(a.id)}
+          aria-current={ativo ? "page" : undefined} aria-label={a.label}
+        >
+          <Icon name={a.icone} size={24} stroke={ativo ? 2.3 : 1.8} />
+          {/* Sempre no DOM: aparecer e sumir não pode empurrar o ícone. */}
+          <span className="mb-dock__dot" />
+          {a.badge > 0 && <span className="mb-dock__badge">{a.badge}</span>}
+        </button>
+      );
+    })}
+  </nav>
+);
+
 Object.assign(window, {
   Icon, Panel, KpiCard, PeriodChips, ProfFilter,
-  StatusPill, DispoStrip, DispoList,
+  StatusPill, DispoStrip, DispoList, DockNav,
 });
 
 // ============================================================================
@@ -489,13 +597,6 @@ const Desktop = () => {
   const profKey = prof === "all" ? "all" : prof;
   const kpis = (KPIS_BASE[period] ?? KPIS_BASE["30d"])[profKey] ?? (KPIS_BASE[period] ?? KPIS_BASE["30d"]).all;
   const marcacoes = (MARCACOES[period] ?? MARCACOES["30d"])[profKey] ?? (MARCACOES[period] ?? MARCACOES["30d"]).all;
-  // A janela vem da config de cada profissional, nunca fixa. Se os dois divergirem,
-  // a faixa tem o tamanho da maior e o de janela menor mostra as células como "fora".
-  const janelaVisivel = useMemo(() => {
-    const alvo = prof === "all" ? PROFISSIONAIS : PROFISSIONAIS.filter(p => p.id === prof);
-    return Math.max(...alvo.map(p => AGENDA_CONFIG[p.id]?.janela ?? 0));
-  }, [prof]);
-
   const agenda = useMemo(() => prof === "all" ? AGENDA_HOJE : AGENDA_HOJE.filter(a => a.profId === prof), [prof]);
   const ATIVOS = ["agendado", "confirmado", "reagendado", "em-atendimento"];
   const proximos = agenda.filter(a => ATIVOS.includes(a.status));
@@ -528,11 +629,15 @@ const Desktop = () => {
           <button className="db-topbar__today">Hoje</button>
           <button className="db-iconbtn db-iconbtn--compact" aria-label="Anterior"><Icon name="chevron-right" size={13} style={{ transform: "rotate(180deg)" }}/></button>
           <button className="db-iconbtn db-iconbtn--compact" aria-label="Próximo"><Icon name="chevron-right" size={13}/></button>
-          <span className="db-topbar__date">terça-feira, 20 de maio</span>
+          {/* Já vem capitalizado da origem. O `text-transform: capitalize` do CSS
+              saiu: em pt-BR ele produzia "Terça-Feira, 20 De Maio". */}
+          <span className="db-topbar__date">Terça-feira, 20 de maio</span>
         </div>
         <div className="db-topbar__right">
           <button className="db-iconbtn"><Icon name="search" size={14}/></button>
-          <button className="db-iconbtn"><Icon name="bell" size={14}/></button>
+          {/* Sino removido em 2026-08-01: não existe notificação em lugar nenhum
+              do CALENDARIO, e o ponto em cima dele prometia não-lido de um
+              sistema que não existe. */}
           <div className="db-avatar-me">VC</div>
         </div>
       </header>
@@ -542,7 +647,19 @@ const Desktop = () => {
           <h1 className="db-pagehead__title">Dashboard</h1>
           <p className="db-pagehead__sub"><span className="db-pulse" /> Resumo do calendário · {PERIOD_LABELS[period]} · atualizado há 24s</p>
         </div>
+        {/* O filtro de profissional fica aqui porque governa MESMO a tela toda.
+            O chip de período desceu para dentro da faixa de KPIs, que é a única
+            coisa que ele muda. */}
         <div className="db-pagehead__filters">
+          <ProfFilter value={prof} onChange={setProf} profs={PROFISSIONAIS} />
+        </div>
+      </div>
+
+      {/* A faixa saiu da linguagem visual dos painéis — sem borda e sem sombra —
+          para dizer sem uma palavra que ela é resumo e eles são trabalho. */}
+      <section className="db-resumo">
+        <div className="db-resumo__head">
+          <span className="db-resumo__label">Resumo do período</span>
           <PeriodChips
             value={period}
             onChange={setPeriod}
@@ -553,16 +670,14 @@ const Desktop = () => {
               { value: "30d",  label: "30 dias" },
             ]}
           />
-          <ProfFilter value={prof} onChange={setProf} profs={PROFISSIONAIS} />
         </div>
-      </div>
-
-      <div className="db-kpis">
-        <KpiCard icon="calendar"   label={KPI_LABELS.agendamentos} value={kpis.agendamentos.value} sub={kpis.agendamentos.sub} />
-        <KpiCard icon="bar-chart"  label={KPI_LABELS.ocupacao}     value={kpis.ocupacao.value}     sub={kpis.ocupacao.sub}     />
-        <KpiCard icon="clock"      label={KPI_LABELS.slotsLivres}  value={kpis.slotsLivres.value}  sub={kpis.slotsLivres.sub}  />
-        <KpiCard icon="bot"        label={KPI_LABELS.marcacoes}    value={marcacoes.value}         sub={marcacoes.sub}         />
-      </div>
+        <div className="db-kpis">
+          <KpiCard label={KPI_LABELS.agendamentos} value={kpis.agendamentos.value} sub={kpis.agendamentos.sub} />
+          <KpiCard label={KPI_LABELS.ocupacao}     value={kpis.ocupacao.value}     sub={kpis.ocupacao.sub}     />
+          <KpiCard label={KPI_LABELS.slotsLivres}  value={kpis.slotsLivres.value}  sub={kpis.slotsLivres.sub}  />
+          <KpiCard label={KPI_LABELS.marcacoes}    value={marcacoes.value}         sub={marcacoes.sub} destaque />
+        </div>
+      </section>
 
       {/* A coluna da direita ganhou a folga: a disponibilidade precisa de largura
           para caber a janela de cada barbeiro sem espremer a célula. */}
@@ -570,8 +685,7 @@ const Desktop = () => {
         <div style={{ position: "relative" }}>
           <Panel
             title="Agenda de hoje"
-            subtitle={`${proximos.length} próximos · ${concluidos.length} concluídos · ${cancelados.length} cancelados`}
-            icon="calendar"
+            meta={`${proximos.length} próximos · ${concluidos.length} concluídos · ${cancelados.length} cancelados`}
             actions={
               <div className="seg">
                 {ABAS.map(t => (
@@ -616,7 +730,7 @@ const Desktop = () => {
         </div>
 
         <div className="db-stack">
-          <Panel title="Próximos horários livres" subtitle="Os dois próximos encaixes de cada barbeiro" icon="sparkle" padding="p-4">
+          <Panel title="Próximos horários livres" padding="p-4">
             <ul className="firstfree">
               {ocupFiltered.map(o => {
                 const p = PROF_BY_ID[o.profId];
@@ -635,7 +749,7 @@ const Desktop = () => {
             </ul>
           </Panel>
 
-          <Panel title="Disponibilidade" subtitle="Vagas livres · janela que cada barbeiro configurou" icon="clock" padding="p-4">
+          <Panel title="Disponibilidade" padding="p-4">
             <DispoStrip profFilter={prof} />
           </Panel>
         </div>
@@ -653,17 +767,13 @@ Object.assign(window, { Desktop });
 const Mobile = () => {
   const [period, setPeriod] = useState("hoje");
   const [prof, setProf] = useState("all");
+  // Só existe a tela do dashboard aqui. A aba muda para o indicador poder ser
+  // visto mudando de lugar — é barra em validação, não navegação de verdade.
+  const [aba, setAba] = useState("dashboard");
 
   const profKey = prof === "all" ? "all" : prof;
   const kpis = (KPIS_BASE[period] ?? KPIS_BASE["30d"])[profKey] ?? (KPIS_BASE[period] ?? KPIS_BASE["30d"]).all;
   const marcacoes = (MARCACOES[period] ?? MARCACOES["30d"])[profKey] ?? (MARCACOES[period] ?? MARCACOES["30d"]).all;
-  // A janela vem da config de cada profissional, nunca fixa. Se os dois divergirem,
-  // a faixa tem o tamanho da maior e o de janela menor mostra as células como "fora".
-  const janelaVisivel = useMemo(() => {
-    const alvo = prof === "all" ? PROFISSIONAIS : PROFISSIONAIS.filter(p => p.id === prof);
-    return Math.max(...alvo.map(p => AGENDA_CONFIG[p.id]?.janela ?? 0));
-  }, [prof]);
-
   const agenda = useMemo(() => prof === "all" ? AGENDA_HOJE : AGENDA_HOJE.filter(a => a.profId === prof), [prof]);
   const proximos = agenda.filter(a => a.status !== "concluido").slice(0, 5);
   const emAtendimento = agenda.filter(a => a.status === "em-atendimento");
@@ -673,15 +783,31 @@ const Mobile = () => {
     <div className="mb-shell">
       <div className="mb-scroll">
         <header className="mb-topbar">
-          <button className="mb-iconbtn"><Icon name="menu" size={16}/></button>
+          {/* Sem hambúrguer nesta aba: a gaveta dele é do calendário (criar
+              agendamento, visualização dia/semana/mês, configurar agenda) e
+              nenhum item serve ao dashboard. */}
           <div className="mb-topbar__title">
             <span className="mb-topbar__name">Dashboard</span>
             <span className="mb-topbar__sub"><span className="db-pulse"/> Calendário · atualizado há 24s</span>
           </div>
-          <button className="mb-iconbtn"><Icon name="bell" size={16}/><span className="mb-iconbtn__dot"/></button>
+          {/* À direita do topo do app mora o UserMenu — no celular ele é a ÚNICA
+              porta para Perfil, Configurações e Sair. O protótipo tinha um sino
+              no lugar dele: inventava notificação e escondia o que é real. */}
+          <button className="mb-avatar" aria-label="Menu do usuário">VC</button>
         </header>
 
-        <div className="mb-chips">
+        {/* O filtro de profissional fica no nível da página porque ele governa
+            MESMO tudo que vem abaixo: agenda, horários livres e disponibilidade
+            todos obedecem. */}
+        <div className="mb-topfilter">
+          <ProfFilter value={prof} onChange={setProf} profs={PROFISSIONAIS} />
+        </div>
+
+        {/* O chip de período desceu para cá em 2026-08-01. Ele muda só os quatro
+            KPIs — a agenda é sempre de hoje, e está certo que seja. No cabeçalho
+            da página ele prometia governar a tela inteira; colado nos cards, a
+            promessa fica do tamanho do que ele faz. */}
+        <div className="mb-period">
           <PeriodChips
             value={period}
             onChange={setPeriod}
@@ -692,14 +818,13 @@ const Mobile = () => {
               { value: "30d",  label: "30 dias" },
             ]}
           />
-          <ProfFilter value={prof} onChange={setProf} profs={PROFISSIONAIS} />
         </div>
 
         <div className="mb-kpis">
-          <KpiCard compact icon="calendar"  label="Agendamentos" value={kpis.agendamentos.value} sub={kpis.agendamentos.sub} />
-          <KpiCard compact icon="bar-chart" label="Ocupação"     value={kpis.ocupacao.value}     sub={kpis.ocupacao.sub}     />
-          <KpiCard compact icon="clock"     label="Horários livres" value={kpis.slotsLivres.value}  sub={kpis.slotsLivres.sub}  />
-          <KpiCard compact icon="bot"       label="Marcações"    value={marcacoes.value}         sub={marcacoes.sub} />
+          <KpiCard compact label="Agendamentos" value={kpis.agendamentos.value} sub={kpis.agendamentos.sub} />
+          <KpiCard compact label="Ocupação"     value={kpis.ocupacao.value}     sub={kpis.ocupacao.sub}     />
+          <KpiCard compact label="Horários livres" value={kpis.slotsLivres.value}  sub={kpis.slotsLivres.sub}  />
+          <KpiCard compact label="Marcações"    value={marcacoes.value}         sub={marcacoes.sub} destaque />
         </div>
 
         {emAtendimento.length > 0 && (
@@ -769,23 +894,12 @@ const Mobile = () => {
           <DispoList profFilter={prof} />
         </Panel>
 
-        <div style={{ height: 88 }}/>
+        {/* Respiro do dock: ele flutua POR CIMA da rolagem, então o último painel
+            precisa de chão para não morrer embaixo dele. */}
+        <div style={{ height: 104 }}/>
       </div>
 
-      <nav className="mb-botnav">
-        <button className="mb-botnav__item">
-          <Icon name="calendar" size={18}/>
-          <span>Agenda</span>
-        </button>
-        <button className="mb-botnav__item is-active">
-          <Icon name="bar-chart" size={18}/>
-          <span>Dashboard</span>
-        </button>
-        <button className="mb-botnav__item">
-          <Icon name="settings" size={18}/>
-          <span>Mais</span>
-        </button>
-      </nav>
+      <DockNav atual={aba} onChange={setAba} />
     </div>
   );
 };

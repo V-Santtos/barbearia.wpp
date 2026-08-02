@@ -11,13 +11,17 @@
 .dblock { display: flex; flex-direction: column; gap: 5px; }
 .dblock__head { display: flex; align-items: center; gap: 7px; }
 .dblock__name { font-size: 11.5px; font-weight: 600; color: rgba(255,255,255,.72); }
-.dblock__janela { margin-left: auto; font-size: 10px; color: rgba(255,255,255,.34); }
+/* A capacidade do dia, uma vez por barbeiro. E ela que torna "3" e "6"
+   comparaveis: 3 de 9 nao e a mesma coisa que 3 de 13. Escrita, nunca em cor --
+   escala de cor por ocupacao mentiria com capacidades diferentes. */
+.dblock__cap { font-size: 10px; color: var(--text-muted); }
+.dblock__janela { margin-left: auto; font-size: 10px; color: var(--text-muted); }
 .dstrip__row { display: grid; align-items: center; gap: 5px; }
 .dstrip__row--head { margin-bottom: 1px; }
 
 .dstrip__day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 2px 0; border-radius: 7px; }
 .dstrip__day.is-today { background: rgba(107,62,255,.16); }
-.dstrip__wd { font-size: 9.5px; font-weight: 600; color: rgba(255,255,255,.38); }
+.dstrip__wd { font-size: 9.5px; font-weight: 600; color: var(--text-muted); }
 .dstrip__day.is-today .dstrip__wd { color: #a78bfa; }
 .dstrip__dd { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.70); line-height: 1; }
 .dstrip__day.is-today .dstrip__dd { color: #c4b5fd; }
@@ -33,18 +37,36 @@
   background: rgba(255,255,255,.05);
 }
 .dcell--vagas  { color: rgba(255,255,255,.92); }
-.dcell--lotado { color: #fbbf24; background: rgba(251,191,36,.11); }
-/* Sem simbolo: dia em que nao da pra marcar simplesmente nao oferece nada. */
+/* Dia cheio e a melhor noticia do mes para o dono. O ambar pintava a vitoria de
+   alerta -- e ambar ja significa "Reagendado" no painel colado. Cheio agora e
+   MAIS forte que um dia com vaga, sem ser amarelo. */
+.dcell--cheio  { color: rgba(255,255,255,.88); background: rgba(255,255,255,.10); font-size: 10.5px; font-weight: 600; letter-spacing: .02em; }
 .dcell--nao    { background: rgba(255,255,255,.015); }
+/* A coluna de hoje era marcada pela metade: so o cabecalho recebia o roxo. */
+.dcell.is-today { background: rgba(107,62,255,.16); }
+.dcell--nao.is-today { background: rgba(107,62,255,.07); }
 
-/* Celular: dias na vertical, uma coluna por barbeiro. */
-.dlist { display: flex; flex-direction: column; gap: 4px; }
-.dlist__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 6px; border-radius: 8px; }
-.dlist__row.is-today { background: rgba(107,62,255,.14); }
-.dlist__day { font-size: 12px; color: rgba(255,255,255,.50); white-space: nowrap; }
-.dlist__day b { color: rgba(255,255,255,.85); font-weight: 600; text-transform: capitalize; }
-.dlist__profs { display: inline-flex; gap: 8px; }
-.dlist__cell { display: inline-flex; align-items: center; gap: 5px; }
+/* Celular: dias na vertical, uma coluna por barbeiro. O nome dele fica no
+   cabecalho da coluna -- uma vez -- e a grade alinha as celulas por baixo dele.
+   O motivo de nao dar vem ESCRITO na celula: tela de toque nao tem hover, entao
+   o title do desktop nao chega aqui. */
+.dlist { display: flex; flex-direction: column; gap: 3px; }
+.dlist__head,
+.dlist__row { display: grid; align-items: center; gap: 6px; }
+
+.dlist__head { padding: 0 6px 6px; margin-bottom: 2px; border-bottom: 1px solid rgba(255,255,255,.07); }
+.dlist__prof { display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-size: 10.5px; font-weight: 600; color: rgba(255,255,255,.58); }
 .dlist__dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
-.dlist__name { font-size: 10px; color: rgba(255,255,255,.42); }
-.dlist .dcell { min-width: 32px; min-height: 28px; }
+
+.dlist__row { padding: 2px 6px; border-radius: 8px; }
+.dlist__row.is-today { background: rgba(107,62,255,.14); }
+.dlist__day { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.dlist__day b { color: rgba(255,255,255,.85); font-weight: 600; text-transform: capitalize; }
+.dlist .dcell { min-height: 30px; }
+
+/* O rotulo do que nao da: palavra pequena, nunca um vazio a ser adivinhado. */
+.dcell--rot { font-size: 9.5px; font-weight: 600; letter-spacing: .02em; color: var(--text-muted); background: rgba(255,255,255,.025); }
+
+/* Dia sem ninguem atendendo: risco fino, nao linha vazia de altura cheia. */
+.dlist__fechado { display: flex; align-items: center; gap: 9px; padding: 2px 6px; font-size: 10.5px; color: var(--text-muted); }
+.dlist__fechado::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,.07); }

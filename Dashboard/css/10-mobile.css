@@ -72,33 +72,37 @@
   padding: 56px 16px 12px;  /* clear iOS status bar + dynamic island */
   flex: none;
 }
-.mb-iconbtn {
+/* Avatar do dono, do jeito que o UserMenu do app desenha: circulo cheio na cor
+   da marca, borda fina e halo roxo. Ali sao 44px; aqui 36, para ficar na mesma
+   linha do hamburguer do prototipo. */
+.mb-avatar {
   width: 36px; height: 36px;
   display: grid; place-items: center;
-  background: var(--panel-soft);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 10px;
-  cursor: pointer;
-  font-family: inherit;
-  position: relative;
-}
-.mb-iconbtn__dot {
-  position: absolute; top: 8px; right: 8px;
-  width: 7px; height: 7px;
-  background: var(--warning);
-  border: 1.5px solid var(--bg);
   border-radius: 50%;
+  background: var(--primary-alt);
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 0 0 2px rgba(107,62,255,.18);
+  color: #fff;
+  font-size: 12px; font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  flex: none;
 }
 .mb-topbar__title { flex: 1; }
 .mb-topbar__name { font-size: 16px; font-weight: 600; color: var(--text-strong); line-height: 1.1; }
 .mb-topbar__sub { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; margin-top: 2px; }
 
+/* Filtro de profissional: nivel da pagina, porque governa a tela inteira. */
+.mb-topfilter { padding: 0 16px 16px; }
+.mb-topfilter .proffilter { align-self: flex-start; }
+
+/* Periodo: colado nos KPIs, que sao a unica coisa que ele muda. O respiro em
+   cima e maior que o de baixo de proposito -- e a separacao que diz onde o
+   alcance dele comeca e onde termina. */
+.mb-period { padding: 0 16px 8px; }
+.mb-period .chips { display: flex; width: 100%; }
 /* Empilhado: lado a lado, "15 dias" e "30 dias" quebravam em duas linhas. */
-.mb-chips { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 0 16px 14px; }
-.mb-chips .chips { display: flex; width: 100%; }
-.mb-chips .chip { flex: 1; padding: 7px 0; text-align: center; white-space: nowrap; }
-.mb-chips .proffilter { align-self: flex-start; }
+.mb-period .chip { flex: 1; padding: 7px 0; text-align: center; white-space: nowrap; }
 .mb-filterbtn {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; font-family: inherit;
@@ -168,34 +172,68 @@
 .mb-dispo__num { font-size: 22px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .mb-dispo__lbl { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
 
-/* Bottom nav - flex-pinned bottom, above iOS home indicator */
-.mb-botnav {
-  flex: none;
-  display: grid; grid-template-columns: repeat(4, 1fr);
-  background: rgba(10,10,10,0.86);
-  border-top: 1px solid var(--border);
-  backdrop-filter: blur(20px);
-  padding: 10px 12px 30px;  /* extra bottom padding to clear home indicator */
-  position: relative;
+/* =========================================================================
+   DOCK - a barra de navegacao do celular.
+   Pilula FLUTUANTE: solta do rodape, largura do conteudo, centralizada, vidro
+   fosco. O conteudo passa por baixo dela -- por isso o respiro no fim da rolagem.
+   Substituiu a faixa colada de ponta a ponta em 2026-08-01.
+   ========================================================================= */
+.mb-dock {
+  position: absolute;
+  left: 0; right: 0; bottom: 26px;
+  margin: 0 auto;
+  /* Larga o bastante para nao parecer perdida no meio da tela, e proporcional
+     para nao encolher de novo em aparelho maior. Com tres abas, `max-content`
+     sozinho dava uma pilula pequena demais para o espaco que tem embaixo. */
+  width: max-content;
+  min-width: 62%;
+  display: flex; align-items: center; justify-content: space-around;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 26px;
+  /* Vidro, mas nao vitrine: por cima de painel cheio, transparencia demais faz
+     o texto de tras competir com o icone. */
+  background: rgba(20,19,21,0.86);
+  backdrop-filter: blur(26px) saturate(1.2);
+  -webkit-backdrop-filter: blur(26px) saturate(1.2);
+  box-shadow: var(--shadow-panel), var(--inset-top);
   z-index: 5;
 }
-.mb-botnav__item {
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
+
+.mb-dock__item {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px;
+  width: 50px; height: 50px;
+  padding: 0;
+  border: 0; border-radius: 18px;
   background: transparent;
-  border: 0;
-  color: var(--text-faint);
-  font-size: 10px;
+  color: var(--text-muted);
   font-family: inherit;
   cursor: pointer;
-  padding: 4px;
-  position: relative;
+  transition: color .18s ease, background .18s ease, transform .12s ease;
 }
-.mb-botnav__item.is-active { color: var(--primary-soft); }
-.mb-botnav__badge {
-  position: absolute; top: 0; right: calc(50% - 18px);
-  background: var(--warning); color: #1a1300;
-  font-size: 9px; font-weight: 700;
-  padding: 1px 5px;
+/* Toque nao tem hover: o retorno de que o dedo pegou e o recuo. */
+.mb-dock__item:active { transform: scale(.9); }
+.mb-dock__item.is-active { color: var(--primary-soft); background: rgba(107,62,255,.16); }
+
+/* Sem rotulo, o ponto e a cor sao tudo que diz onde voce esta. */
+.mb-dock__dot {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity .18s ease;
+}
+.mb-dock__item.is-active .mb-dock__dot { opacity: 1; }
+
+/* Nao lidas: o unico numero vivo da barra. Verde do WhatsApp, como no app. */
+.mb-dock__badge {
+  position: absolute; top: 5px; right: 4px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  display: flex; align-items: center; justify-content: center;
   border-radius: 999px;
-  border: 1.5px solid rgba(10,10,10,0.86);
+  background: var(--whatsapp); color: #06301a;
+  font-size: 9px; font-weight: 700; line-height: 1;
+  border: 1.5px solid #161517;
 }

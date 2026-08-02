@@ -21459,26 +21459,9 @@
   ];
   var PROF_BY_ID = Object.fromEntries(PROFISSIONAIS.map((p) => [p.id, p]));
   var KPIS_BASE = {
-    hoje: {
-      all: {
-        agendamentos: { value: 32, sub: "18 concluídos · 14 ativos", trend: "+12%", trendDir: "up" },
-        ocupacao: { value: "78%", sub: "2 profissionais ativos", trend: "+6 pp", trendDir: "up" },
-        slotsLivres: { value: 14, sub: "de 23 horários no dia", trend: "-3", trendDir: "down" },
-        bloqueios: { value: 2, sub: "bloqueios manuais", trend: "-1", trendDir: "down" }
-      },
-      1: {
-        agendamentos: { value: 18, sub: "10 concluídos · 8 ativos", trend: "+8%", trendDir: "up" },
-        ocupacao: { value: "82%", sub: "Lucas Costa", trend: "+4 pp", trendDir: "up" },
-        slotsLivres: { value: 5, sub: "de 12 horários no dia", trend: "-2", trendDir: "down" },
-        bloqueios: { value: 1, sub: "bloqueio manual", trend: "0", trendDir: "down" }
-      },
-      2: {
-        agendamentos: { value: 14, sub: "8 concluídos · 6 ativos", trend: "+15%", trendDir: "up" },
-        ocupacao: { value: "73%", sub: "Lucas Eloi", trend: "+8 pp", trendDir: "up" },
-        slotsLivres: { value: 9, sub: "de 11 horários no dia", trend: "-1", trendDir: "down" },
-        bloqueios: { value: 1, sub: "bloqueio manual", trend: "-1", trendDir: "down" }
-      }
-    },
+    // `hoje` NÃO é escrito à mão: é calculado mais abaixo, depois que a agenda do
+    // dia, a capacidade e as vagas existem. Escrever à mão foi o que produziu três
+    // respostas diferentes para "quantos horários livres hoje" na mesma tela.
     "7d": {
       all: {
         agendamentos: { value: 184, sub: "média 26,3/dia", trend: "+9%", trendDir: "up" },
@@ -21580,10 +21563,10 @@
     { hora: "17:00", duracao: 30, profId: 1, cliente: "Renato Albuquerque", telefone: "(11) 98•••4475", origem: "app-etapas", status: "agendado" },
     { hora: "17:30", duracao: 45, profId: 2, cliente: "Igor Brandão", telefone: "(11) 99•••5582", origem: "whatsapp", status: "agendado" }
   ];
-  var OCUPACAO_HOJE = [
-    { profId: 1, ocupados: 9, total: 12, proximosLivres: ["Hoje 18:30", "Amanhã 09:00"], diasLotados: 3 },
-    { profId: 2, ocupados: 8, total: 11, proximosLivres: ["Hoje 19:00", "Hoje 19:45"], diasLotados: 2 }
-  ];
+  var PROXIMOS_LIVRES = {
+    1: ["Hoje 18:30", "Amanhã 09:00"],
+    2: ["Hoje 19:00", "Hoje 19:45"]
+  };
   var WHATSAPP_QUEUE = [
     { nome: "Marcos Vieira", telefone: "(11) 98•••4412", preview: "Tem horário pra hoje à tarde?", tempo: "2h 14m", status: "aguardando", urgent: true, cor: "#FF5000" },
     { nome: "Felipe Toledo", telefone: "(11) 99•••0087", preview: "Pode marcar com o Lucas sexta?", tempo: "47m", status: "aguardando", urgent: true, cor: "#6B3EFF" },
@@ -21614,9 +21597,10 @@
     { wd: 4, dd: "29" }
   ];
   var WD_LABEL = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+  var WD_LONGO = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
   var VAGAS = {
-    1: [3, 5, 0, 2, 1, 0, 7, 4, 6, 9],
-    2: [6, 0, 1, 8, null, 0, 5, 3, 8, 11]
+    1: [1, 5, 0, 2, 1, 0, 7, 4, 6, 9],
+    2: [5, 0, 1, 8, null, 0, 5, 3, 8, 11]
   };
   var estadoDoDia = (profId, i) => {
     const cfg = AGENDA_CONFIG[profId];
@@ -21628,6 +21612,33 @@
     if (v === null || v === void 0) return { tipo: "bloqueio" };
     if (v === 0) return { tipo: "lotado", vagas: 0 };
     return { tipo: "vagas", vagas: v };
+  };
+  var doDia = (id) => AGENDA_HOJE.filter((a) => a.profId === id);
+  var capacidade = (id) => AGENDA_CONFIG[id]?.capacidade ?? 0;
+  var vagasHoje = (id) => VAGAS[id]?.[0] ?? 0;
+  var OCUPACAO_HOJE = PROFISSIONAIS.map((p) => ({
+    profId: p.id,
+    total: capacidade(p.id),
+    ocupados: capacidade(p.id) - vagasHoje(p.id),
+    proximosLivres: PROXIMOS_LIVRES[p.id] ?? []
+  }));
+  var kpisDeHoje = (ids) => {
+    const linhas = ids.flatMap(doDia);
+    const concluidos = linhas.filter((a) => a.status === "concluido").length;
+    const cancelados = linhas.filter((a) => a.status === "cancelado").length;
+    const ativos = linhas.length - concluidos - cancelados;
+    const livres = ids.reduce((s, id) => s + vagasHoje(id), 0);
+    const cheia = ids.reduce((s, id) => s + capacidade(id), 0);
+    return {
+      agendamentos: { value: linhas.length, sub: `${concluidos} concluídos · ${ativos} ativos · ${cancelados} cancelados` },
+      ocupacao: { value: `${Math.round((cheia - livres) / cheia * 100)}%`, sub: ids.length > 1 ? "2 profissionais ativos" : PROF_BY_ID[ids[0]].short },
+      slotsLivres: { value: livres, sub: `de ${cheia} horários no dia` }
+    };
+  };
+  KPIS_BASE.hoje = {
+    all: kpisDeHoje(PROFISSIONAIS.map((p) => p.id)),
+    1: kpisDeHoje([1]),
+    2: kpisDeHoje([2])
   };
   Object.assign(window, {
     PROFISSIONAIS,
@@ -21677,8 +21688,6 @@
         return /* @__PURE__ */ import_react.default.createElement("svg", { ...common }, /* @__PURE__ */ import_react.default.createElement("circle", { cx: "12", cy: "12", r: "1" }), /* @__PURE__ */ import_react.default.createElement("circle", { cx: "19", cy: "12", r: "1" }), /* @__PURE__ */ import_react.default.createElement("circle", { cx: "5", cy: "12", r: "1" }));
       case "search":
         return /* @__PURE__ */ import_react.default.createElement("svg", { ...common }, /* @__PURE__ */ import_react.default.createElement("circle", { cx: "11", cy: "11", r: "7" }), /* @__PURE__ */ import_react.default.createElement("path", { d: "m21 21-4.3-4.3" }));
-      case "bell":
-        return /* @__PURE__ */ import_react.default.createElement("svg", { ...common }, /* @__PURE__ */ import_react.default.createElement("path", { d: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" }), /* @__PURE__ */ import_react.default.createElement("path", { d: "M10 21a2 2 0 0 0 4 0" }));
       case "settings":
         return /* @__PURE__ */ import_react.default.createElement("svg", { ...common }, /* @__PURE__ */ import_react.default.createElement("circle", { cx: "12", cy: "12", r: "3" }), /* @__PURE__ */ import_react.default.createElement("path", { d: "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" }));
       case "filter":
@@ -21697,8 +21706,15 @@
         return /* @__PURE__ */ import_react.default.createElement("svg", { ...common }, /* @__PURE__ */ import_react.default.createElement("path", { d: "M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" }), /* @__PURE__ */ import_react.default.createElement("circle", { cx: "8.5", cy: "7", r: "4" }), /* @__PURE__ */ import_react.default.createElement("path", { d: "m17 11 2 2 4-4" }));
       case "block":
         return /* @__PURE__ */ import_react.default.createElement("svg", { ...common }, /* @__PURE__ */ import_react.default.createElement("circle", { cx: "12", cy: "12", r: "9" }), /* @__PURE__ */ import_react.default.createElement("path", { d: "M4.93 4.93l14.14 14.14" }));
-      case "menu":
-        return /* @__PURE__ */ import_react.default.createElement("svg", { ...common }, /* @__PURE__ */ import_react.default.createElement("path", { d: "M4 6h16M4 12h16M4 18h16" }));
+      /* Os três da barra do celular são cópia fiel do lucide-react — os mesmos que
+         `MobileBottomNav.tsx` importa. Desenhar "parecido" faria a barra mudar de
+         cara sozinha na hora de portar. */
+      case "calendar-days":
+        return /* @__PURE__ */ import_react.default.createElement("svg", { ...common }, /* @__PURE__ */ import_react.default.createElement("path", { d: "M8 2v4M16 2v4" }), /* @__PURE__ */ import_react.default.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2" }), /* @__PURE__ */ import_react.default.createElement("path", { d: "M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01" }));
+      case "message-circle":
+        return /* @__PURE__ */ import_react.default.createElement("svg", { ...common }, /* @__PURE__ */ import_react.default.createElement("path", { d: "M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" }));
+      case "chart-column":
+        return /* @__PURE__ */ import_react.default.createElement("svg", { ...common }, /* @__PURE__ */ import_react.default.createElement("path", { d: "M5 21v-6M12 21V3M19 21V9" }));
       case "home":
         return /* @__PURE__ */ import_react.default.createElement("svg", { ...common }, /* @__PURE__ */ import_react.default.createElement("path", { d: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z" }));
       case "bar-chart":
@@ -21713,14 +21729,14 @@
         return null;
     }
   };
-  var Panel = ({ title, subtitle, icon, actions, children, className = "", padding = "p-5", innerPadding, style, bodyStyle }) => /* @__PURE__ */ import_react.default.createElement("section", { className: `db-panel ${className}`, style }, (title || actions) && /* @__PURE__ */ import_react.default.createElement("header", { className: "db-panel__head" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "db-panel__head-left" }, icon && /* @__PURE__ */ import_react.default.createElement("span", { className: "db-panel__icon" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: icon, size: 19 })), /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("h3", { className: "db-panel__title" }, title), subtitle && /* @__PURE__ */ import_react.default.createElement("p", { className: "db-panel__sub" }, subtitle))), actions && /* @__PURE__ */ import_react.default.createElement("div", { className: "db-panel__actions" }, actions)), /* @__PURE__ */ import_react.default.createElement("div", { className: `db-panel__body ${innerPadding || padding}`, style: bodyStyle }, children));
-  var KpiCard = ({ icon, label, value, sub, tone, compact }) => /* @__PURE__ */ import_react.default.createElement("div", { className: `kpi ${compact ? "kpi--compact" : ""} ${tone ? `kpi--${tone}` : ""}` }, /* @__PURE__ */ import_react.default.createElement("span", { className: "kpi__icon" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: icon, size: compact ? 24 : 30, stroke: 1.5 })), /* @__PURE__ */ import_react.default.createElement("div", { className: "kpi__body" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "kpi__label" }, label), /* @__PURE__ */ import_react.default.createElement("div", { className: "kpi__value" }, value), sub && /* @__PURE__ */ import_react.default.createElement("div", { className: "kpi__sub" }, sub)));
-  var PeriodChips = ({ value, onChange, options }) => /* @__PURE__ */ import_react.default.createElement("div", { className: "chips", role: "tablist" }, options.map((o) => /* @__PURE__ */ import_react.default.createElement(
+  var Panel = ({ title, subtitle, meta, icon, actions, children, className = "", padding = "p-5", innerPadding, style, bodyStyle }) => /* @__PURE__ */ import_react.default.createElement("section", { className: `db-panel ${className}`, style }, (title || actions) && /* @__PURE__ */ import_react.default.createElement("header", { className: "db-panel__head" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "db-panel__head-left" }, icon && /* @__PURE__ */ import_react.default.createElement("span", { className: "db-panel__icon" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: icon, size: 19 })), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-panel__titling" }, /* @__PURE__ */ import_react.default.createElement("h2", { className: "db-panel__title" }, title), meta && /* @__PURE__ */ import_react.default.createElement("span", { className: "db-panel__meta" }, meta), subtitle && /* @__PURE__ */ import_react.default.createElement("p", { className: "db-panel__sub" }, subtitle))), actions && /* @__PURE__ */ import_react.default.createElement("div", { className: "db-panel__actions" }, actions)), /* @__PURE__ */ import_react.default.createElement("div", { className: `db-panel__body ${innerPadding || padding}`, style: bodyStyle }, children));
+  var KpiCard = ({ label, value, sub, destaque, compact }) => /* @__PURE__ */ import_react.default.createElement("div", { className: `kpi ${compact ? "kpi--compact" : ""} ${destaque ? "kpi--destaque" : ""}` }, /* @__PURE__ */ import_react.default.createElement("span", { className: "kpi__label" }, label), /* @__PURE__ */ import_react.default.createElement("div", { className: "kpi__value" }, value), sub && /* @__PURE__ */ import_react.default.createElement("div", { className: "kpi__sub" }, sub));
+  var PeriodChips = ({ value, onChange, options }) => /* @__PURE__ */ import_react.default.createElement("div", { className: "chips", role: "radiogroup", "aria-label": "Período" }, options.map((o) => /* @__PURE__ */ import_react.default.createElement(
     "button",
     {
       key: o.value,
-      role: "tab",
-      "aria-selected": value === o.value,
+      role: "radio",
+      "aria-checked": value === o.value,
       className: `chip ${value === o.value ? "chip--on" : ""}`,
       onClick: () => onChange(o.value)
     },
@@ -21757,12 +21773,17 @@
     const it = map[status] || map.agendado;
     return /* @__PURE__ */ import_react.default.createElement("span", { className: `statuspill ${it.cls}` }, status === "em-atendimento" && /* @__PURE__ */ import_react.default.createElement("span", { className: "statuspill__dot" }), it.label);
   };
-  var CelulaDispo = ({ estado, prof }) => {
-    if (estado.tipo === "fora") return /* @__PURE__ */ import_react.default.createElement("span", { className: "dcell dcell--nao", title: `Fora da janela de ${prof.short}` });
-    if (estado.tipo === "fechado") return /* @__PURE__ */ import_react.default.createElement("span", { className: "dcell dcell--nao", title: `${prof.short} não trabalha neste dia` });
-    if (estado.tipo === "bloqueio") return /* @__PURE__ */ import_react.default.createElement("span", { className: "dcell dcell--nao", title: `${prof.short}: dia bloqueado` });
-    if (estado.tipo === "lotado") return /* @__PURE__ */ import_react.default.createElement("span", { className: "dcell dcell--lotado", title: `${prof.short}: sem vaga` }, "0");
-    return /* @__PURE__ */ import_react.default.createElement("span", { className: "dcell dcell--vagas", title: `${prof.short}: ${estado.vagas} vaga${estado.vagas > 1 ? "s" : ""}` }, estado.vagas);
+  var CelulaDispo = ({ estado, prof, hoje = false }) => {
+    const cls = `dcell${hoje ? " is-today" : ""}`;
+    if (estado.tipo === "fora")
+      return /* @__PURE__ */ import_react.default.createElement("span", { className: `${cls} dcell--nao dcell--rot`, title: `Fora da janela de ${prof.short}` }, "—");
+    if (estado.tipo === "fechado")
+      return /* @__PURE__ */ import_react.default.createElement("span", { className: `${cls} dcell--nao dcell--rot`, title: `${prof.short} não trabalha neste dia` }, "folga");
+    if (estado.tipo === "bloqueio")
+      return /* @__PURE__ */ import_react.default.createElement("span", { className: `${cls} dcell--nao dcell--rot`, title: `${prof.short}: dia bloqueado` }, "bloqueio");
+    if (estado.tipo === "lotado")
+      return /* @__PURE__ */ import_react.default.createElement("span", { className: `${cls} dcell--cheio`, title: `${prof.short}: sem vaga` }, "cheio");
+    return /* @__PURE__ */ import_react.default.createElement("span", { className: `${cls} dcell--vagas`, title: `${prof.short}: ${estado.vagas} vaga${estado.vagas > 1 ? "s" : ""}` }, estado.vagas);
   };
   var DispoStrip = ({ profFilter = "all" }) => {
     const profs = profFilter === "all" ? PROFISSIONAIS : PROFISSIONAIS.filter((p) => p.id === profFilter);
@@ -21771,15 +21792,41 @@
     return /* @__PURE__ */ import_react.default.createElement("div", { className: "dstrip" }, profs.map((p) => {
       const janela = AGENDA_CONFIG[p.id]?.janela ?? 0;
       const dias = DIAS_CORRIDOS.slice(0, janela);
-      return /* @__PURE__ */ import_react.default.createElement("div", { key: p.id, className: "dblock" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dblock__head" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dstrip__dot", style: { background: p.color } }), /* @__PURE__ */ import_react.default.createElement("span", { className: "dblock__name" }, p.short), /* @__PURE__ */ import_react.default.createElement("span", { className: "dblock__janela" }, janela, " dias")), /* @__PURE__ */ import_react.default.createElement("div", { className: "dstrip__row dstrip__row--head", style: cols }, dias.map((d, i) => /* @__PURE__ */ import_react.default.createElement("span", { key: i, className: `dstrip__day${d.hoje ? " is-today" : ""}` }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dstrip__wd" }, d.hoje ? "hoje" : WD_LABEL[d.wd]), /* @__PURE__ */ import_react.default.createElement("span", { className: "dstrip__dd" }, d.dd)))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dstrip__row", style: cols }, dias.map((_, i) => /* @__PURE__ */ import_react.default.createElement(CelulaDispo, { key: i, estado: estadoDoDia(p.id, i), prof: p }))));
+      return /* @__PURE__ */ import_react.default.createElement("div", { key: p.id, className: "dblock" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dblock__head" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dstrip__dot", style: { background: p.color } }), /* @__PURE__ */ import_react.default.createElement("span", { className: "dblock__name" }, p.short), /* @__PURE__ */ import_react.default.createElement("span", { className: "dblock__cap" }, AGENDA_CONFIG[p.id]?.capacidade, " vagas/dia"), /* @__PURE__ */ import_react.default.createElement("span", { className: "dblock__janela" }, "janela de ", janela, " dias")), /* @__PURE__ */ import_react.default.createElement("div", { className: "dstrip__row dstrip__row--head", style: cols }, dias.map((d, i) => /* @__PURE__ */ import_react.default.createElement("span", { key: i, className: `dstrip__day${d.hoje ? " is-today" : ""}` }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dstrip__wd" }, d.hoje ? "hoje" : WD_LABEL[d.wd]), /* @__PURE__ */ import_react.default.createElement("span", { className: "dstrip__dd" }, d.dd)))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dstrip__row", style: cols }, dias.map((d, i) => /* @__PURE__ */ import_react.default.createElement(CelulaDispo, { key: i, estado: estadoDoDia(p.id, i), prof: p, hoje: d.hoje }))));
     }));
   };
   var DispoList = ({ profFilter = "all" }) => {
     const profs = profFilter === "all" ? PROFISSIONAIS : PROFISSIONAIS.filter((p) => p.id === profFilter);
     const janela = Math.max(...profs.map((p) => AGENDA_CONFIG[p.id]?.janela ?? 0));
     const dias = DIAS_CORRIDOS.slice(0, janela);
-    return /* @__PURE__ */ import_react.default.createElement("div", { className: "dlist" }, dias.map((d, i) => /* @__PURE__ */ import_react.default.createElement("div", { key: i, className: `dlist__row${d.hoje ? " is-today" : ""}` }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dlist__day" }, /* @__PURE__ */ import_react.default.createElement("b", null, d.hoje ? "Hoje" : WD_LABEL[d.wd]), " ", d.dd), /* @__PURE__ */ import_react.default.createElement("span", { className: "dlist__profs" }, profs.filter((p) => i < (AGENDA_CONFIG[p.id]?.janela ?? 0)).map((p) => /* @__PURE__ */ import_react.default.createElement("span", { key: p.id, className: "dlist__cell" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dlist__dot", style: { background: p.color } }), /* @__PURE__ */ import_react.default.createElement("span", { className: "dlist__name" }, p.short.split(" ")[1] ?? p.short), /* @__PURE__ */ import_react.default.createElement(CelulaDispo, { estado: estadoDoDia(p.id, i), prof: p })))))), "    ");
+    const cols = { gridTemplateColumns: `1fr repeat(${profs.length}, 58px)` };
+    const ninguemAtende = (i) => profs.every((p) => {
+      const t = estadoDoDia(p.id, i).tipo;
+      return t === "fechado" || t === "fora";
+    });
+    return /* @__PURE__ */ import_react.default.createElement("div", { className: "dlist" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dlist__head", style: cols }, /* @__PURE__ */ import_react.default.createElement("span", null), profs.map((p) => /* @__PURE__ */ import_react.default.createElement("span", { key: p.id, className: "dlist__prof" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dlist__dot", style: { background: p.color } }), p.short.split(" ")[1] ?? p.short))), dias.map((d, i) => ninguemAtende(i) ? /* @__PURE__ */ import_react.default.createElement("div", { key: i, className: "dlist__fechado" }, WD_LONGO[d.wd], " ", d.dd) : /* @__PURE__ */ import_react.default.createElement("div", { key: i, className: `dlist__row${d.hoje ? " is-today" : ""}`, style: cols }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dlist__day" }, /* @__PURE__ */ import_react.default.createElement("b", null, d.hoje ? "Hoje" : WD_LABEL[d.wd]), " ", d.dd), profs.map((p) => /* @__PURE__ */ import_react.default.createElement(CelulaDispo, { key: p.id, estado: estadoDoDia(p.id, i), prof: p })))));
   };
+  var ABAS_MOBILE = [
+    { id: "calendar", icone: "calendar-days", label: "Agenda" },
+    { id: "conversations", icone: "message-circle", label: "Conversas", badge: 3 },
+    { id: "dashboard", icone: "chart-column", label: "Dashboard" }
+  ];
+  var DockNav = ({ atual, onChange }) => /* @__PURE__ */ import_react.default.createElement("nav", { className: "mb-dock", "aria-label": "Navegação" }, ABAS_MOBILE.map((a) => {
+    const ativo = a.id === atual;
+    return /* @__PURE__ */ import_react.default.createElement(
+      "button",
+      {
+        key: a.id,
+        className: `mb-dock__item${ativo ? " is-active" : ""}`,
+        onClick: () => onChange(a.id),
+        "aria-current": ativo ? "page" : void 0,
+        "aria-label": a.label
+      },
+      /* @__PURE__ */ import_react.default.createElement(Icon, { name: a.icone, size: 24, stroke: ativo ? 2.3 : 1.8 }),
+      /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-dock__dot" }),
+      a.badge > 0 && /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-dock__badge" }, a.badge)
+    );
+  }));
   Object.assign(window, {
     Icon,
     Panel,
@@ -21788,7 +21835,8 @@
     ProfFilter,
     StatusPill,
     DispoStrip,
-    DispoList
+    DispoList,
+    DockNav
   });
   var KPI_LABELS = {
     agendamentos: "Agendamentos",
@@ -21809,10 +21857,6 @@
     const profKey = prof === "all" ? "all" : prof;
     const kpis = (KPIS_BASE[period] ?? KPIS_BASE["30d"])[profKey] ?? (KPIS_BASE[period] ?? KPIS_BASE["30d"]).all;
     const marcacoes = (MARCACOES[period] ?? MARCACOES["30d"])[profKey] ?? (MARCACOES[period] ?? MARCACOES["30d"]).all;
-    const janelaVisivel = useMemo(() => {
-      const alvo = prof === "all" ? PROFISSIONAIS : PROFISSIONAIS.filter((p) => p.id === prof);
-      return Math.max(...alvo.map((p) => AGENDA_CONFIG[p.id]?.janela ?? 0));
-    }, [prof]);
     const agenda = useMemo(() => prof === "all" ? AGENDA_HOJE : AGENDA_HOJE.filter((a) => a.profId === prof), [prof]);
     const ATIVOS = ["agendado", "confirmado", "reagendado", "em-atendimento"];
     const proximos = agenda.filter((a) => ATIVOS.includes(a.status));
@@ -21828,7 +21872,7 @@
     const lista = ABAS.find((t) => t.id === aba)?.lista ?? proximos;
     const iAgora = aba === "linha" ? linhaDoTempo.findIndex((a) => a.status !== "concluido" && a.status !== "em-atendimento") : -1;
     const ocupFiltered = prof === "all" ? OCUPACAO_HOJE : OCUPACAO_HOJE.filter((o) => o.profId === prof);
-    return /* @__PURE__ */ import_react.default.createElement("div", { className: "db-shell" }, /* @__PURE__ */ import_react.default.createElement("header", { className: "db-topbar db-topbar--calendar" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "db-topbar__brand" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__logo" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "scissors", size: 14 })), /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__brand-name" }, "CALENDÁRIO"), /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__brand-sub" }, "/ Dashboard")), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-topbar__calendar" }, /* @__PURE__ */ import_react.default.createElement("button", { className: "db-topbar__today" }, "Hoje"), /* @__PURE__ */ import_react.default.createElement("button", { className: "db-iconbtn db-iconbtn--compact", "aria-label": "Anterior" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "chevron-right", size: 13, style: { transform: "rotate(180deg)" } })), /* @__PURE__ */ import_react.default.createElement("button", { className: "db-iconbtn db-iconbtn--compact", "aria-label": "Próximo" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "chevron-right", size: 13 })), /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__date" }, "terça-feira, 20 de maio")), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-topbar__right" }, /* @__PURE__ */ import_react.default.createElement("button", { className: "db-iconbtn" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "search", size: 14 })), /* @__PURE__ */ import_react.default.createElement("button", { className: "db-iconbtn" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "bell", size: 14 })), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-avatar-me" }, "VC"))), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-pagehead" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "db-pagehead__left" }, /* @__PURE__ */ import_react.default.createElement("h1", { className: "db-pagehead__title" }, "Dashboard"), /* @__PURE__ */ import_react.default.createElement("p", { className: "db-pagehead__sub" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "db-pulse" }), " Resumo do calendário · ", PERIOD_LABELS[period], " · atualizado há 24s")), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-pagehead__filters" }, /* @__PURE__ */ import_react.default.createElement(
+    return /* @__PURE__ */ import_react.default.createElement("div", { className: "db-shell" }, /* @__PURE__ */ import_react.default.createElement("header", { className: "db-topbar db-topbar--calendar" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "db-topbar__brand" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__logo" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "scissors", size: 14 })), /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__brand-name" }, "CALENDÁRIO"), /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__brand-sub" }, "/ Dashboard")), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-topbar__calendar" }, /* @__PURE__ */ import_react.default.createElement("button", { className: "db-topbar__today" }, "Hoje"), /* @__PURE__ */ import_react.default.createElement("button", { className: "db-iconbtn db-iconbtn--compact", "aria-label": "Anterior" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "chevron-right", size: 13, style: { transform: "rotate(180deg)" } })), /* @__PURE__ */ import_react.default.createElement("button", { className: "db-iconbtn db-iconbtn--compact", "aria-label": "Próximo" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "chevron-right", size: 13 })), /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__date" }, "Terça-feira, 20 de maio")), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-topbar__right" }, /* @__PURE__ */ import_react.default.createElement("button", { className: "db-iconbtn" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "search", size: 14 })), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-avatar-me" }, "VC"))), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-pagehead" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "db-pagehead__left" }, /* @__PURE__ */ import_react.default.createElement("h1", { className: "db-pagehead__title" }, "Dashboard"), /* @__PURE__ */ import_react.default.createElement("p", { className: "db-pagehead__sub" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "db-pulse" }), " Resumo do calendário · ", PERIOD_LABELS[period], " · atualizado há 24s")), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-pagehead__filters" }, /* @__PURE__ */ import_react.default.createElement(ProfFilter, { value: prof, onChange: setProf, profs: PROFISSIONAIS }))), /* @__PURE__ */ import_react.default.createElement("section", { className: "db-resumo" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "db-resumo__head" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "db-resumo__label" }, "Resumo do período"), /* @__PURE__ */ import_react.default.createElement(
       PeriodChips,
       {
         value: period,
@@ -21840,12 +21884,11 @@
           { value: "30d", label: "30 dias" }
         ]
       }
-    ), /* @__PURE__ */ import_react.default.createElement(ProfFilter, { value: prof, onChange: setProf, profs: PROFISSIONAIS }))), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-kpis" }, /* @__PURE__ */ import_react.default.createElement(KpiCard, { icon: "calendar", label: KPI_LABELS.agendamentos, value: kpis.agendamentos.value, sub: kpis.agendamentos.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { icon: "bar-chart", label: KPI_LABELS.ocupacao, value: kpis.ocupacao.value, sub: kpis.ocupacao.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { icon: "clock", label: KPI_LABELS.slotsLivres, value: kpis.slotsLivres.value, sub: kpis.slotsLivres.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { icon: "bot", label: KPI_LABELS.marcacoes, value: marcacoes.value, sub: marcacoes.sub })), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-row", style: { gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.25fr)" } }, /* @__PURE__ */ import_react.default.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ import_react.default.createElement(
+    )), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-kpis" }, /* @__PURE__ */ import_react.default.createElement(KpiCard, { label: KPI_LABELS.agendamentos, value: kpis.agendamentos.value, sub: kpis.agendamentos.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { label: KPI_LABELS.ocupacao, value: kpis.ocupacao.value, sub: kpis.ocupacao.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { label: KPI_LABELS.slotsLivres, value: kpis.slotsLivres.value, sub: kpis.slotsLivres.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { label: KPI_LABELS.marcacoes, value: marcacoes.value, sub: marcacoes.sub, destaque: true }))), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-row", style: { gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.25fr)" } }, /* @__PURE__ */ import_react.default.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ import_react.default.createElement(
       Panel,
       {
         title: "Agenda de hoje",
-        subtitle: `${proximos.length} próximos · ${concluidos.length} concluídos · ${cancelados.length} cancelados`,
-        icon: "calendar",
+        meta: `${proximos.length} próximos · ${concluidos.length} concluídos · ${cancelados.length} cancelados`,
         actions: /* @__PURE__ */ import_react.default.createElement("div", { className: "seg" }, ABAS.map((t) => /* @__PURE__ */ import_react.default.createElement(
           "button",
           {
@@ -21864,27 +21907,24 @@
         const isAtendendo = a.status === "em-atendimento";
         return /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, { key: i }, i === iAgora && /* @__PURE__ */ import_react.default.createElement("li", { className: "agenda__agora" }, /* @__PURE__ */ import_react.default.createElement("span", null, "agora")), /* @__PURE__ */ import_react.default.createElement("li", { className: `agenda__row ${isAtendendo ? "is-active" : ""} ${a.status === "concluido" ? "is-done" : ""} ${a.status === "cancelado" ? "is-cancelado" : ""}` }, /* @__PURE__ */ import_react.default.createElement("span", { className: "agenda__bar", style: { background: p.color, boxShadow: isAtendendo ? `0 0 12px ${p.color}88` : "none" } }), /* @__PURE__ */ import_react.default.createElement("div", { className: "agenda__time" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "agenda__hora" }, a.hora), /* @__PURE__ */ import_react.default.createElement("span", { className: "agenda__dur" }, a.duracao, "min")), /* @__PURE__ */ import_react.default.createElement("div", { className: "agenda__client" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "agenda__name" }, a.cliente), /* @__PURE__ */ import_react.default.createElement("span", { className: "agenda__phone" }, a.telefone)), /* @__PURE__ */ import_react.default.createElement("div", { className: "agenda__prof" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "agenda__profdot", style: { background: p.color } }), /* @__PURE__ */ import_react.default.createElement("span", { className: "agenda__profname" }, p.short)), /* @__PURE__ */ import_react.default.createElement("div", { className: "agenda__meta" }, /* @__PURE__ */ import_react.default.createElement(StatusPill, { status: a.status }))));
       }))
-    )), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-stack" }, /* @__PURE__ */ import_react.default.createElement(Panel, { title: "Próximos horários livres", subtitle: "Os dois próximos encaixes de cada barbeiro", icon: "sparkle", padding: "p-4" }, /* @__PURE__ */ import_react.default.createElement("ul", { className: "firstfree" }, ocupFiltered.map((o) => {
+    )), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-stack" }, /* @__PURE__ */ import_react.default.createElement(Panel, { title: "Próximos horários livres", padding: "p-4" }, /* @__PURE__ */ import_react.default.createElement("ul", { className: "firstfree" }, ocupFiltered.map((o) => {
       const p = PROF_BY_ID[o.profId];
       return /* @__PURE__ */ import_react.default.createElement("li", { key: o.profId, className: "firstfree__row" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "firstfree__dot", style: { background: p.color } }), /* @__PURE__ */ import_react.default.createElement("span", { className: "firstfree__name" }, p.short), /* @__PURE__ */ import_react.default.createElement("span", { className: "firstfree__slots" }, o.proximosLivres.map((h, i) => /* @__PURE__ */ import_react.default.createElement("span", { key: i, className: `firstfree__when${i > 0 ? " is-segundo" : ""}` }, h))));
-    }))), /* @__PURE__ */ import_react.default.createElement(Panel, { title: "Disponibilidade", subtitle: "Vagas livres · janela que cada barbeiro configurou", icon: "clock", padding: "p-4" }, /* @__PURE__ */ import_react.default.createElement(DispoStrip, { profFilter: prof })))));
+    }))), /* @__PURE__ */ import_react.default.createElement(Panel, { title: "Disponibilidade", padding: "p-4" }, /* @__PURE__ */ import_react.default.createElement(DispoStrip, { profFilter: prof })))));
   };
   Object.assign(window, { Desktop });
   var Mobile = () => {
     const [period, setPeriod] = useState("hoje");
     const [prof, setProf] = useState("all");
+    const [aba, setAba] = useState("dashboard");
     const profKey = prof === "all" ? "all" : prof;
     const kpis = (KPIS_BASE[period] ?? KPIS_BASE["30d"])[profKey] ?? (KPIS_BASE[period] ?? KPIS_BASE["30d"]).all;
     const marcacoes = (MARCACOES[period] ?? MARCACOES["30d"])[profKey] ?? (MARCACOES[period] ?? MARCACOES["30d"]).all;
-    const janelaVisivel = useMemo(() => {
-      const alvo = prof === "all" ? PROFISSIONAIS : PROFISSIONAIS.filter((p) => p.id === prof);
-      return Math.max(...alvo.map((p) => AGENDA_CONFIG[p.id]?.janela ?? 0));
-    }, [prof]);
     const agenda = useMemo(() => prof === "all" ? AGENDA_HOJE : AGENDA_HOJE.filter((a) => a.profId === prof), [prof]);
     const proximos = agenda.filter((a) => a.status !== "concluido").slice(0, 5);
     const emAtendimento = agenda.filter((a) => a.status === "em-atendimento");
     const ocupFiltered = prof === "all" ? OCUPACAO_HOJE : OCUPACAO_HOJE.filter((o) => o.profId === prof);
-    return /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-shell" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-scroll" }, /* @__PURE__ */ import_react.default.createElement("header", { className: "mb-topbar" }, /* @__PURE__ */ import_react.default.createElement("button", { className: "mb-iconbtn" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "menu", size: 16 })), /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-topbar__title" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-topbar__name" }, "Dashboard"), /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-topbar__sub" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "db-pulse" }), " Calendário · atualizado há 24s")), /* @__PURE__ */ import_react.default.createElement("button", { className: "mb-iconbtn" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "bell", size: 16 }), /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-iconbtn__dot" }))), /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-chips" }, /* @__PURE__ */ import_react.default.createElement(
+    return /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-shell" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-scroll" }, /* @__PURE__ */ import_react.default.createElement("header", { className: "mb-topbar" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-topbar__title" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-topbar__name" }, "Dashboard"), /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-topbar__sub" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "db-pulse" }), " Calendário · atualizado há 24s")), /* @__PURE__ */ import_react.default.createElement("button", { className: "mb-avatar", "aria-label": "Menu do usuário" }, "VC")), /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-topfilter" }, /* @__PURE__ */ import_react.default.createElement(ProfFilter, { value: prof, onChange: setProf, profs: PROFISSIONAIS })), /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-period" }, /* @__PURE__ */ import_react.default.createElement(
       PeriodChips,
       {
         value: period,
@@ -21896,7 +21936,7 @@
           { value: "30d", label: "30 dias" }
         ]
       }
-    ), /* @__PURE__ */ import_react.default.createElement(ProfFilter, { value: prof, onChange: setProf, profs: PROFISSIONAIS })), /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-kpis" }, /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, icon: "calendar", label: "Agendamentos", value: kpis.agendamentos.value, sub: kpis.agendamentos.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, icon: "bar-chart", label: "Ocupação", value: kpis.ocupacao.value, sub: kpis.ocupacao.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, icon: "clock", label: "Horários livres", value: kpis.slotsLivres.value, sub: kpis.slotsLivres.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, icon: "bot", label: "Marcações", value: marcacoes.value, sub: marcacoes.sub })), emAtendimento.length > 0 && /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-now" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-now__head" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__pulse" }), /* @__PURE__ */ import_react.default.createElement("span", null, "Em atendimento agora · ", emAtendimento.length), /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__time" }, "11:00")), /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-now__rows" }, emAtendimento.map((a, i) => {
+    )), /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-kpis" }, /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, label: "Agendamentos", value: kpis.agendamentos.value, sub: kpis.agendamentos.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, label: "Ocupação", value: kpis.ocupacao.value, sub: kpis.ocupacao.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, label: "Horários livres", value: kpis.slotsLivres.value, sub: kpis.slotsLivres.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, label: "Marcações", value: marcacoes.value, sub: marcacoes.sub, destaque: true })), emAtendimento.length > 0 && /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-now" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-now__head" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__pulse" }), /* @__PURE__ */ import_react.default.createElement("span", null, "Em atendimento agora · ", emAtendimento.length), /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__time" }, "11:00")), /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-now__rows" }, emAtendimento.map((a, i) => {
       const p = PROF_BY_ID[a.profId];
       return /* @__PURE__ */ import_react.default.createElement("div", { key: i, className: "mb-now__row" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__bar", style: { background: p.color } }), /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__cli" }, a.cliente), /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__prof", style: { color: p.color } }, p.short));
     }))), /* @__PURE__ */ import_react.default.createElement(Panel, { title: "Próximos atendimentos", subtitle: `${proximos.length} pendentes hoje`, icon: "calendar", padding: "p-0" }, /* @__PURE__ */ import_react.default.createElement("ul", { className: "agenda agenda--compact" }, proximos.map((a, i) => {
@@ -21905,7 +21945,7 @@
     }), /* @__PURE__ */ import_react.default.createElement("li", { className: "agenda__more" }, "Ver todos os ", agenda.length, " ", /* @__PURE__ */ import_react.default.createElement(Icon, { name: "chevron-right", size: 11 })))), /* @__PURE__ */ import_react.default.createElement(Panel, { title: "Próximos horários livres", subtitle: "Os dois próximos encaixes de cada barbeiro", icon: "sparkle" }, /* @__PURE__ */ import_react.default.createElement("ul", { className: "firstfree" }, ocupFiltered.map((o) => {
       const p = PROF_BY_ID[o.profId];
       return /* @__PURE__ */ import_react.default.createElement("li", { key: o.profId, className: "firstfree__row" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "firstfree__dot", style: { background: p.color } }), /* @__PURE__ */ import_react.default.createElement("span", { className: "firstfree__name" }, p.short), /* @__PURE__ */ import_react.default.createElement("span", { className: "firstfree__slots" }, o.proximosLivres.map((h, i) => /* @__PURE__ */ import_react.default.createElement("span", { key: i, className: `firstfree__when${i > 0 ? " is-segundo" : ""}` }, h))));
-    }))), /* @__PURE__ */ import_react.default.createElement(Panel, { title: "Disponibilidade", subtitle: "Vagas livres · janela de cada barbeiro", icon: "clock", padding: "p-4" }, /* @__PURE__ */ import_react.default.createElement(DispoList, { profFilter: prof })), /* @__PURE__ */ import_react.default.createElement("div", { style: { height: 88 } })), /* @__PURE__ */ import_react.default.createElement("nav", { className: "mb-botnav" }, /* @__PURE__ */ import_react.default.createElement("button", { className: "mb-botnav__item" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "calendar", size: 18 }), /* @__PURE__ */ import_react.default.createElement("span", null, "Agenda")), /* @__PURE__ */ import_react.default.createElement("button", { className: "mb-botnav__item is-active" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "bar-chart", size: 18 }), /* @__PURE__ */ import_react.default.createElement("span", null, "Dashboard")), /* @__PURE__ */ import_react.default.createElement("button", { className: "mb-botnav__item" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "settings", size: 18 }), /* @__PURE__ */ import_react.default.createElement("span", null, "Mais"))));
+    }))), /* @__PURE__ */ import_react.default.createElement(Panel, { title: "Disponibilidade", subtitle: "Vagas livres · janela de cada barbeiro", icon: "clock", padding: "p-4" }, /* @__PURE__ */ import_react.default.createElement(DispoList, { profFilter: prof })), /* @__PURE__ */ import_react.default.createElement("div", { style: { height: 104 } })), /* @__PURE__ */ import_react.default.createElement(DockNav, { atual: aba, onChange: setAba }));
   };
   Object.assign(window, { Mobile });
   var _w1252rev = /* @__PURE__ */ new Map([

@@ -21,7 +21,10 @@
 }
 .agenda__row.is-done .agenda__name,
 .agenda__row.is-done .agenda__hora { color: var(--text-muted); }
-.agenda__row.is-done .agenda__bar { opacity: 0.4; }
+/* A barra de identidade NAO apaga em concluido. Na aba "Linha do tempo" -- o dia
+   inteiro, a lista mais longa -- as barras dos dois barbeiros a 40% ficavam
+   quase iguais entre si: a cor de identidade degradava exatamente onde a lista
+   e maior. Quem diz que terminou e o `statuspill`, que ja esta na linha. */
 
 .agenda__bar {
   width: 4px; height: 100%;
@@ -36,10 +39,10 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
-.agenda__dur { font-size: 10px; color: var(--text-faint); }
+.agenda__dur { font-size: 10px; color: var(--text-muted); }
 .agenda__client { display: flex; flex-direction: column; min-width: 0; }
 .agenda__name { font-size: 13px; font-weight: 500; color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.agenda__phone { font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.agenda__phone { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .agenda__prof { display: grid; grid-template-columns: 8px 96px; align-items: center; justify-content: center; column-gap: 8px; width: 100%; min-width: 0; }
 .agenda__profdot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .agenda__profname { display: block; width: 96px; font-size: 12px; color: var(--text); text-align: left; white-space: nowrap; }
@@ -56,20 +59,6 @@
   padding: 8px 16px 8px 0;
 }
 
-/* =========================================================================
-   ORIGEM / STATUS BADGES
-   ========================================================================= */
-.oribadge {
-  --c: var(--primary);
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 10px; font-weight: 500;
-  padding: 3px 7px;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--c) 12%, transparent);
-  color: var(--c);
-  border: 1px solid color-mix(in srgb, var(--c) 22%, transparent);
-  white-space: nowrap;
-}
 /* Divisor entre o que ja passou e o que vem, na aba Linha do tempo. */
 .agenda__agora {
   display: flex; align-items: center; gap: 10px;
@@ -81,13 +70,15 @@
   content: ""; flex: 1; height: 1px;
   background: linear-gradient(90deg, rgba(167,139,250,0.45), rgba(167,139,250,0));
 }
-.agenda__row.is-cancelado .agenda__name { text-decoration: line-through; opacity: 0.55; }
-.agenda__row.is-cancelado .agenda__hora { opacity: 0.55; }
+/* Cancelado ja tem simbolo proprio -- o risco. A opacidade em cima dele era
+   redundante, e opacidade nao comunica estado neste projeto. */
+.agenda__row.is-cancelado .agenda__name { text-decoration: line-through; color: var(--text-muted); }
+.agenda__row.is-cancelado .agenda__hora { color: var(--text-muted); }
 .agenda__vazio {
   padding: 28px 16px;
   text-align: center;
   font-size: 12px;
-  color: rgba(255,255,255,0.32);
+  color: var(--text-muted);
 }
 
 .statuspill {
@@ -96,7 +87,7 @@
   white-space: nowrap;
 }
 .statuspill.is-agendado   { color: rgba(255,255,255,0.55); }
-.statuspill.is-concluido  { color: var(--text-faint); }
+.statuspill.is-concluido  { color: var(--text-muted); }
 .statuspill.is-reagendado { color: var(--warning); }
 .statuspill.is-active     { color: #fff; }
 .statuspill.is-cancelado  { color: #ff8a8e; }

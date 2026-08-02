@@ -21,7 +21,9 @@
   --fg:            #ffffff;
   --text-strong:   rgba(255, 255, 255, 0.95);
   --text:          rgba(255, 255, 255, 0.82);
-  --text-muted:    rgba(255, 255, 255, 0.55);
+  --text-muted:    rgba(255, 255, 255, 0.55);  /* piso de texto: 6,08:1, passa AA */
+  /* NAO usar como cor de texto: 2,91:1 sobre painel, reprova AA em qualquer
+     tamanho que exista nesta tela. Serve para borda e divisor. */
   --text-faint:    rgba(255, 255, 255, 0.32);
 
   /* Borders */
@@ -49,6 +51,24 @@
 }
 
 * { box-sizing: border-box; }
+
+/* Nenhuma regra de foco existia em folha nenhuma -- o unico anel era o do
+   navegador, que sobreviveu so porque nada o desligava. Agora ele e da marca e
+   tem folga para nao ser recortado pelo pai com overflow. */
+:where(button, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary-soft);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* Tres animacoes infinitas na tela e nenhuma saida. Agora tem. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
 
 html, body {
   margin: 0; padding: 0;

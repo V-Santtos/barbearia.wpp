@@ -24,23 +24,18 @@
 .db-panel__head-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .db-panel__icon {
   display: flex; align-items: center;
-  color: rgba(255,255,255,0.42);
+  color: var(--text-muted);
   flex-shrink: 0;
 }
-.db-panel__title { margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--text-strong); letter-spacing: 0.01em; }
-.db-panel__sub { margin: 2px 0 0; font-size: 11px; line-height: 14px; color: var(--text-muted); }
+/* Titulo e contagem na MESMA linha. O icone saiu do desktop em 2026-08-02: o
+   centro optico dele caia exatamente na fresta entre titulo e subtitulo, sem
+   alinhar com nenhum dos dois -- era geometria, nao gosto. */
+.db-panel__titling { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.db-panel__title { margin: 0; font-size: 15px; line-height: 20px; font-weight: 650; color: var(--text-strong); letter-spacing: -0.005em; }
+.db-panel__meta { font-size: 11px; line-height: 14px; color: var(--text-muted); white-space: nowrap; }
+.db-panel__sub { margin: 2px 0 0; font-size: 11px; line-height: 14px; color: var(--text-muted); flex-basis: 100%; }
 .db-panel__actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .db-panel__body { flex: 1; min-width: 0; }
-
-.db-linkbtn {
-  font-size: 11px; font-weight: 500; color: var(--primary-soft);
-  background: transparent; border: 0; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 4px 6px;
-  border-radius: 6px;
-  font-family: inherit;
-}
-.db-linkbtn:hover { background: rgba(167, 139, 250, 0.1); }
 
 /* Spacing utilities for panel body */
 .p-0 { padding: 0; }
@@ -51,11 +46,11 @@
 /* =========================================================================
    ROWS / GRID
    ========================================================================= */
+/* Sem padding lateral: quem posiciona a faixa agora e o `.db-resumo`. */
 .db-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  padding: 0 32px 14px;
+  gap: 12px;
 }
 .db-row {
   display: grid;

@@ -28,6 +28,6 @@
 }
 /* O segundo e a alternativa, nao a resposta: entra mais apagado. */
 .firstfree__when.is-segundo {
-  color: rgba(255,255,255,0.42);
+  color: var(--text-muted);
   background: rgba(255,255,255,0.04);
 }

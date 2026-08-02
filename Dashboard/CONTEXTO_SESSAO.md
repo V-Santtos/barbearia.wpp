@@ -27,6 +27,14 @@ Servidor estático qualquer, de dentro de `Dashboard/`:
 cd Dashboard && python -m http.server 3005
 ```
 
+**Armadilha do `http.server`, achada em 2026-08-01:** ele não manda
+`Cache-Control`. Sem esse cabeçalho o navegador aplica frescor heurístico (10% da
+idade do arquivo pelo `Last-Modified`) e segura CSS já editado por **horas** — o
+sintoma é editar o parcial, dar F5 e não mudar nada, sem erro nenhum. Custou uma
+rodada inteira de depuração achando que a regra estava errada. Se acontecer:
+`Ctrl+Shift+R` resolve na hora, e servir com `Cache-Control: no-store` resolve
+sempre (bastam três linhas herdando `SimpleHTTPRequestHandler`).
+
 Abrir `http://localhost:3005/validacao-dashboard.html`. O botão no topo alterna
 entre a moldura de desktop e a de celular.
 
@@ -149,16 +157,79 @@ outro).
 
 Lista para bater o olho. O porquê de cada uma está logo abaixo.
 
-- [ ] **1.** Decidir o alcance do chip de período — a agenda não obedece a ele
-- [ ] **2.** Decidir se a Disponibilidade fica; se ficar, refazer a forma (vertical? o celular está ruim)
+- [x] **1.** Chip de período — **resolvido nas duas telas** (desceu para a faixa de KPIs)
+- [x] **2.** Disponibilidade — **fica**, e o celular foi refeito em 2026-08-01
 - [ ] **3.** Achar mais dado que valha o V1 — candidatos e bloqueios listados
-- [ ] **4.** Passar a camada de design com a(s) skill(s) que o usuário vai indicar
+- [x] **4.** Camada de design — **`impeccable` rodado em 2026-08-02**, ver seção abaixo
 - [ ] **5.** Desenhar a integração no CALENDARIO — estado de view + endpoint
-- [ ] **6.** Acertar a barra de navegação do celular — ícones, rótulos e ordem
+- [x] **6.** Barra de navegação do celular — **feita em 2026-08-01**, virou dock
+
+## A passada do `impeccable` (2026-08-02)
+
+Skill trazida pelo usuário (`pbakaus/impeccable`, adoção parcial — ver
+`docs/skills-log.md`). O `critique` rodou com duas avaliações isoladas: revisão de
+design e detector determinístico + medição no navegador. Relatório completo
+arquivado em `.impeccable/critique/`. **Nota inicial: 16/40.**
+
+Executado em **modo refinamento**, por decisão do usuário: *"não precisa remodelar
+o dashboard inteiro, esse visual está coerente com o calendário de lá"*.
+
+**O que foi feito:**
+
+- **A verdade de hoje passou a sair de uma fonte só.** A tela tinha **três
+  respostas diferentes** para "quantos horários livres hoje": o KPI dizia 14, a
+  Disponibilidade somava 9 e a ocupação implicava 6. Agora `OCUPACAO_HOJE` e os
+  KPIs de hoje são **calculados** da agenda do dia + capacidade + vagas. A
+  primeira coluna do `VAGAS` mudou (3→1, 6→5) porque ela tem que bater com a
+  agenda: cada barbeiro tem 9 linhas hoje, 1 cancelada.
+- **O ladrilho de ícone dos cards morreu.** Ocupava 18,6% da largura no desktop e
+  ~30% no celular sem carregar informação. O rótulo saiu de 10px/caixa-alta/42%
+  (4,08:1, reprovado) para 13px/branco-70. **A faixa saiu da linguagem visual dos
+  painéis** — sem borda, sem sombra — que é a forma de dizer que ela é resumo e
+  eles são trabalho. O chip de período mora dentro dela.
+- **O ícone saiu do cabeçalho dos painéis do desktop.** A causa do incômodo era
+  medível: o centro óptico do ícone caía **exatamente na fresta** entre título e
+  subtítulo, sem alinhar com nenhum dos dois. Título subiu para 15px/650, e a
+  contagem que muda todo dia virou `meta` na linha do título. Os dois subtítulos
+  que eram documentação saíram. **O celular não foi tocado.**
+- **Disponibilidade:** capacidade escrita no cabeçalho de cada barbeiro
+  (`9 vagas/dia`), `folga`/`bloqueio`/`—` escritos também no desktop, e o `0`
+  âmbar virou **`cheio`**. A faixa por barbeiro **ficou** — a borda irregular é a
+  decisão mais autoral da tela e o eixo único a mataria.
+- **Piso de contraste:** `--text-muted` (.55) passa em AA com folga (6,08:1); quem
+  reprovava era `--text-faint` (.32, 2,91:1) e uma família de alfas fora do token
+  set. Todos trocados. `--text-faint` deixou de ser cor de texto.
+- **Opacidade parou de comunicar estado na agenda** (regra travada): a barra de
+  identidade não apaga mais em concluído, e cancelado fica com o risco, que já é
+  símbolo.
+- **Foco, movimento e semântica:** anel de foco da marca (não existia **nenhuma**
+  regra de foco em folha nenhuma), `prefers-reduced-motion`, `h2` nos painéis
+  (`h1`→`h3` pulava nível) e `role="tablist"` trocado por `radiogroup`/`aria-current`
+  — não havia `tabpanel` nenhum para o leitor de tela encontrar.
+- **Morto removido:** `.kpi--alerta`, `--kpi-grad`, `.db-pill`, `.oribadge`,
+  `.db-linkbtn`, `.db-navbadge`, `.db-topbar__nav*` e o `janelaVisivel`, que era
+  calculado em duas telas e usado em nenhuma.
+
+**O detector fecha em 0 achados de produto.** Sobra só `overused-font` (Inter),
+**mantido de propósito**: o `CALENDARIO` usa Inter (`index.css:4`), e trocar a
+fonte aqui quebraria a coerência que é justamente o que não se pode quebrar.
+
+**Não executado, e por quê:** o eixo único na Disponibilidade do desktop (mataria
+a borda irregular), alvos de toque de 44px no desktop (mudaria a densidade da
+tela toda), e as perguntas de produto que a revisão levantou — se "Ocupação" muda
+alguma decisão do dono, se os dois painéis de horário livre deviam ser um só, e
+qual o próximo gesto depois de ver um horário livre. Essas são da tarefa 3.
 
 ## Em aberto — o detalhe de cada uma
 
-### 1. O chip de período não governa a coluna da esquerda
+### 1. O chip de período — RESOLVIDO (celular em 2026-08-01, desktop em 2026-08-02)
+
+Saiu do cabeçalho da página e desceu para dentro da faixa de KPIs, que é a única
+coisa que ele muda. O filtro de profissional ficou no nível da página, porque
+esse governa mesmo a tela toda. O registro do problema, abaixo, fica porque a
+lógica dele vale para qualquer controle novo que entrar.
+
+### 1b. O problema, como estava
 
 Clicar em `7 dias`, `15 dias` ou `30 dias` muda **só os quatro KPIs**. A "Agenda
 de hoje", os "Próximos horários livres" e a "Disponibilidade" ignoram o chip.
@@ -178,44 +249,36 @@ Duas saídas para discutir:
 Registrado por conta desta pergunta do usuário: *"a agenda de hoje só vai aparecer
 [hoje], isso faz sentido?"*
 
-### 2. A coluna de Disponibilidade deve existir?
+### 2. Disponibilidade — FICA, e o celular foi refeito (2026-08-01)
 
-Dúvida levantada pelo usuário: **se o barbeiro quer ver disponibilidade, ele abre
-o calendário.** O dashboard estaria repetindo, pior, o que a tela principal já faz
-melhor.
+A dúvida era se o painel deveria existir: **se o barbeiro quer ver disponibilidade,
+ele abre o calendário.** Ficou, porque o valor não é *ver* a agenda, é **responder
+sem navegar** — "tem vaga sexta?" chega no WhatsApp o dia inteiro.
 
-Contra-argumento a pesar: o valor do painel não é *ver* a agenda, é **responder
-sem navegar** — a pergunta "tem vaga sexta?" chega no WhatsApp o dia inteiro, e
-sair do dashboard para o calendário para responder é o custo que ele evitaria.
-Mas isso vale para "Próximos horários livres" com mais força do que para a grade
-de 10 dias.
+Os quatro defeitos do celular e o que cada um virou:
 
-Se ficar, muda de forma. No desktop, a ideia levantada é **coluna vertical** em
-vez da faixa horizontal.
+1. **Nome do barbeiro repetido 20 vezes** (dois por linha, dez linhas) → virou
+   **cabeçalho de coluna**, uma vez cada. A grade (`1fr` + uma coluna fixa por
+   barbeiro) alinha as células por baixo do nome; a linha do dia carrega só número.
+2. **Domingo ocupando linha inteira para não dizer nada** → dia em que *nenhum*
+   deles atende virou **risco fino** (`domingo 25` por extenso + régua). O teste é
+   por profissional em cena, não por dia da semana: com filtro num barbeiro só, a
+   folga dele também vira risco.
+3. **Célula vazia com três significados e sem hover para explicar** → cada um
+   ganhou **palavra na célula**: `folga`, `bloqueio`, `—`. O `title` continua no
+   desktop, onde hover existe; é a prop `rotulo` do `CelulaDispo`, então a célula
+   segue sendo **uma só**, compartilhada pelas duas telas.
+4. **Linha manca quando um barbeiro sai da janela dele** → a coluna dele não some
+   mais, mostra `—` alinhado sob o nome.
 
-**No celular está ruim, e os defeitos são concretos** (reforçado pelo usuário em
-2026-08-01, com print). Hoje é uma linha por dia, com uma coluna por barbeiro:
+**Uma legenda explicando o `—` foi escrita e removida**, a pedido do usuário. O
+motivo é o registro que importa: com `folga` e `bloqueio` virando palavra, o traço
+**ficou com um significado só**, e a lista terminando na maior das duas janelas
+basta para lê-lo. Se algum desses estados voltar a ser célula muda, a ambiguidade
+volta com ele e a legenda faz falta de novo.
 
-1. **O nome do barbeiro se repete 20 vezes** — dois por linha, dez linhas. É o
-   elemento mais repetido da tela para dizer a coisa menos variável dela.
-2. **Domingo ocupa uma linha inteira para não dizer nada.** Os dois não trabalham,
-   as duas células ficam vazias, e a linha pesa igual a um dia útil.
-3. **A célula vazia significa três coisas diferentes e no celular não há como
-   saber qual.** No desktop o `title` explica (não trabalha / bloqueio / fora da
-   janela dele); em tela de toque **não existe hover**, então a informação
-   simplesmente não chega. Foi um buraco que eu abri ao unificar os três estados
-   num só símbolo — a unificação está certa para o desktop e deixou o celular sem
-   a explicação.
-4. **A linha fica manca quando um barbeiro sai da janela dele** — em `qua 28` e
-   `qui 29` só o Eloi aparece, porque a janela do Costa é menor. Correto, mas lido
-   como falha.
-
-Direções a considerar na próxima passada: o nome do barbeiro virar cabeçalho fixo
-em vez de repetir por linha; dia fechado sair da lista em vez de virar linha
-vazia; e o motivo de "não dá" precisar de forma visível, não de hover.
-
-Decisão adiada por escolha do usuário: *"eu vou fazer um questionamento na próxima
-vez"*.
+**O desktop não foi tocado** — segue a faixa horizontal por barbeiro, com o `title`
+no hover. A ideia de virar **coluna vertical** ali continua aberta.
 
 ---
 
@@ -278,34 +341,59 @@ Levantado em 2026-08-01, ainda não discutido. O que já se sabe:
 - **Atenção ao rate limit** — 60s por IP em todas as rotas. Um dashboard que
   dispara várias chamadas a cada refresh precisa de uma chamada só.
 
-### 6. A barra de navegação do celular
+### 6. A barra de navegação do celular — FEITA (2026-08-01)
 
-Decidir ícones, rótulos, ordem e visual. E tem um problema achado em 2026-08-01:
-**a barra do protótipo não é a barra do app.**
+O protótipo tinha **inventado uma aba "Mais"** que não existe em lugar nenhum do
+app e **perdido "Conversas"**, que é tela real e a única com badge. A ordem também
+divergia. Validar aquela barra era validar uma barra que não ia existir.
 
-| | Protótipo | App real (`MobileBottomNav.tsx`) |
-|---|---|---|
-| 1ª | Agenda (calendário) | Agenda (`CalendarDays`) |
-| 2ª | **Dashboard** (barras) | **Conversas** (`MessageCircle`) |
-| 3ª | **Mais** (engrenagem) | **Dashboard** (`BarChart2`, `placeholder: true`) |
+Agora são **as três abas do app, na ordem dele** — `Agenda · Conversas ·
+Dashboard` (conferido em `MobileBottomNav.tsx`), com badge verde de não lidas em
+Conversas, mockado em 3. Os três ícones são **cópia literal do `lucide-react`**
+(`CalendarDays`, `MessageCircle`, `BarChart2` → hoje `chart-no-axes-column`),
+copiados do `node_modules` do `CALENDARIO`. Desenhar "parecido" faria a barra mudar
+de cara sozinha ao portar.
 
-O protótipo **inventou uma aba "Mais"** que não existe em lugar nenhum e **perdeu
-a "Conversas"**, que é funcionalidade real, com badge de não lidas. A ordem também
-diverge. Validar o desenho da barra aqui, do jeito que está, é validar uma barra
-que não vai existir.
+**A forma virou dock**, de uma referência que o usuário trouxe: pílula flutuante,
+solta do rodapé, largura mínima **proporcional** (62%) para não encolher em
+aparelho maior, ícones espalhados por `space-around`, vidro fosco. O conteúdo passa
+por baixo — por isso o respiro de 104px no fim da rolagem.
 
-O que precisa ser decidido junto:
+**Três coisas da referência ficaram de fora, de propósito:**
 
-- **Três abas ou quatro?** Se "Mais" tem razão de existir (perfil, configurações,
-  sair), vira a quarta — e aí o `UserMenu` do desktop e o "Mais" do celular
-  precisam contar a mesma história.
-- **Onde o dashboard fica na ordem.** Hoje é o terceiro no app e o segundo no
-  protótipo. Se ele vira a tela de entrada do dono, é outro assunto.
-- **Os ícones.** O app usa `lucide-react`; o protótipo tem SVGs desenhados à mão
-  dentro do componente `Icon`. Ao portar, o desenho tem que bater com o ícone
-  correspondente do lucide, senão a barra muda de cara sozinha na integração.
-- **O selo Premium.** O botão do `UserMenu` tem `Premium`; a aba do celular não
-  tem nada. Ou os dois marcam, ou nenhum marca.
+- **O rótulo por tooltip.** Mesma armadilha da Disponibilidade: hover não existe
+  em tela de toque. Quem diz onde você está é a cor + o ponto sob o ícone. Se um
+  dia ícone pelado parecer mudo demais, o conserto barato é a **aba ativa expandir
+  e mostrar o rótulo dela**, e só ela.
+- **A flutuação em laço e o `rotateX`.** Graça de dock de vitrine; numa barra de
+  navegação, balançar sozinha lê como bug e a perspectiva torce os ícones.
+- **shadcn + framer-motion + radix.** Esta pasta não tem `package.json` de
+  propósito, e o que migra para o `CALENDARIO` é o desenho. O efeito todo saiu em
+  CSS puro: recuo no `:active`, fade do ponto, `backdrop-filter`.
+
+**Ficou aberto:** o **selo Premium** — o botão do `UserMenu` no desktop tem, a aba
+do celular não tem nada. Ou os dois marcam, ou nenhum marca.
+
+### 6b. O topo do celular, na mesma passada (2026-08-01)
+
+Dos três elementos do topo, um era invenção, um era real e um estava faltando:
+
+- **O sino saiu, das duas telas.** Não existe notificação em lugar nenhum do
+  `CALENDARIO` — `grep` por `Bell|notification|notificac` em `components/`,
+  `App.tsx`, `hooks/` e `services/` não devolve uma linha. E o protótipo pendurava
+  um ponto de não-lido nele: um selo que nunca poderia ser zerado.
+- **O avatar entrou** no lugar dele. No app, à direita do topo mora o `UserMenu`, e
+  no celular ele é a **única** porta para Perfil, Configurações e Sair. Desenho
+  copiado de lá (círculo cheio na cor da marca, borda fina, halo roxo); lá são
+  44px, aqui 36.
+- **O hambúrguer saiu desta aba.** Ele é real — abre o `HamburgerPanel` — mas a
+  gaveta dele é do calendário: Criar agendamento, Visualização dia/semana/mês,
+  profissionais, Configurar agenda. Nenhum item serve ao dashboard.
+
+**Achado que não virou tarefa:** a lupa do desktop do protótipo também é invenção
+— o header de desktop do app tem só as abas de visualização e o `UserMenu`. E a
+lupa do celular existe no app, mas **sem `onClick`** (`CalendarHeader.tsx:144`):
+dívida do app, não do protótipo.
 
 ## Histórico — o que veio antes
 

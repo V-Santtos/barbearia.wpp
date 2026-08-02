@@ -825,12 +825,9 @@
   background: var(--bg);
 }
 
-.validation-stage--mobile .phone-frame__screen .mb-botnav {
-  border-radius: 0 0 36px 36px;
-  overflow: hidden;
-  padding-bottom: 22px;
-  background: rgba(10,10,10,0.96);
-}
+/* A faixa colada precisava herdar o arredondamento da tela do aparelho. O dock
+   flutua para dentro da moldura e nao encosta em canto nenhum -- nao precisa de
+   ajuste de moldura. */
 
 .validation-stage--mobile .phone-frame__screen::after {
   content: "";

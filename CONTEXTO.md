@@ -61,11 +61,44 @@ atende**, voltando sozinho no toque em botão ou na virada do dia.
 junção de mensagem picada e distinção entre acréscimo e correção. **Nunca foi testada
 no celular**: é o assunto da próxima sessão.
 
+**O bot leu "não consegui abrir a agenda" com a agenda no ar (20:06), e o motivo era
+conexão de banco.** O pool do `pg` fecha conexão parada em 10s (padrão), e entre dois
+toques do cliente passa mais que isso — então cada chamada reabria conexão com o
+Supabase (~2s). Painel fazendo polling + espelho gravando + bot perguntando os dias no
+mesmo instante empilharam: 203ms de rotina viraram 1,6s → 2,2s → 4,6s → 5,5s → **8711ms**
+no `dias-disponiveis`, e o bot desiste em 8000ms. Por isso funcionava antes: dependia de
+a rajada coincidir. Os dois processos agora abrem o pool com `idleTimeoutMillis: 0` +
+`keepAlive` e **aquecem na subida** — mesma chamada, mesma rajada, **630ms**. Os números e
+o que sobrou de latência (número de idas ao banco por rota, não handshake) estão em
+`REGRAS-APRENDIZADOS/ANEXO_BANCO/README.md`.
+
+**O fluxo inteiro foi validado depois disso**, no celular dele e também contra o bot
+local: `oi` → menu → barbeiro → dia → horário → nome → cartão → Confirmar → `marcado`,
+com linha em `agendamentos` e o nome caindo em `dados_cliente` — a escrita nova, **vista
+disparar de verdade** pela primeira vez.
+
+## A sessão de 2026-08-02 foi no protótipo do Dashboard, não no bot
+
+O bot não foi tocado. A sessão inteira ficou em `Dashboard/`, e a memória curta
+dela é o **`Dashboard/CONTEXTO_SESSAO.md`** — ler lá, não aqui. Em uma linha: o
+celular foi refeito (Disponibilidade e barra de navegação, que virou dock), o
+chip de período passou a governar só o que ele muda, e a skill `impeccable`
+(trazida pelo usuário, adoção parcial — `docs/skills-log.md`) rodou uma vistoria
+de design cujo resultado foi aplicado em modo refinamento.
+
+O que continua aberto lá: **tarefa 3** (que outro dado merece o V1) e **tarefa 5**
+(como o dashboard entra no `CALENDARIO` — estado de view + endpoint agregado).
+
 ## PRIMEIRA COISA AO RETOMAR (deixado em 2026-08-01)
 
-**Ele está no meio de um teste no celular e vai colar o resultado.** A sessão foi
-resetada com o teste em andamento. Não recomeçar do zero: leia o que já passou, suba o
-ambiente se ele estiver caído, e espere o relato dele.
+**O fluxo fecha ponta a ponta e o estado está zerado** — as cinco tabelas e o
+`dados_cliente` em 0 para o `553384246770`. Dá para testar do celular sem preparar nada,
+depois de subir os três serviços e o túnel (a URL do ngrok muda toda vez).
+
+Ainda **não commitado**: o pool aquecido nos dois processos, o comentário de teto em
+`src/calendario/http.ts` e as duas notas (aqui e no `ANEXO_BANCO`). Segue assim —
+a sessão de 02/08 commitou só o que é do `Dashboard/`, para não assinar trabalho
+que não conferiu.
 
 **O ambiente ficou de pé** ao fim da sessão (bot 3333, API 3334, painel 3002, túnel).
 Conferir antes de assumir: `curl -s -o /dev/null -w "%{http_code}" localhost:3333/saude`
