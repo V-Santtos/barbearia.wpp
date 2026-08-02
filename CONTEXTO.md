@@ -82,12 +82,18 @@ disparar de verdade** pela primeira vez.
 O bot não foi tocado. A sessão inteira ficou em `Dashboard/`, e a memória curta
 dela é o **`Dashboard/CONTEXTO_SESSAO.md`** — ler lá, não aqui. Em uma linha: o
 celular foi refeito (Disponibilidade e barra de navegação, que virou dock), o
-chip de período passou a governar só o que ele muda, e a skill `impeccable`
+chip de período passou a governar só o que ele muda, a skill `impeccable`
 (trazida pelo usuário, adoção parcial — `docs/skills-log.md`) rodou uma vistoria
-de design cujo resultado foi aplicado em modo refinamento.
+de design, e entrou o painel **"O dia"** — o dia desenhado como relógio, com um
+anel por barbeiro.
 
-O que continua aberto lá: **tarefa 3** (que outro dado merece o V1) e **tarefa 5**
-(como o dashboard entra no `CALENDARIO` — estado de view + endpoint agregado).
+**O layout do V1 fechou e foi aprovado.** Financeiro não entra nesta fase, e o
+lugar dele já está decidido: seção própria no rodapé da página, sem mexer em nada
+acima. **Tarefa 3 fechada.**
+
+**Próximo passo combinado: a tarefa 5** — levar o dashboard para dentro do
+`CALENDARIO` de verdade (estado de view + `GET /dashboard/resumo`, rota admin,
+uma chamada só por causa do rate limit).
 
 ## PRIMEIRA COISA AO RETOMAR (deixado em 2026-08-01)
 

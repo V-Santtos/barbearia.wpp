@@ -8,14 +8,17 @@
    coisa que ele muda.
    ========================================================================= */
 .db-resumo { padding: 0 32px 14px; }
+/* Os chips ficam sozinhos a esquerda, alinhados com o primeiro card.
+   Na borda direita eles formavam coluna com o filtro de profissional, que
+   esta uma linha acima na mesma borda: dois controles encostados, de escopos
+   diferentes (o filtro governa a tela toda, o chip so esta faixa), lidos como
+   um cluster so -- a confusao que descer o chip pra ca tinha desfeito.
+   O rotulo "Resumo do periodo" saiu junto: o subtitulo da pagina ja diz
+   "Resumo do calendario · <periodo>" na linha de cima, e o chip aceso diz o
+   periodo de novo. Quem comunica o escopo aqui e a posicao, nao a palavra. */
 .db-resumo__head {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 12px;
+  display: flex; align-items: center; justify-content: flex-start;
   padding: 0 2px 9px;
-}
-.db-resumo__label {
-  font-size: 12px; font-weight: 500;
-  color: var(--text-muted);
 }
 
 /* =========================================================================

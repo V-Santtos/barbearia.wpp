@@ -1,0 +1,77 @@
+/* O dia em relogio -- aneis concentricos, um por barbeiro. */
+
+/* =========================================================================
+   RELOGIO DO DIA
+   A cor de identidade do barbeiro vem por `stroke` inline no componente, como
+   ja acontece na agenda e na disponibilidade -- e a unica cor que nao pode
+   morar aqui, porque vem do banco (`profissionais.cor`). Todo o resto e token.
+   ========================================================================= */
+.relo { display: flex; flex-direction: column; height: 100%; }
+
+/* O palco fica com a altura que sobrou do card; o mostrador se ajusta dentro
+   dela. Sem isso o SVG deriva altura da largura (tem `viewBox`) e estoura o
+   card. Sem teto de largura tambem: era o `max-width: 288px` que deixava ~100px
+   de vazio de cada lado do anel e fazia o card parecer folgado. */
+.relo__palco { flex: 1; min-height: 0; display: flex; justify-content: center; }
+.relo__dial {
+  display: block;
+  height: 100%; width: auto; max-width: 100%;
+}
+.relo__dial path { fill: none; }
+
+/* Fora do expediente E o intervalo dividem este trilho: os dois sao "aqui nao
+   se atende". O que os separa e o tracejado por cima, nao a opacidade. */
+.relo__fora  { stroke: rgba(255,255,255,0.045); }
+/* Expediente ainda nao preenchido. */
+.relo__vago  { stroke: rgba(255,255,255,0.13); }
+.relo__inter { stroke: var(--text-faint); stroke-dasharray: 2 4; }
+/* A vaga e o assunto do painel, entao ela tem cor propria e nao e so um vao.
+   Ambar aqui nao briga com o ambar de "Reagendado" da agenda: aquele e pilula
+   de texto, este e fio dentro do anel. */
+.relo__livre { stroke: var(--warning); }
+
+.relo__tick  { stroke: rgba(255,255,255,0.20); stroke-width: 1; }
+.relo__hora  { fill: var(--text-muted); font-size: 10.5px; font-weight: 500; text-anchor: middle; }
+
+/* O ponteiro do agora: a unica linha branca cheia do desenho. */
+.relo__agora      { stroke: rgba(255,255,255,0.85); stroke-width: 1.5; stroke-linecap: round; }
+.relo__agora-bola { fill: rgba(255,255,255,0.9); }
+
+.relo__quem  { fill: var(--text-muted);  font-size: 15px;  font-weight: 500; text-anchor: middle; }
+.relo__total { fill: var(--text-strong); font-size: 44px;  font-weight: 650; text-anchor: middle;
+               font-variant-numeric: tabular-nums; }
+.relo__unid  { fill: var(--text-muted);  font-size: 11.5px; text-anchor: middle; }
+.relo__vaga-hora { fill: var(--warning); font-size: 11.5px; font-weight: 650; text-anchor: middle; }
+
+/* Duas linhas que respondem perguntas diferentes: quem tem vaga, e como ler.
+   Centralizadas -- com o card estreito, alinhar a esquerda deixava a segunda
+   linha quebrando torta debaixo de um mostrador que e simetrico. */
+.relo__rodape { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+.relo__ident { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px;
+               font-size: 11.5px; color: var(--text-muted); }
+.relo__ident b { color: var(--text-strong); font-weight: 600; }
+.relo__dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+
+.relo__chave { display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+               gap: 5px 12px; margin-top: 8px; font-size: 10.5px; color: var(--text-muted); }
+.relo__chave span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* Os quadradinhos sao o proprio tratamento do anel em miniatura, nao um quadrado
+   de cor arbitrario -- `livre` e trilho vazio COM o fio ambar, que e exatamente
+   o que se ve no mostrador. */
+.relo__sw { width: 18px; height: 7px; border-radius: 3px; display: inline-block;
+            position: relative; flex: none; }
+.relo__sw--livre { background: rgba(255,255,255,0.13); }
+.relo__sw--livre::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 50%;
+  height: 2px; transform: translateY(-50%);
+  background: var(--warning); border-radius: 2px;
+}
+.relo__sw--inter { background: rgba(255,255,255,0.045); }
+.relo__sw--inter::after {
+  content: ""; position: absolute; left: 1px; right: 1px; top: 50%;
+  height: 2px; transform: translateY(-50%);
+  background: repeating-linear-gradient(90deg, var(--text-faint) 0 2px, transparent 2px 6px);
+}
+.relo__sw--fora { background: rgba(255,255,255,0.045); }

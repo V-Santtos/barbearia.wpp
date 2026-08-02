@@ -52,6 +52,18 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
+/* Disponibilidade (em pe) + relogio do dia, lado a lado.
+   A DISPONIBILIDADE E `auto`: o card encosta na propria grade e nao cresce mais
+   que isso -- uma celula de 116px para escrever "1" nao e respiro, e coluna
+   vazia. Toda a sobra vai para o relogio, que e quem tem o que fazer com ela:
+   o mostrador cresce junto (nao ha mais teto de 288px nele), e quanto maior o
+   anel, mais legivel fica onde estao os buracos do dia. */
+.db-duo {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
 .db-row {
   display: grid;
   gap: 14px;

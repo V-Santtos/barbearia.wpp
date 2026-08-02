@@ -21543,30 +21543,6 @@
       }
     }
   };
-  var AGENDA_HOJE = [
-    { hora: "09:00", duracao: 30, profId: 1, cliente: "Mateus Ribeiro", telefone: "(11) 98•••2240", origem: "whatsapp", status: "concluido" },
-    { hora: "09:00", duracao: 45, profId: 2, cliente: "Felipe Almeida", telefone: "(11) 97•••8814", origem: "app-etapas", status: "concluido" },
-    { hora: "09:30", duracao: 30, profId: 1, cliente: "André Tavares", telefone: "(11) 99•••1130", origem: "app-etapas", status: "concluido" },
-    { hora: "10:00", duracao: 45, profId: 2, cliente: "Gabriel Moura", telefone: "(11) 98•••0023", origem: "whatsapp", status: "concluido" },
-    { hora: "10:30", duracao: 30, profId: 1, cliente: "Pedro Henrique", telefone: "(21) 99•••4471", origem: "whatsapp", status: "concluido" },
-    { hora: "11:00", duracao: 30, profId: 2, cliente: "Thiago Nunes", telefone: "(11) 98•••6620", origem: "presencial", status: "em-atendimento" },
-    { hora: "11:00", duracao: 60, profId: 1, cliente: "Henrique Lopes", telefone: "(11) 97•••2298", origem: "presencial", status: "em-atendimento" },
-    { hora: "11:30", duracao: 30, profId: 2, cliente: "Caio Bertolini", telefone: "(11) 99•••5040", origem: "whatsapp", status: "agendado" },
-    { hora: "12:00", duracao: 45, profId: 1, cliente: "Ricardo Salles", telefone: "(11) 98•••1199", origem: "app-etapas", status: "agendado" },
-    { hora: "13:30", duracao: 30, profId: 2, cliente: "Bruno Mendonça", telefone: "(11) 98•••7741", origem: "whatsapp", status: "agendado" },
-    { hora: "14:00", duracao: 45, profId: 1, cliente: "Júlio Bastos", telefone: "(11) 99•••3320", origem: "app-etapas", status: "agendado" },
-    { hora: "14:30", duracao: 30, profId: 2, cliente: "Eduardo Prado", telefone: "(11) 97•••6655", origem: "app-etapas", status: "reagendado" },
-    { hora: "15:00", duracao: 60, profId: 1, cliente: "Vinícius Camargo", telefone: "(11) 98•••8801", origem: "whatsapp", status: "reagendado" },
-    { hora: "15:30", duracao: 30, profId: 2, cliente: "Daniel Ferraz", telefone: "(11) 99•••9912", origem: "app-etapas", status: "cancelado" },
-    { hora: "16:00", duracao: 45, profId: 1, cliente: "Rodrigo Cunha", telefone: "(11) 98•••2204", origem: "whatsapp", status: "cancelado" },
-    { hora: "16:30", duracao: 30, profId: 2, cliente: "Lucas Bittencourt", telefone: "(11) 97•••3318", origem: "whatsapp", status: "agendado" },
-    { hora: "17:00", duracao: 30, profId: 1, cliente: "Renato Albuquerque", telefone: "(11) 98•••4475", origem: "app-etapas", status: "agendado" },
-    { hora: "17:30", duracao: 45, profId: 2, cliente: "Igor Brandão", telefone: "(11) 99•••5582", origem: "whatsapp", status: "agendado" }
-  ];
-  var PROXIMOS_LIVRES = {
-    1: ["Hoje 18:30", "Amanhã 09:00"],
-    2: ["Hoje 19:00", "Hoje 19:45"]
-  };
   var WHATSAPP_QUEUE = [
     { nome: "Marcos Vieira", telefone: "(11) 98•••4412", preview: "Tem horário pra hoje à tarde?", tempo: "2h 14m", status: "aguardando", urgent: true, cor: "#FF5000" },
     { nome: "Felipe Toledo", telefone: "(11) 99•••0087", preview: "Pode marcar com o Lucas sexta?", tempo: "47m", status: "aguardando", urgent: true, cor: "#6B3EFF" },
@@ -21581,9 +21557,71 @@
     "30d": { all: { value: 179, sub: "média 6,0/dia" }, 1: { value: 98, sub: "média 3,3/dia" }, 2: { value: 81, sub: "média 2,7/dia" } }
   };
   var AGENDA_CONFIG = {
-    1: { diasSemana: [1, 2, 3, 4, 5, 6], janela: 8, capacidade: 9 },
-    2: { diasSemana: [1, 2, 3, 4, 5, 6], janela: 10, capacidade: 13 }
+    1: {
+      diasSemana: [1, 2, 3, 4, 5, 6],
+      janela: 8,
+      expediente: { inicio: 8, fim: 19, dur: 60, intervalo: 11, intervaloMin: 90 }
+    },
+    2: {
+      diasSemana: [1, 2, 3, 4, 5, 6],
+      janela: 10,
+      expediente: { inicio: 8, fim: 20, dur: 45, intervalo: 12, intervaloMin: 120 }
+    }
   };
+  var hhmm = (t) => {
+    const h = Math.floor(t + 1e-9), m = Math.round((t - h) * 60);
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  };
+  var slotsDoDia = (profId) => {
+    const e = AGENDA_CONFIG[profId]?.expediente;
+    if (!e) return [];
+    const passo = e.dur / 60;
+    const iIni = e.intervalo, iFim = e.intervalo + e.intervaloMin / 60;
+    const out = [];
+    for (let t = e.inicio; t + passo <= e.fim + 1e-9; t += passo) {
+      if (t < iFim - 1e-9 && t + passo > iIni + 1e-9) {
+        t = iFim - passo;
+        continue;
+      }
+      out.push({ ini: t, fim: t + passo });
+    }
+    return out;
+  };
+  var AGORA = 14 + 20 / 60;
+  var JANELA_DIA = {
+    ini: Math.min(...PROFISSIONAIS.map((p) => AGENDA_CONFIG[p.id].expediente.inicio)),
+    fim: Math.max(...PROFISSIONAIS.map((p) => AGENDA_CONFIG[p.id].expediente.fim))
+  };
+  var AGENDA_HOJE = [
+    { profId: 1, hora: "08:00", cliente: "Mateus Ribeiro", telefone: "(11) 98•••2240", origem: "whatsapp" },
+    { profId: 2, hora: "08:45", cliente: "Felipe Almeida", telefone: "(11) 97•••8814", origem: "app-etapas" },
+    { profId: 1, hora: "09:00", cliente: "André Tavares", telefone: "(11) 99•••1130", origem: "app-etapas" },
+    { profId: 2, hora: "09:30", cliente: "Gabriel Moura", telefone: "(11) 98•••0023", origem: "whatsapp" },
+    { profId: 1, hora: "10:00", cliente: "Pedro Henrique", telefone: "(21) 99•••4471", origem: "whatsapp" },
+    { profId: 2, hora: "10:15", cliente: "Thiago Nunes", telefone: "(11) 98•••6620", origem: "presencial" },
+    { profId: 2, hora: "11:00", cliente: "Caio Bertolini", telefone: "(11) 99•••5040", origem: "whatsapp" },
+    { profId: 1, hora: "12:30", cliente: "Henrique Lopes", telefone: "(11) 97•••2298", origem: "presencial" },
+    { profId: 1, hora: "13:30", cliente: "Ricardo Salles", telefone: "(11) 98•••1199", origem: "app-etapas" },
+    { profId: 2, hora: "14:00", cliente: "Bruno Mendonça", telefone: "(11) 98•••7741", origem: "whatsapp" },
+    { profId: 1, hora: "14:30", cliente: "Júlio Bastos", telefone: "(11) 99•••3320", origem: "app-etapas" },
+    { profId: 2, hora: "14:45", cliente: "Eduardo Prado", telefone: "(11) 97•••6655", origem: "app-etapas" },
+    { profId: 2, hora: "15:30", cliente: "Daniel Ferraz", telefone: "(11) 99•••9912", origem: "app-etapas", status: "cancelado" },
+    { profId: 1, hora: "15:30", cliente: "Vinícius Camargo", telefone: "(11) 98•••8801", origem: "whatsapp", status: "reagendado" },
+    { profId: 1, hora: "16:30", cliente: "Rodrigo Cunha", telefone: "(11) 98•••2204", origem: "whatsapp", status: "cancelado" },
+    { profId: 2, hora: "17:00", cliente: "Lucas Bittencourt", telefone: "(11) 97•••3318", origem: "whatsapp" },
+    { profId: 1, hora: "17:30", cliente: "Renato Albuquerque", telefone: "(11) 98•••4475", origem: "app-etapas" },
+    { profId: 2, hora: "17:45", cliente: "Igor Brandão", telefone: "(11) 99•••5582", origem: "whatsapp", status: "reagendado" }
+  ].map((a) => {
+    const ini = Number(a.hora.slice(0, 2)) + Number(a.hora.slice(3)) / 60;
+    const dur = AGENDA_CONFIG[a.profId].expediente.dur;
+    const fim = ini + dur / 60;
+    const derivado = fim <= AGORA ? "concluido" : ini <= AGORA ? "em-atendimento" : "agendado";
+    return { ...a, ini, fim, duracao: dur, status: a.status ?? derivado };
+  });
+  var ATIVO = (s) => s !== "cancelado";
+  var livresDoDia = (profId) => slotsDoDia(profId).filter(
+    (s) => !AGENDA_HOJE.some((a) => a.profId === profId && ATIVO(a.status) && Math.abs(a.ini - s.ini) < 1e-9)
+  );
   var DIAS_CORRIDOS = [
     { wd: 2, dd: "20", hoje: true },
     { wd: 3, dd: "21" },
@@ -21599,8 +21637,8 @@
   var WD_LABEL = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
   var WD_LONGO = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
   var VAGAS = {
-    1: [1, 5, 0, 2, 1, 0, 7, 4, 6, 9],
-    2: [5, 0, 1, 8, null, 0, 5, 3, 8, 11]
+    1: [livresDoDia(1).length, 5, 0, 2, 1, 0, 7, 4, 6, 9],
+    2: [livresDoDia(2).length, 0, 1, 8, null, 0, 5, 3, 8, 11]
   };
   var estadoDoDia = (profId, i) => {
     const cfg = AGENDA_CONFIG[profId];
@@ -21614,14 +21652,21 @@
     return { tipo: "vagas", vagas: v };
   };
   var doDia = (id) => AGENDA_HOJE.filter((a) => a.profId === id);
-  var capacidade = (id) => AGENDA_CONFIG[id]?.capacidade ?? 0;
+  var capacidade = (id) => slotsDoDia(id).length;
   var vagasHoje = (id) => VAGAS[id]?.[0] ?? 0;
+  var proximosLivres = (id) => {
+    const hoje = livresDoDia(id).filter((s) => s.ini >= AGORA).map((s) => `Hoje ${hhmm(s.ini)}`);
+    if (hoje.length >= 2) return hoje.slice(0, 2);
+    const amanha = (VAGAS[id]?.[1] ?? 0) > 0 ? [`Amanhã ${hhmm(AGENDA_CONFIG[id].expediente.inicio)}`] : [];
+    return [...hoje, ...amanha].slice(0, 2);
+  };
   var OCUPACAO_HOJE = PROFISSIONAIS.map((p) => ({
     profId: p.id,
     total: capacidade(p.id),
     ocupados: capacidade(p.id) - vagasHoje(p.id),
-    proximosLivres: PROXIMOS_LIVRES[p.id] ?? []
+    proximosLivres: proximosLivres(p.id)
   }));
+  var plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
   var kpisDeHoje = (ids) => {
     const linhas = ids.flatMap(doDia);
     const concluidos = linhas.filter((a) => a.status === "concluido").length;
@@ -21630,8 +21675,17 @@
     const livres = ids.reduce((s, id) => s + vagasHoje(id), 0);
     const cheia = ids.reduce((s, id) => s + capacidade(id), 0);
     return {
-      agendamentos: { value: linhas.length, sub: `${concluidos} concluídos · ${ativos} ativos · ${cancelados} cancelados` },
-      ocupacao: { value: `${Math.round((cheia - livres) / cheia * 100)}%`, sub: ids.length > 1 ? "2 profissionais ativos" : PROF_BY_ID[ids[0]].short },
+      agendamentos: {
+        value: linhas.length,
+        sub: [
+          plural(concluidos, "concluído", "concluídos"),
+          plural(ativos, "ativo", "ativos"),
+          plural(cancelados, "cancelado", "cancelados")
+        ].join(" · ")
+      },
+      // O "2 profissionais ativos" estava escrito à mão e viraria mentira no dia
+      // que entrasse um terceiro.
+      ocupacao: { value: `${Math.round((cheia - livres) / cheia * 100)}%`, sub: ids.length > 1 ? plural(ids.length, "profissional ativo", "profissionais ativos") : PROF_BY_ID[ids[0]].short },
       slotsLivres: { value: livres, sub: `de ${cheia} horários no dia` }
     };
   };
@@ -21650,7 +21704,12 @@
     AGENDA_CONFIG,
     DIAS_CORRIDOS,
     VAGAS,
-    estadoDoDia
+    estadoDoDia,
+    AGORA,
+    hhmm,
+    slotsDoDia,
+    livresDoDia,
+    capacidade
   });
   var { useState, useMemo, useRef, useEffect } = import_react.default;
   var Icon = ({ name, size = 16, stroke = 1.6, className = "", style }) => {
@@ -21785,26 +21844,126 @@
       return /* @__PURE__ */ import_react.default.createElement("span", { className: `${cls} dcell--cheio`, title: `${prof.short}: sem vaga` }, "cheio");
     return /* @__PURE__ */ import_react.default.createElement("span", { className: `${cls} dcell--vagas`, title: `${prof.short}: ${estado.vagas} vaga${estado.vagas > 1 ? "s" : ""}` }, estado.vagas);
   };
-  var DispoStrip = ({ profFilter = "all" }) => {
-    const profs = profFilter === "all" ? PROFISSIONAIS : PROFISSIONAIS.filter((p) => p.id === profFilter);
-    const maxJanela = Math.max(...profs.map((p) => AGENDA_CONFIG[p.id]?.janela ?? 0));
-    const cols = { gridTemplateColumns: `repeat(${maxJanela}, minmax(0, 1fr))` };
-    return /* @__PURE__ */ import_react.default.createElement("div", { className: "dstrip" }, profs.map((p) => {
-      const janela = AGENDA_CONFIG[p.id]?.janela ?? 0;
-      const dias = DIAS_CORRIDOS.slice(0, janela);
-      return /* @__PURE__ */ import_react.default.createElement("div", { key: p.id, className: "dblock" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dblock__head" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dstrip__dot", style: { background: p.color } }), /* @__PURE__ */ import_react.default.createElement("span", { className: "dblock__name" }, p.short), /* @__PURE__ */ import_react.default.createElement("span", { className: "dblock__cap" }, AGENDA_CONFIG[p.id]?.capacidade, " vagas/dia"), /* @__PURE__ */ import_react.default.createElement("span", { className: "dblock__janela" }, "janela de ", janela, " dias")), /* @__PURE__ */ import_react.default.createElement("div", { className: "dstrip__row dstrip__row--head", style: cols }, dias.map((d, i) => /* @__PURE__ */ import_react.default.createElement("span", { key: i, className: `dstrip__day${d.hoje ? " is-today" : ""}` }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dstrip__wd" }, d.hoje ? "hoje" : WD_LABEL[d.wd]), /* @__PURE__ */ import_react.default.createElement("span", { className: "dstrip__dd" }, d.dd)))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dstrip__row", style: cols }, dias.map((d, i) => /* @__PURE__ */ import_react.default.createElement(CelulaDispo, { key: i, estado: estadoDoDia(p.id, i), prof: p, hoje: d.hoje }))));
-    }));
-  };
-  var DispoList = ({ profFilter = "all" }) => {
+  var DispoList = ({ profFilter = "all", comCapacidade = false, larguraCol = 58, colDia = "1fr" }) => {
     const profs = profFilter === "all" ? PROFISSIONAIS : PROFISSIONAIS.filter((p) => p.id === profFilter);
     const janela = Math.max(...profs.map((p) => AGENDA_CONFIG[p.id]?.janela ?? 0));
     const dias = DIAS_CORRIDOS.slice(0, janela);
-    const cols = { gridTemplateColumns: `1fr repeat(${profs.length}, 58px)` };
+    const cols = { gridTemplateColumns: `${colDia} repeat(${profs.length}, ${larguraCol}px)` };
     const ninguemAtende = (i) => profs.every((p) => {
       const t = estadoDoDia(p.id, i).tipo;
       return t === "fechado" || t === "fora";
     });
-    return /* @__PURE__ */ import_react.default.createElement("div", { className: "dlist" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dlist__head", style: cols }, /* @__PURE__ */ import_react.default.createElement("span", null), profs.map((p) => /* @__PURE__ */ import_react.default.createElement("span", { key: p.id, className: "dlist__prof" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dlist__dot", style: { background: p.color } }), p.short.split(" ")[1] ?? p.short))), dias.map((d, i) => ninguemAtende(i) ? /* @__PURE__ */ import_react.default.createElement("div", { key: i, className: "dlist__fechado" }, WD_LONGO[d.wd], " ", d.dd) : /* @__PURE__ */ import_react.default.createElement("div", { key: i, className: `dlist__row${d.hoje ? " is-today" : ""}`, style: cols }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dlist__day" }, /* @__PURE__ */ import_react.default.createElement("b", null, d.hoje ? "Hoje" : WD_LABEL[d.wd]), " ", d.dd), profs.map((p) => /* @__PURE__ */ import_react.default.createElement(CelulaDispo, { key: p.id, estado: estadoDoDia(p.id, i), prof: p })))));
+    return /* @__PURE__ */ import_react.default.createElement("div", { className: "dlist" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dlist__head", style: cols }, /* @__PURE__ */ import_react.default.createElement("span", null), profs.map((p) => /* @__PURE__ */ import_react.default.createElement("span", { key: p.id, className: "dlist__prof" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dlist__profname" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dlist__dot", style: { background: p.color } }), p.short.split(" ")[1] ?? p.short), comCapacidade && /* @__PURE__ */ import_react.default.createElement("span", { className: "dlist__cap" }, capacidade(p.id), " vagas/dia")))), dias.map((d, i) => ninguemAtende(i) ? /* @__PURE__ */ import_react.default.createElement("div", { key: i, className: "dlist__fechado" }, WD_LONGO[d.wd], " ", d.dd) : /* @__PURE__ */ import_react.default.createElement("div", { key: i, className: `dlist__row${d.hoje ? " is-today" : ""}`, style: cols }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dlist__day" }, /* @__PURE__ */ import_react.default.createElement("b", null, d.hoje ? "Hoje" : WD_LABEL[d.wd]), " ", d.dd), profs.map((p) => /* @__PURE__ */ import_react.default.createElement(CelulaDispo, { key: p.id, estado: estadoDoDia(p.id, i), prof: p })))));
+  };
+  var RAD = Math.PI / 180;
+  var anguloDaHora = (t) => (t - JANELA_DIA.ini) / (JANELA_DIA.fim - JANELA_DIA.ini) * 360 - 90;
+  var pontoNoAnel = (c, r, a) => [c + r * Math.cos(a * RAD), c + r * Math.sin(a * RAD)];
+  var arcoDaFaixa = (c, r, t0, t1) => {
+    let a0 = anguloDaHora(t0), a1 = anguloDaHora(t1);
+    if (a1 - a0 >= 359.99) a1 = a0 + 359.99;
+    const [x0, y0] = pontoNoAnel(c, r, a0);
+    const [x1, y1] = pontoNoAnel(c, r, a1);
+    return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+  };
+  var RelogioDoDia = ({ profFilter = "all" }) => {
+    const profs = profFilter === "all" ? PROFISSIONAIS : PROFISSIONAIS.filter((p) => p.id === profFilter);
+    const sozinho = profs.length === 1;
+    const S = 288, c = S / 2;
+    const espessura = sozinho ? 30 : 22;
+    const rExterno = S * 0.355;
+    const raio = (i) => rExterno - i * (espessura + 6);
+    const rBorda = rExterno + espessura / 2;
+    const margem = 0.03;
+    const total = profs.reduce((s, p) => s + livresDoDia(p.id).length, 0);
+    const horas = [];
+    for (let h = Math.ceil(JANELA_DIA.ini); h < JANELA_DIA.fim; h++) horas.push(h);
+    const resumo = profs.map((p) => `${p.short}: ${livresDoDia(p.id).map((s) => hhmm(s.ini)).join(", ") || "sem vaga"}`).join(". ");
+    return /* @__PURE__ */ import_react.default.createElement("div", { className: "relo" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "relo__palco" }, /* @__PURE__ */ import_react.default.createElement(
+      "svg",
+      {
+        className: "relo__dial",
+        viewBox: `0 0 ${S} ${S}`,
+        role: "img",
+        "aria-label": `Horários livres de hoje, agora ${hhmm(AGORA)}. ${resumo}`
+      },
+      profs.map((prof, i) => {
+        const e = AGENDA_CONFIG[prof.id].expediente;
+        const r = raio(i);
+        const iIni = e.intervalo, iFim = e.intervalo + e.intervaloMin / 60;
+        const livres = new Set(livresDoDia(prof.id).map((s) => s.ini));
+        return /* @__PURE__ */ import_react.default.createElement("g", { key: prof.id }, /* @__PURE__ */ import_react.default.createElement(
+          "path",
+          {
+            className: "relo__fora",
+            strokeWidth: espessura,
+            d: arcoDaFaixa(c, r, JANELA_DIA.ini, JANELA_DIA.fim)
+          }
+        ), /* @__PURE__ */ import_react.default.createElement(
+          "path",
+          {
+            className: "relo__vago",
+            strokeWidth: espessura,
+            d: arcoDaFaixa(c, r, e.inicio, e.fim)
+          }
+        ), /* @__PURE__ */ import_react.default.createElement("path", { className: "relo__fora", strokeWidth: espessura, d: arcoDaFaixa(c, r, iIni, iFim) }), /* @__PURE__ */ import_react.default.createElement("path", { className: "relo__inter", strokeWidth: espessura * 0.3, d: arcoDaFaixa(c, r, iIni, iFim) }), slotsDoDia(prof.id).map((s) => livres.has(s.ini) ? (
+          // Vaga: fio de aviso. É o assunto do painel, não a falta dele.
+          /* @__PURE__ */ import_react.default.createElement(
+            "path",
+            {
+              key: s.ini,
+              className: "relo__livre",
+              strokeWidth: espessura * 0.26,
+              d: arcoDaFaixa(c, r, s.ini + margem, s.fim - margem)
+            }
+          )
+        ) : (
+          // Ocupado na cor de identidade — a mesma da agenda e da
+          // disponibilidade. O que já passou NÃO apaga: opacidade não
+          // comunica estado nesta tela.
+          /* @__PURE__ */ import_react.default.createElement(
+            "path",
+            {
+              key: s.ini,
+              stroke: prof.color,
+              strokeWidth: espessura,
+              fill: "none",
+              d: arcoDaFaixa(c, r, s.ini + margem, s.fim - margem)
+            }
+          )
+        )));
+      }),
+      horas.map((h) => {
+        const a = anguloDaHora(h);
+        const rotulado = h % 3 === 2;
+        const [x0, y0] = pontoNoAnel(c, rBorda + 4, a);
+        const [x1, y1] = pontoNoAnel(c, rBorda + (rotulado ? 9 : 6), a);
+        const [lx, ly] = pontoNoAnel(c, rBorda + 20, a);
+        return /* @__PURE__ */ import_react.default.createElement("g", { key: h }, /* @__PURE__ */ import_react.default.createElement("path", { className: "relo__tick", d: `M ${x0} ${y0} L ${x1} ${y1}` }), rotulado && /* @__PURE__ */ import_react.default.createElement("text", { className: "relo__hora", x: lx, y: ly + 3.5 }, h, "h"));
+      }),
+      AGORA > JANELA_DIA.ini && AGORA < JANELA_DIA.fim && (() => {
+        const a = anguloDaHora(AGORA);
+        const [x0, y0] = pontoNoAnel(c, raio(profs.length - 1) - espessura / 2 - 6, a);
+        const [x1, y1] = pontoNoAnel(c, rBorda + 4, a);
+        return /* @__PURE__ */ import_react.default.createElement("g", null, /* @__PURE__ */ import_react.default.createElement("path", { className: "relo__agora", d: `M ${x0} ${y0} L ${x1} ${y1}` }), /* @__PURE__ */ import_react.default.createElement("circle", { className: "relo__agora-bola", cx: x1, cy: y1, r: 2.6 }));
+      })(),
+      sozinho && /* @__PURE__ */ import_react.default.createElement("text", { className: "relo__quem", x: c, y: c - 26 }, profs[0].short),
+      /* @__PURE__ */ import_react.default.createElement("text", { className: "relo__total", x: c, y: c + (sozinho ? 12 : 6) }, total),
+      /* @__PURE__ */ import_react.default.createElement("text", { className: "relo__unid", x: c, y: c + (sozinho ? 32 : 26) }, total === 1 ? "horário livre" : "horários livres"),
+      sozinho && (() => {
+        const livres = livresDoDia(profs[0].id);
+        const alvo = livres.find((s) => s.ini >= AGORA);
+        if (!alvo) return null;
+        const [x, y] = pontoNoAnel(
+          c,
+          raio(0) - espessura * 0.95,
+          anguloDaHora((alvo.ini + alvo.fim) / 2)
+        );
+        return /* @__PURE__ */ import_react.default.createElement("text", { className: "relo__vaga-hora", x, y: y + 3.5 }, hhmm(alvo.ini));
+      })()
+    )), /* @__PURE__ */ import_react.default.createElement("div", { className: "relo__rodape" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "relo__ident" }, profs.map((p) => {
+      const n = livresDoDia(p.id).length;
+      return /* @__PURE__ */ import_react.default.createElement("span", { key: p.id }, /* @__PURE__ */ import_react.default.createElement("span", { className: "relo__dot", style: { background: p.color } }), p.short, " · ", /* @__PURE__ */ import_react.default.createElement("b", null, n), " ", n === 1 ? "vaga" : "vagas");
+    })), /* @__PURE__ */ import_react.default.createElement("div", { className: "relo__chave" }, /* @__PURE__ */ import_react.default.createElement("span", null, /* @__PURE__ */ import_react.default.createElement("i", { className: "relo__sw", style: profs.length === 1 ? { background: profs[0].color } : { background: `linear-gradient(90deg, ${profs.map((p, i) => `${p.color} ${i / profs.length * 100}% ${(i + 1) / profs.length * 100}%`).join(", ")})` } }), "ocupado"), /* @__PURE__ */ import_react.default.createElement("span", null, /* @__PURE__ */ import_react.default.createElement("i", { className: "relo__sw relo__sw--livre" }), "livre"), /* @__PURE__ */ import_react.default.createElement("span", null, /* @__PURE__ */ import_react.default.createElement("i", { className: "relo__sw relo__sw--inter" }), "intervalo"), /* @__PURE__ */ import_react.default.createElement("span", null, /* @__PURE__ */ import_react.default.createElement("i", { className: "relo__sw relo__sw--fora" }), "fora do expediente"))));
   };
   var ABAS_MOBILE = [
     { id: "calendar", icone: "calendar-days", label: "Agenda" },
@@ -21834,8 +21993,8 @@
     PeriodChips,
     ProfFilter,
     StatusPill,
-    DispoStrip,
     DispoList,
+    RelogioDoDia,
     DockNav
   });
   var KPI_LABELS = {
@@ -21872,7 +22031,7 @@
     const lista = ABAS.find((t) => t.id === aba)?.lista ?? proximos;
     const iAgora = aba === "linha" ? linhaDoTempo.findIndex((a) => a.status !== "concluido" && a.status !== "em-atendimento") : -1;
     const ocupFiltered = prof === "all" ? OCUPACAO_HOJE : OCUPACAO_HOJE.filter((o) => o.profId === prof);
-    return /* @__PURE__ */ import_react.default.createElement("div", { className: "db-shell" }, /* @__PURE__ */ import_react.default.createElement("header", { className: "db-topbar db-topbar--calendar" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "db-topbar__brand" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__logo" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "scissors", size: 14 })), /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__brand-name" }, "CALENDÁRIO"), /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__brand-sub" }, "/ Dashboard")), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-topbar__calendar" }, /* @__PURE__ */ import_react.default.createElement("button", { className: "db-topbar__today" }, "Hoje"), /* @__PURE__ */ import_react.default.createElement("button", { className: "db-iconbtn db-iconbtn--compact", "aria-label": "Anterior" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "chevron-right", size: 13, style: { transform: "rotate(180deg)" } })), /* @__PURE__ */ import_react.default.createElement("button", { className: "db-iconbtn db-iconbtn--compact", "aria-label": "Próximo" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "chevron-right", size: 13 })), /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__date" }, "Terça-feira, 20 de maio")), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-topbar__right" }, /* @__PURE__ */ import_react.default.createElement("button", { className: "db-iconbtn" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "search", size: 14 })), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-avatar-me" }, "VC"))), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-pagehead" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "db-pagehead__left" }, /* @__PURE__ */ import_react.default.createElement("h1", { className: "db-pagehead__title" }, "Dashboard"), /* @__PURE__ */ import_react.default.createElement("p", { className: "db-pagehead__sub" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "db-pulse" }), " Resumo do calendário · ", PERIOD_LABELS[period], " · atualizado há 24s")), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-pagehead__filters" }, /* @__PURE__ */ import_react.default.createElement(ProfFilter, { value: prof, onChange: setProf, profs: PROFISSIONAIS }))), /* @__PURE__ */ import_react.default.createElement("section", { className: "db-resumo" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "db-resumo__head" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "db-resumo__label" }, "Resumo do período"), /* @__PURE__ */ import_react.default.createElement(
+    return /* @__PURE__ */ import_react.default.createElement("div", { className: "db-shell" }, /* @__PURE__ */ import_react.default.createElement("header", { className: "db-topbar db-topbar--calendar" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "db-topbar__brand" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__logo" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "scissors", size: 14 })), /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__brand-name" }, "CALENDÁRIO"), /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__brand-sub" }, "/ Dashboard")), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-topbar__calendar" }, /* @__PURE__ */ import_react.default.createElement("button", { className: "db-topbar__today" }, "Hoje"), /* @__PURE__ */ import_react.default.createElement("button", { className: "db-iconbtn db-iconbtn--compact", "aria-label": "Anterior" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "chevron-right", size: 13, style: { transform: "rotate(180deg)" } })), /* @__PURE__ */ import_react.default.createElement("button", { className: "db-iconbtn db-iconbtn--compact", "aria-label": "Próximo" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "chevron-right", size: 13 })), /* @__PURE__ */ import_react.default.createElement("span", { className: "db-topbar__date" }, "Terça-feira, 20 de maio")), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-topbar__right" }, /* @__PURE__ */ import_react.default.createElement("button", { className: "db-iconbtn" }, /* @__PURE__ */ import_react.default.createElement(Icon, { name: "search", size: 14 })), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-avatar-me" }, "VC"))), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-pagehead" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "db-pagehead__left" }, /* @__PURE__ */ import_react.default.createElement("h1", { className: "db-pagehead__title" }, "Dashboard"), /* @__PURE__ */ import_react.default.createElement("p", { className: "db-pagehead__sub" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "db-pulse" }), " Resumo do calendário · ", PERIOD_LABELS[period], " · atualizado há 24s")), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-pagehead__filters" }, /* @__PURE__ */ import_react.default.createElement(ProfFilter, { value: prof, onChange: setProf, profs: PROFISSIONAIS }))), /* @__PURE__ */ import_react.default.createElement("section", { className: "db-resumo" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "db-resumo__head" }, /* @__PURE__ */ import_react.default.createElement(
       PeriodChips,
       {
         value: period,
@@ -21910,7 +22069,7 @@
     )), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-stack" }, /* @__PURE__ */ import_react.default.createElement(Panel, { title: "Próximos horários livres", padding: "p-4" }, /* @__PURE__ */ import_react.default.createElement("ul", { className: "firstfree" }, ocupFiltered.map((o) => {
       const p = PROF_BY_ID[o.profId];
       return /* @__PURE__ */ import_react.default.createElement("li", { key: o.profId, className: "firstfree__row" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "firstfree__dot", style: { background: p.color } }), /* @__PURE__ */ import_react.default.createElement("span", { className: "firstfree__name" }, p.short), /* @__PURE__ */ import_react.default.createElement("span", { className: "firstfree__slots" }, o.proximosLivres.map((h, i) => /* @__PURE__ */ import_react.default.createElement("span", { key: i, className: `firstfree__when${i > 0 ? " is-segundo" : ""}` }, h))));
-    }))), /* @__PURE__ */ import_react.default.createElement(Panel, { title: "Disponibilidade", padding: "p-4" }, /* @__PURE__ */ import_react.default.createElement(DispoStrip, { profFilter: prof })))));
+    }))), /* @__PURE__ */ import_react.default.createElement("div", { className: "db-duo" }, /* @__PURE__ */ import_react.default.createElement(Panel, { title: "Disponibilidade", padding: "p-4" }, /* @__PURE__ */ import_react.default.createElement(DispoList, { profFilter: prof, comCapacidade: true, larguraCol: 84, colDia: "76px" })), /* @__PURE__ */ import_react.default.createElement(Panel, { title: "O dia", meta: `agora ${hhmm(AGORA)}`, padding: "p-4" }, /* @__PURE__ */ import_react.default.createElement(RelogioDoDia, { profFilter: prof }))))));
   };
   Object.assign(window, { Desktop });
   var Mobile = () => {
@@ -21936,7 +22095,7 @@
           { value: "30d", label: "30 dias" }
         ]
       }
-    )), /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-kpis" }, /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, label: "Agendamentos", value: kpis.agendamentos.value, sub: kpis.agendamentos.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, label: "Ocupação", value: kpis.ocupacao.value, sub: kpis.ocupacao.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, label: "Horários livres", value: kpis.slotsLivres.value, sub: kpis.slotsLivres.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, label: "Marcações", value: marcacoes.value, sub: marcacoes.sub, destaque: true })), emAtendimento.length > 0 && /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-now" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-now__head" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__pulse" }), /* @__PURE__ */ import_react.default.createElement("span", null, "Em atendimento agora · ", emAtendimento.length), /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__time" }, "11:00")), /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-now__rows" }, emAtendimento.map((a, i) => {
+    )), /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-kpis" }, /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, label: "Agendamentos", value: kpis.agendamentos.value, sub: kpis.agendamentos.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, label: "Ocupação", value: kpis.ocupacao.value, sub: kpis.ocupacao.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, label: "Horários livres", value: kpis.slotsLivres.value, sub: kpis.slotsLivres.sub }), /* @__PURE__ */ import_react.default.createElement(KpiCard, { compact: true, label: "Marcações", value: marcacoes.value, sub: marcacoes.sub, destaque: true })), emAtendimento.length > 0 && /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-now" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-now__head" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__pulse" }), /* @__PURE__ */ import_react.default.createElement("span", null, "Em atendimento agora · ", emAtendimento.length), /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__time" }, hhmm(AGORA))), /* @__PURE__ */ import_react.default.createElement("div", { className: "mb-now__rows" }, emAtendimento.map((a, i) => {
       const p = PROF_BY_ID[a.profId];
       return /* @__PURE__ */ import_react.default.createElement("div", { key: i, className: "mb-now__row" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__bar", style: { background: p.color } }), /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__cli" }, a.cliente), /* @__PURE__ */ import_react.default.createElement("span", { className: "mb-now__prof", style: { color: p.color } }, p.short));
     }))), /* @__PURE__ */ import_react.default.createElement(Panel, { title: "Próximos atendimentos", subtitle: `${proximos.length} pendentes hoje`, icon: "calendar", padding: "p-0" }, /* @__PURE__ */ import_react.default.createElement("ul", { className: "agenda agenda--compact" }, proximos.map((a, i) => {

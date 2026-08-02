@@ -157,9 +157,9 @@ outro).
 
 Lista para bater o olho. O porquê de cada uma está logo abaixo.
 
-- [x] **1.** Chip de período — **resolvido nas duas telas** (desceu para a faixa de KPIs)
-- [x] **2.** Disponibilidade — **fica**, e o celular foi refeito em 2026-08-01
-- [ ] **3.** Achar mais dado que valha o V1 — candidatos e bloqueios listados
+- [x] **1.** Chip de período — **resolvido nas duas telas**; rótulo removido em 2026-08-02
+- [x] **2.** Disponibilidade — **fica**, e virou **coluna vertical também no desktop** (02/08)
+- [x] **3.** Achar mais dado que valha o V1 — **entrou o relógio do dia** (02/08)
 - [x] **4.** Camada de design — **`impeccable` rodado em 2026-08-02**, ver seção abaixo
 - [ ] **5.** Desenhar a integração no CALENDARIO — estado de view + endpoint
 - [x] **6.** Barra de navegação do celular — **feita em 2026-08-01**, virou dock
@@ -219,6 +219,151 @@ a borda irregular), alvos de toque de 44px no desktop (mudaria a densidade da
 tela toda), e as perguntas de produto que a revisão levantou — se "Ocupação" muda
 alguma decisão do dono, se os dois painéis de horário livre deviam ser um só, e
 qual o próximo gesto depois de ver um horário livre. Essas são da tarefa 3.
+
+## O relógio do dia, e a Disponibilidade em pé (2026-08-02)
+
+### O que entrou
+
+**"O dia"** — anéis concêntricos, um por barbeiro, onde a volta inteira é
+`08:00→20:00`. Arco cheio na cor de identidade = ocupado; fio âmbar = vaga;
+tracejado = intervalo; trilho quase apagado = fora do expediente. Um ponteiro
+marca **agora**.
+
+O que ele faz que nenhum outro painel fazia: mostra o **formato** do dia.
+`6 horários livres` é o mesmo número quando as vagas estão no meio da tarde e
+quando estão empilhadas depois das 18h, e as duas situações pedem coisas opostas
+do dono. No mock isso aparece: o Costa tem 1 vaga às 16:30, **cercada de
+atendimento dos dois lados** — rombo que ele enche com uma mensagem. As 5 do Eloi
+estão quase todas no fim do dia — não é rombo, é expediente até as 20:00 que
+talvez não precise existir.
+
+**A escala é angular e compartilhada.** Concêntrico foi descartado numa primeira
+passada com o argumento errado — "o anel de dentro tem circunferência menor,
+distorce". Distorce o *comprimento* do arco, mas num mostrador se lê **ângulo**,
+e 16:30 cai no mesmo lugar em qualquer raio. Além de caber onde dois mostradores
+não cabiam, concêntrico entrega o que dois lado a lado não entregam: **dois vãos
+alinhados no mesmo raio = os dois livres na mesma hora**, que é buraco da
+barbearia inteira e não de uma cadeira.
+
+`JANELA_DIA` sai de **todos** os barbeiros, nunca dos filtrados: assim filtrar
+num profissional tira um anel sem mexer a posição das horas.
+
+**A Disponibilidade virou coluna vertical no desktop**, reusando a `DispoList`
+que já existia no celular — não um terceiro layout. `DispoStrip` e o CSS
+`.dstrip`/`.dblock` foram **removidos** (estão no commit `ef238ba`). A borda
+irregular das janelas diferentes não se perdeu: girou junto e vira `—` no fim da
+coluna mais curta. `comCapacidade` é só do desktop — a coluna do celular tem
+58px e não cabe "9 vagas/dia".
+
+### O dimensionamento das duas colunas — a regra que ficou
+
+`.db-duo` é `auto minmax(0, 1fr)`: **a Disponibilidade encosta na própria grade
+e para; toda a sobra vai para o relógio.** Medido no fim: 302px de painel para
+uma grade de 268px (2px de folga) e 435px para um mostrador de 401px (2px). Os
+dois no limite.
+
+Três tentativas erradas antes de chegar aqui, e o motivo de cada uma está na
+regra:
+
+1. **Relógio pegando a sobra com `max-width: 288px` no mostrador.** Tinha a
+   largura e não usava — ~100px de vazio de cada lado do anel. Folga assim não é
+   respiro, é desperdício.
+2. **Inverter, deixando a Disponibilidade com a sobra.** Pior: apareceu coluna
+   em branco no painel. **Espaço vago dentro de uma grade não vira respiro** —
+   ou a célula estica e fica um retângulo de 116px para escrever "1", ou fica
+   buraco. A regra: *quem tem conteúdo de tamanho fixo pede `auto`; quem cresce
+   bem fica com o `1fr`.*
+3. **Coluna do dia em `1fr`.** A sobra entrava ali e jogava o número para longe
+   do rótulo dele. Virou `76px` fixo — e fixo em todas as linhas, nunca `auto`,
+   porque cada linha é uma grade própria e `auto` daria trilhos diferentes para
+   "Hoje 20" e "domingo 25".
+
+**O mostrador precisa de um palco.** O SVG tem `viewBox`, então o navegador
+deriva altura da largura: solto, ele estourava o card e empurrava o rodapé para
+fora. `.relo__palco` recebe a altura que sobrou e o SVG se ajusta dentro dela.
+
+**Uma hora escrita, não cinco.** A primeira versão escrevia a hora de toda vaga
+dentro do anel. Quebrou no primeiro teste com o Eloi filtrado: `18:30`, `19:15` e
+`08:00` caem quase no mesmo ponto do mostrador — a volta é `08:00→20:00`, então o
+fim do dia encosta no começo. Ficou **só o próximo encaixe**, e só com um barbeiro
+em cena: uma etiqueta não tem com quem colidir, e é a que interessa.
+
+### Ocupação FICA — e o critério que ela estabeleceu
+
+Foi questionada e **defendida pelo usuário**: o número em porcentagem serve para
+bater o olho e saber se o dia está apertado ou tem espaço. Isso afinou o critério
+do V1 inteiro — não é "muda uma decisão", é **responder cliente sem navegar**,
+que é o que o dono de barbearia pequena faz o dia todo com o WhatsApp na mão.
+
+### A reescrita do mock que isso exigiu
+
+O relógio ia desenhar uma contradição que a lista escondia: a configuração real
+do banco põe o Costa em intervalo das **11:00 às 12:30**, e o mock tinha ele
+atendendo às 11:00. Enquanto era lista, ninguém via.
+
+Agora **tudo que fala de hoje nasce da grade de horários**:
+
+- `AGENDA_CONFIG` ganhou `expediente` (início, fim, duração, intervalo) — os
+  números reais de `agenda_profissional`.
+- `slotsDoDia()` gera a grade com a mesma conta do `server.js`. **`capacidade`
+  deixou de ser 9 e 13 escritos à mão** e virou o tamanho dessa lista.
+- Cada linha da agenda mora num horário real do barbeiro dela, e o `status` é
+  **derivado de `AGORA`** — escrito à mão só quando não dá para deduzir
+  (cancelado, reagendado).
+- `livresDoDia()` = slots sem linha viva. Cancelado devolve o horário para a rua.
+- A primeira coluna de `VAGAS`, o centro do relógio e o KPI "Horários livres"
+  **são o mesmo número pela mesma conta** — conferido no navegador nas duas
+  cenas: 6/6/6 com os dois, 1/1/1 filtrado no Costa.
+- `PROXIMOS_LIVRES` era lista escrita à mão e virou derivação das vagas que ainda
+  não passaram.
+- `AGORA` é um lugar só. O celular tinha `11:00` fixo no cabeçalho de "em
+  atendimento".
+
+**Defeito achado no caminho:** `1 cancelados`. A pluralização estava escondida
+enquanto o número era sempre 2 — apareceu no primeiro filtro por profissional.
+Corrigida, junto com o `2 profissionais ativos` que estava escrito à mão.
+
+### A segunda ideia redonda, com gatilho
+
+**A rosa de pétalas** (raio variável por dia da semana): qual dia enche, para
+decidir folga e horário de abertura. É decisão de verdade para barbearia pequena
+e **não foi feita porque exige 4 a 6 semanas de histórico** — `agendamentos` tem
+1 linha. Quando houver dado, ela divide espaço com o relógio ou o substitui.
+Registrada aqui para não ser reinventada do zero daqui a dois meses.
+
+### O LAYOUT DO V1 FECHOU AQUI
+
+Aprovado pelo usuário em 2026-08-02, com o desenho acima. **O dashboard do V1 é
+este** — quatro KPIs, agenda de hoje, próximos horários livres, disponibilidade
+em pé e o relógio do dia. Nada de financeiro nesta fase, e isso não é lacuna: é
+o escopo.
+
+**O lugar do financeiro já está decidido, e é por isso que a parte de baixo ficou
+limpa.** Quando entrar, vira uma **seção própria no rodapé da página**, embaixo
+de tudo que existe hoje — nada acima dela se mexe. A ideia registrada para
+quando chegar a hora: um **preview bloqueado** ali, visível para quem não paga,
+como porta de entrada do módulo financeiro pago. **Não é para construir agora.**
+
+### Fica aberto
+
+- **O relógio não está no celular.** Foi decisão de escopo, não esquecimento —
+  o pedido era o reposicionamento do desktop. Se entrar, um anel por vez com o
+  filtro governando é o caminho mais provável.
+- **"Próximos horários livres" ficou redundante em quase tudo** — é a versão em
+  texto de dois pontos do mesmo anel. Ficou porque carrega o caso que o relógio
+  **não pode** carregar: quando hoje acaba, ele diz `Amanhã 08:00`. Decidir com
+  os dois na tela.
+- `_esboco-relogio.html` é rascunho de decisão, **fora do git de propósito** —
+  não faz parte do protótipo. Apagar quando não servir mais.
+
+### O próximo passo é a tarefa 5
+
+Combinado com o usuário no fim desta sessão: **levar este dashboard para dentro
+do `CALENDARIO` de verdade.** O detalhe do que já se sabe está na seção "5. Como
+isso entra no CALENDARIO", mais abaixo — e agora ela ganhou um insumo que não
+tinha: o protótipo deixou explícito **quais números o endpoint precisa
+devolver**, porque tudo que fala de hoje aqui já nasce de uma fonte só
+(`slotsDoDia` + agenda do dia).
 
 ## Em aberto — o detalhe de cada uma
 
@@ -296,7 +441,9 @@ entra. Nada de financeiro nesta fase — decisão de escopo do V1.
 | Tempo ocioso (buracos entre atendimentos) | ideia boa, parada por ser a mais difícil de calcular e de explicar em três linhas. Diferente de "Horários livres": 14 livres no fim do dia é normal, 14 espalhados é tempo morto |
 | Clientes novos vs. retorno | parado por ruído — num dia de 32 atendimentos, oscilar entre 2 e 6 novos não diz nada. Faria sentido em 30 dias |
 | Taxa de furo / no-show | **bloqueado**: ninguém marca "não compareceu". `concluido` é escrito pelo relógio |
-| Serviço mais pedido | **bloqueado, verificado em 2026-08-01**: o bot não manda `servico` no `POST /agendamentos`, então a coluna fica nula para tudo que vem do WhatsApp |
+| Serviço mais pedido | **bloqueado, reconfirmado no banco em 2026-08-02**: não existe passo de escolher serviço no fluxo do bot. A coluna `agendamentos.servico` existe e está vazia na única linha real |
+| Onde o cliente desiste | **resolvido FORA do dashboard** em 2026-08-02: virou `npm run funil` (`BARBEARIA/ferramentas/funil.mjs`), ferramenta de linha de comando. Quem age sobre essa resposta somos nós, não o barbeiro — é depuração do bot, não métrica de barbearia |
+| Antecedência média · cliente sumido · novos vs. retorno | **bloqueados por falta de histórico, medido em 2026-08-02**: `agendamentos` tem **1 linha** no banco. Não é só que não ajudam hoje — não dá nem para ver funcionando. O critério que ficou valendo para o V1: **tem que servir no primeiro dia de uso, com zero histórico** |
 
 **Novos, a avaliar:**
 

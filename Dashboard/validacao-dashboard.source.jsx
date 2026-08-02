@@ -102,33 +102,9 @@ const KPIS_BASE = {
 };
 
 // --- Agenda de hoje -----------------------------------------------------------
-const AGENDA_HOJE = [
-  { hora: "09:00", duracao: 30, profId: 1, cliente: "Mateus Ribeiro",     telefone: "(11) 98•••2240", origem: "whatsapp",   status: "concluido" },
-  { hora: "09:00", duracao: 45, profId: 2, cliente: "Felipe Almeida",     telefone: "(11) 97•••8814", origem: "app-etapas", status: "concluido" },
-  { hora: "09:30", duracao: 30, profId: 1, cliente: "André Tavares",      telefone: "(11) 99•••1130", origem: "app-etapas", status: "concluido" },
-  { hora: "10:00", duracao: 45, profId: 2, cliente: "Gabriel Moura",      telefone: "(11) 98•••0023", origem: "whatsapp",   status: "concluido" },
-  { hora: "10:30", duracao: 30, profId: 1, cliente: "Pedro Henrique",     telefone: "(21) 99•••4471", origem: "whatsapp",   status: "concluido" },
-  { hora: "11:00", duracao: 30, profId: 2, cliente: "Thiago Nunes",       telefone: "(11) 98•••6620", origem: "presencial", status: "em-atendimento" },
-  { hora: "11:00", duracao: 60, profId: 1, cliente: "Henrique Lopes",     telefone: "(11) 97•••2298", origem: "presencial", status: "em-atendimento" },
-  { hora: "11:30", duracao: 30, profId: 2, cliente: "Caio Bertolini",     telefone: "(11) 99•••5040", origem: "whatsapp",   status: "agendado" },
-  { hora: "12:00", duracao: 45, profId: 1, cliente: "Ricardo Salles",     telefone: "(11) 98•••1199", origem: "app-etapas", status: "agendado" },
-  { hora: "13:30", duracao: 30, profId: 2, cliente: "Bruno Mendonça",     telefone: "(11) 98•••7741", origem: "whatsapp",   status: "agendado" },
-  { hora: "14:00", duracao: 45, profId: 1, cliente: "Júlio Bastos",       telefone: "(11) 99•••3320", origem: "app-etapas", status: "agendado" },
-  { hora: "14:30", duracao: 30, profId: 2, cliente: "Eduardo Prado",      telefone: "(11) 97•••6655", origem: "app-etapas", status: "reagendado" },
-  { hora: "15:00", duracao: 60, profId: 1, cliente: "Vinícius Camargo",   telefone: "(11) 98•••8801", origem: "whatsapp",   status: "reagendado" },
-  { hora: "15:30", duracao: 30, profId: 2, cliente: "Daniel Ferraz",      telefone: "(11) 99•••9912", origem: "app-etapas", status: "cancelado" },
-  { hora: "16:00", duracao: 45, profId: 1, cliente: "Rodrigo Cunha",      telefone: "(11) 98•••2204", origem: "whatsapp",   status: "cancelado" },
-  { hora: "16:30", duracao: 30, profId: 2, cliente: "Lucas Bittencourt",  telefone: "(11) 97•••3318", origem: "whatsapp",   status: "agendado" },
-  { hora: "17:00", duracao: 30, profId: 1, cliente: "Renato Albuquerque", telefone: "(11) 98•••4475", origem: "app-etapas", status: "agendado" },
-  { hora: "17:30", duracao: 45, profId: 2, cliente: "Igor Brandão",       telefone: "(11) 99•••5582", origem: "whatsapp",   status: "agendado" },
-];
-
-// Os dois próximos encaixes de cada um. O resto de "ocupação hoje" NÃO mora
-// aqui: é derivado da capacidade e das vagas, mais abaixo. Ver `OCUPACAO_HOJE`.
-const PROXIMOS_LIVRES = {
-  1: ["Hoje 18:30", "Amanhã 09:00"],
-  2: ["Hoje 19:00", "Hoje 19:45"],
-};
+// A agenda de hoje MORA NA SEÇÃO DA DISPONIBILIDADE, mais abaixo — ela depende
+// da grade de horários de cada barbeiro, e a grade nasce de `AGENDA_CONFIG`.
+// Ver `AGENDA_HOJE`, logo depois de `slotsDoDia`.
 
 const WHATSAPP_QUEUE = [
   { nome: "Marcos Vieira",   telefone: "(11) 98•••4412", preview: "Tem horário pra hoje à tarde?",       tempo: "2h 14m", status: "aguardando", urgent: true,  cor: "#FF5000" },
@@ -159,9 +135,93 @@ const MARCACOES = {
 // A janela dos dois é 10 hoje; aqui o Costa está com 8 de propósito, para o
 // protótipo mostrar como fica quando os dois divergem.
 const AGENDA_CONFIG = {
-  1: { diasSemana: [1, 2, 3, 4, 5, 6], janela: 8,  capacidade: 9  },
-  2: { diasSemana: [1, 2, 3, 4, 5, 6], janela: 10, capacidade: 13 },
+  1: { diasSemana: [1, 2, 3, 4, 5, 6], janela: 8,
+       expediente: { inicio: 8, fim: 19, dur: 60, intervalo: 11, intervaloMin: 90  } },
+  2: { diasSemana: [1, 2, 3, 4, 5, 6], janela: 10,
+       expediente: { inicio: 8, fim: 20, dur: 45, intervalo: 12, intervaloMin: 120 } },
 };
+
+// Horas em decimal (8.5 = 08:30) — é o que fecha conta e vira ângulo sem
+// gambiarra de string. Só volta a ser texto na hora de escrever na tela.
+const hhmm = t => {
+  const h = Math.floor(t + 1e-9), m = Math.round((t - h) * 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+};
+
+/**
+ * A grade de horários de um barbeiro, pela configuração DELE — a mesma conta que
+ * `server.js` faz na API: passo de `dur` a partir de `inicio`, pulando o
+ * intervalo, sem estourar `fim`.
+ *
+ * Isto é a fonte de tudo que fala de hoje. `capacidade` deixou de ser número
+ * escrito à mão (era 9 e 13) e passou a ser o tamanho desta lista: escrever a
+ * capacidade separada da grade é convidar as duas a discordarem.
+ */
+const slotsDoDia = profId => {
+  const e = AGENDA_CONFIG[profId]?.expediente;
+  if (!e) return [];
+  const passo = e.dur / 60;
+  const iIni = e.intervalo, iFim = e.intervalo + e.intervaloMin / 60;
+  const out = [];
+  for (let t = e.inicio; t + passo <= e.fim + 1e-9; t += passo) {
+    if (t < iFim - 1e-9 && t + passo > iIni + 1e-9) { t = iFim - passo; continue; }
+    out.push({ ini: t, fim: t + passo });
+  }
+  return out;
+};
+
+// Que horas são no protótipo. UM lugar só: o ponteiro do relógio, o corte da
+// linha do tempo e o "em atendimento" do celular saem todos daqui. Antes o
+// celular tinha "11:00" escrito à mão no cabeçalho.
+const AGORA = 14 + 20 / 60;
+
+// A volta do relógio: do começo do mais madrugador ao fim do mais noturno,
+// sempre sobre TODOS os barbeiros — nunca só os filtrados. Assim filtrar num
+// profissional tira um anel sem mexer a posição das horas; se a escala
+// encolhesse junto, o mesmo horário mudaria de lugar no mostrador a cada clique.
+const JANELA_DIA = {
+  ini: Math.min(...PROFISSIONAIS.map(p => AGENDA_CONFIG[p.id].expediente.inicio)),
+  fim: Math.max(...PROFISSIONAIS.map(p => AGENDA_CONFIG[p.id].expediente.fim)),
+};
+
+// Cada linha ocupa um horário REAL da grade do barbeiro dela. O mock antigo
+// tinha o Costa atendendo às 11:00, que é o intervalo dele no banco — enquanto
+// só existia lista ninguém via; desenhado em relógio, viraria briga na tela.
+// `status` é DERIVADO de `AGORA`; escrito à mão só quando não dá para deduzir
+// (cancelado, reagendado).
+const AGENDA_HOJE = [
+  { profId: 1, hora: "08:00", cliente: "Mateus Ribeiro",     telefone: "(11) 98•••2240", origem: "whatsapp"   },
+  { profId: 2, hora: "08:45", cliente: "Felipe Almeida",     telefone: "(11) 97•••8814", origem: "app-etapas" },
+  { profId: 1, hora: "09:00", cliente: "André Tavares",      telefone: "(11) 99•••1130", origem: "app-etapas" },
+  { profId: 2, hora: "09:30", cliente: "Gabriel Moura",      telefone: "(11) 98•••0023", origem: "whatsapp"   },
+  { profId: 1, hora: "10:00", cliente: "Pedro Henrique",     telefone: "(21) 99•••4471", origem: "whatsapp"   },
+  { profId: 2, hora: "10:15", cliente: "Thiago Nunes",       telefone: "(11) 98•••6620", origem: "presencial" },
+  { profId: 2, hora: "11:00", cliente: "Caio Bertolini",     telefone: "(11) 99•••5040", origem: "whatsapp"   },
+  { profId: 1, hora: "12:30", cliente: "Henrique Lopes",     telefone: "(11) 97•••2298", origem: "presencial" },
+  { profId: 1, hora: "13:30", cliente: "Ricardo Salles",     telefone: "(11) 98•••1199", origem: "app-etapas" },
+  { profId: 2, hora: "14:00", cliente: "Bruno Mendonça",     telefone: "(11) 98•••7741", origem: "whatsapp"   },
+  { profId: 1, hora: "14:30", cliente: "Júlio Bastos",       telefone: "(11) 99•••3320", origem: "app-etapas" },
+  { profId: 2, hora: "14:45", cliente: "Eduardo Prado",      telefone: "(11) 97•••6655", origem: "app-etapas" },
+  { profId: 2, hora: "15:30", cliente: "Daniel Ferraz",      telefone: "(11) 99•••9912", origem: "app-etapas", status: "cancelado"  },
+  { profId: 1, hora: "15:30", cliente: "Vinícius Camargo",   telefone: "(11) 98•••8801", origem: "whatsapp",   status: "reagendado" },
+  { profId: 1, hora: "16:30", cliente: "Rodrigo Cunha",      telefone: "(11) 98•••2204", origem: "whatsapp",   status: "cancelado"  },
+  { profId: 2, hora: "17:00", cliente: "Lucas Bittencourt",  telefone: "(11) 97•••3318", origem: "whatsapp"   },
+  { profId: 1, hora: "17:30", cliente: "Renato Albuquerque", telefone: "(11) 98•••4475", origem: "app-etapas" },
+  { profId: 2, hora: "17:45", cliente: "Igor Brandão",       telefone: "(11) 99•••5582", origem: "whatsapp",   status: "reagendado" },
+].map(a => {
+  const ini = Number(a.hora.slice(0, 2)) + Number(a.hora.slice(3)) / 60;
+  const dur = AGENDA_CONFIG[a.profId].expediente.dur;
+  const fim = ini + dur / 60;
+  const derivado = fim <= AGORA ? "concluido" : ini <= AGORA ? "em-atendimento" : "agendado";
+  return { ...a, ini, fim, duracao: dur, status: a.status ?? derivado };
+});
+
+// O slot está ocupado quando existe linha viva nele — cancelado devolve o
+// horário para a rua, e é assim que um buraco aparece no meio da tarde.
+const ATIVO = s => s !== "cancelado";
+const livresDoDia = profId => slotsDoDia(profId).filter(
+  s => !AGENDA_HOJE.some(a => a.profId === profId && ATIVO(a.status) && Math.abs(a.ini - s.ini) < 1e-9)
+);
 
 // Dias corridos a partir de hoje (terça, 20 mai). wd: 0=dom … 6=sáb
 const DIAS_CORRIDOS = [
@@ -183,12 +243,13 @@ const WD_LONGO = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "
 
 // Vagas livres por profissional, na ordem de DIAS_CORRIDOS.
 // null = bloqueio manual (dias_bloqueados).
-// A PRIMEIRA coluna (hoje) não é livre: ela tem que bater com a agenda do dia.
-// Costa tem 9 linhas hoje, 1 cancelada -> 8 de 9 ocupados -> 1 vaga.
-// Eloi tem 9 linhas hoje, 1 cancelada -> 8 de 13 ocupados -> 5 vagas.
+// A PRIMEIRA coluna é CALCULADA da agenda de hoje, não escrita: ela e o relógio
+// e o KPI têm que dizer o mesmo número, e a única forma de garantir isso é não
+// deixar ninguém escrever esse número duas vezes. Do segundo dia em diante é
+// mock mesmo — não existe agenda futura no protótipo.
 const VAGAS = {
-  1: [1, 5, 0, 2, 1, 0, 7, 4, 6, 9],
-  2: [5, 0, 1, 8, null, 0, 5, 3, 8, 11],
+  1: [livresDoDia(1).length, 5, 0, 2, 1, 0, 7, 4, 6, 9],
+  2: [livresDoDia(2).length, 0, 1, 8, null, 0, 5, 3, 8, 11],
 };
 
 // Um dia só pode estar num destes cinco estados, e cada um tem símbolo próprio.
@@ -210,15 +271,33 @@ const estadoDoDia = (profId, i) => {
 // dizia 14 horários livres, a Disponibilidade somava 9 e a ocupação implicava 6.
 // Agora tudo que fala de hoje é calculado da agenda do dia + capacidade + vagas.
 const doDia   = id => AGENDA_HOJE.filter(a => a.profId === id);
-const capacidade = id => AGENDA_CONFIG[id]?.capacidade ?? 0;
+const capacidade = id => slotsDoDia(id).length;
 const vagasHoje  = id => VAGAS[id]?.[0] ?? 0;
+
+// Os dois próximos encaixes de cada um, DERIVADOS: são as vagas de hoje que
+// ainda não passaram. Eram lista escrita à mão, e o dia que o relógio mostrasse
+// um buraco que esta linha não citasse, quem olha não saberia em qual acreditar.
+const proximosLivres = id => {
+  const hoje = livresDoDia(id).filter(s => s.ini >= AGORA).map(s => `Hoje ${hhmm(s.ini)}`);
+  if (hoje.length >= 2) return hoje.slice(0, 2);
+  // Acabou o dia: o próximo encaixe é a primeira vaga de amanhã. Amanhã não tem
+  // agenda no protótipo, só contagem — então vale o começo do expediente.
+  const amanha = (VAGAS[id]?.[1] ?? 0) > 0
+    ? [`Amanhã ${hhmm(AGENDA_CONFIG[id].expediente.inicio)}`]
+    : [];
+  return [...hoje, ...amanha].slice(0, 2);
+};
 
 const OCUPACAO_HOJE = PROFISSIONAIS.map(p => ({
   profId: p.id,
   total: capacidade(p.id),
   ocupados: capacidade(p.id) - vagasHoje(p.id),
-  proximosLivres: PROXIMOS_LIVRES[p.id] ?? [],
+  proximosLivres: proximosLivres(p.id),
 }));
+
+// "1 cancelados" ficou escondido enquanto o número era sempre 2 — apareceu no
+// primeiro filtro por profissional.
+const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
 const kpisDeHoje = ids => {
   const linhas     = ids.flatMap(doDia);
@@ -228,8 +307,15 @@ const kpisDeHoje = ids => {
   const livres     = ids.reduce((s, id) => s + vagasHoje(id), 0);
   const cheia      = ids.reduce((s, id) => s + capacidade(id), 0);
   return {
-    agendamentos: { value: linhas.length, sub: `${concluidos} concluídos · ${ativos} ativos · ${cancelados} cancelados` },
-    ocupacao:     { value: `${Math.round((cheia - livres) / cheia * 100)}%`, sub: ids.length > 1 ? "2 profissionais ativos" : PROF_BY_ID[ids[0]].short },
+    agendamentos: {
+      value: linhas.length,
+      sub: [plural(concluidos, "concluído", "concluídos"),
+            plural(ativos, "ativo", "ativos"),
+            plural(cancelados, "cancelado", "cancelados")].join(" · "),
+    },
+    // O "2 profissionais ativos" estava escrito à mão e viraria mentira no dia
+    // que entrasse um terceiro.
+    ocupacao:     { value: `${Math.round((cheia - livres) / cheia * 100)}%`, sub: ids.length > 1 ? plural(ids.length, "profissional ativo", "profissionais ativos") : PROF_BY_ID[ids[0]].short },
     slotsLivres:  { value: livres, sub: `de ${cheia} horários no dia` },
   };
 };
@@ -244,6 +330,7 @@ Object.assign(window, {
   PROFISSIONAIS, PROF_BY_ID, KPIS_BASE, AGENDA_HOJE, OCUPACAO_HOJE,
   WHATSAPP_QUEUE,
   AGENDA_CONFIG, DIAS_CORRIDOS, VAGAS, estadoDoDia,
+  AGORA, hhmm, slotsDoDia, livresDoDia, capacidade,
 });
 
 
@@ -430,65 +517,30 @@ const CelulaDispo = ({ estado, prof, hoje = false }) => {
   return <span className={`${cls} dcell--vagas`} title={`${prof.short}: ${estado.vagas} vaga${estado.vagas > 1 ? "s" : ""}`}>{estado.vagas}</span>;
 };
 
-// Desktop: um bloco por barbeiro, cada um com a janela que ELE configurou.
-// Uma faixa única obrigaria a esticar todo mundo até a maior janela e preencher
-// o resto com célula morta — a tela afirmaria um período que não é o dele.
-const DispoStrip = ({ profFilter = "all" }) => {
-  const profs = profFilter === "all" ? PROFISSIONAIS : PROFISSIONAIS.filter(p => p.id === profFilter);
-
-  // A coluna tem a largura da maior janela em cena, mas cada bloco só desenha os
-  // dias dele. Assim quarta cai embaixo de quarta nos dois, e a faixa mais curta
-  // simplesmente acaba antes — a borda irregular é a informação.
-  const maxJanela = Math.max(...profs.map(p => AGENDA_CONFIG[p.id]?.janela ?? 0));
-  const cols = { gridTemplateColumns: `repeat(${maxJanela}, minmax(0, 1fr))` };
-
-  return (
-    <div className="dstrip">
-      {profs.map(p => {
-        const janela = AGENDA_CONFIG[p.id]?.janela ?? 0;
-        const dias   = DIAS_CORRIDOS.slice(0, janela);
-
-        return (
-          <div key={p.id} className="dblock">
-            {/* A capacidade fica aqui, uma vez por barbeiro, e não em cada
-                célula: é ela que torna "3" e "6" comparáveis sem o leitor saber
-                de cabeça a configuração de ninguém. Costa e Eloi têm dias de
-                tamanhos diferentes, e é por isso que cor por ocupação mentiria. */}
-            <div className="dblock__head">
-              <span className="dstrip__dot" style={{ background: p.color }} />
-              <span className="dblock__name">{p.short}</span>
-              <span className="dblock__cap">{AGENDA_CONFIG[p.id]?.capacidade} vagas/dia</span>
-              <span className="dblock__janela">janela de {janela} dias</span>
-            </div>
-
-            <div className="dstrip__row dstrip__row--head" style={cols}>
-              {dias.map((d, i) => (
-                <span key={i} className={`dstrip__day${d.hoje ? " is-today" : ""}`}>
-                  <span className="dstrip__wd">{d.hoje ? "hoje" : WD_LABEL[d.wd]}</span>
-                  <span className="dstrip__dd">{d.dd}</span>
-                </span>
-              ))}
-            </div>
-
-            <div className="dstrip__row" style={cols}>
-              {dias.map((d, i) => <CelulaDispo key={i} estado={estadoDoDia(p.id, i)} prof={p} hoje={d.hoje} />)}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
-// Celular: 10 colunas não cabem. Gira — uma linha por dia, uma coluna por barbeiro.
-// O nome dele vive no CABEÇALHO da coluna, uma vez. Antes se repetia célula a
-// célula: dois por linha, dez linhas, vinte repetições para dizer a coisa menos
-// variável da tela.
-const DispoList = ({ profFilter = "all" }) => {
+// Uma linha por dia, uma coluna por barbeiro. O nome dele vive no CABEÇALHO da
+// coluna, uma vez. Antes se repetia célula a célula: dois por linha, dez linhas,
+// vinte repetições para dizer a coisa menos variável da tela.
+//
+// Nasceu no celular, onde 10 colunas não cabiam. Passou a valer TAMBÉM no
+// desktop em 2026-08-02, no lugar da faixa horizontal por barbeiro (`DispoStrip`,
+// removida): em pé o painel fica estreito e alto, e a largura que sobra na coluna
+// da direita paga o relógio do dia ao lado. A borda irregular das janelas
+// diferentes não se perdeu — girou junto, e vira `—` no fim da coluna mais curta.
+//
+// `comCapacidade` só no desktop: a coluna do celular tem 58px e não cabe
+// "9 vagas/dia" embaixo do nome. E é ela que torna "3" e "6" comparáveis sem o
+// leitor saber de cabeça a configuração de ninguém.
+// `colDia` fixo no desktop e `1fr` no celular, e a diferença tem motivo: com a
+// coluna do dia elástica, a sobra de largura do painel entra ali e joga o número
+// para longe do rótulo dele. Fixa, a grade fica compacta e a sobra vira ar em
+// volta (`.db-duo .dlist` centraliza). Fixa em TODAS as linhas, nunca `auto` —
+// cada linha é uma grade própria, e `auto` daria trilhos diferentes para
+// "Hoje 20" e "domingo 25", desalinhando a coluna inteira.
+const DispoList = ({ profFilter = "all", comCapacidade = false, larguraCol = 58, colDia = "1fr" }) => {
   const profs  = profFilter === "all" ? PROFISSIONAIS : PROFISSIONAIS.filter(p => p.id === profFilter);
   const janela = Math.max(...profs.map(p => AGENDA_CONFIG[p.id]?.janela ?? 0));
   const dias   = DIAS_CORRIDOS.slice(0, janela);
-  const cols   = { gridTemplateColumns: `1fr repeat(${profs.length}, 58px)` };
+  const cols   = { gridTemplateColumns: `${colDia} repeat(${profs.length}, ${larguraCol}px)` };
 
   // Dia em que nenhum deles atende não merece uma linha de tamanho normal com
   // duas células vazias dentro: vira um risco fino, que segura a sequência das
@@ -504,8 +556,11 @@ const DispoList = ({ profFilter = "all" }) => {
         <span />
         {profs.map(p => (
           <span key={p.id} className="dlist__prof">
-            <span className="dlist__dot" style={{ background: p.color }} />
-            {p.short.split(" ")[1] ?? p.short}
+            <span className="dlist__profname">
+              <span className="dlist__dot" style={{ background: p.color }} />
+              {p.short.split(" ")[1] ?? p.short}
+            </span>
+            {comCapacidade && <span className="dlist__cap">{capacidade(p.id)} vagas/dia</span>}
           </span>
         ))}
       </div>
@@ -522,6 +577,188 @@ const DispoList = ({ profFilter = "all" }) => {
           ))}
         </div>
       ))}
+    </div>
+  );
+};
+
+// ---- O dia em relógio --------------------------------------------------------
+// Um dia É um círculo, e desenhado assim ele mostra o que a lista esconde: o
+// FORMATO do dia. "6 horários livres" é o mesmo número quando as vagas estão
+// espalhadas pelo meio da tarde e quando estão empilhadas depois das 18h — e as
+// duas situações pedem coisas opostas do dono.
+//
+// Anéis concêntricos, um por barbeiro. Dois mostradores lado a lado não caberiam
+// na coluna, e mesmo se coubessem seriam piores: concêntrico alinha o mesmo
+// horário no mesmo raio, então dois vãos alinhados = os dois livres na mesma
+// hora, que é buraco da barbearia inteira e não de uma cadeira. O anel de dentro
+// tem arco mais curto em pixels, mas o mesmo ÂNGULO — e num mostrador se lê
+// posição e abertura, nunca comprimento.
+const RAD = Math.PI / 180;
+const anguloDaHora = t => ((t - JANELA_DIA.ini) / (JANELA_DIA.fim - JANELA_DIA.ini)) * 360 - 90;
+const pontoNoAnel = (c, r, a) => [c + r * Math.cos(a * RAD), c + r * Math.sin(a * RAD)];
+const arcoDaFaixa = (c, r, t0, t1) => {
+  let a0 = anguloDaHora(t0), a1 = anguloDaHora(t1);
+  // Volta fechada não desenha com `A` — o ponto final cai em cima do inicial e o
+  // navegador não sabe para que lado ir.
+  if (a1 - a0 >= 359.99) a1 = a0 + 359.99;
+  const [x0, y0] = pontoNoAnel(c, r, a0);
+  const [x1, y1] = pontoNoAnel(c, r, a1);
+  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+};
+
+const RelogioDoDia = ({ profFilter = "all" }) => {
+  const profs   = profFilter === "all" ? PROFISSIONAIS : PROFISSIONAIS.filter(p => p.id === profFilter);
+  const sozinho = profs.length === 1;
+
+  const S = 288, c = S / 2;
+  const espessura = sozinho ? 30 : 22;
+  const rExterno  = S * 0.355;
+  const raio      = i => rExterno - i * (espessura + 6);
+  const rBorda    = rExterno + espessura / 2;
+  const margem    = 0.03;                       // respiro entre slots vizinhos
+
+  // O MESMO número que o KPI "Horários livres" mostra, pela mesma conta. O card
+  // diz quantos; o anel diz onde. Dois números diferentes para a mesma pergunta
+  // foi o defeito que a vistoria de design achou — não repetir.
+  const total = profs.reduce((s, p) => s + livresDoDia(p.id).length, 0);
+
+  const horas = [];
+  for (let h = Math.ceil(JANELA_DIA.ini); h < JANELA_DIA.fim; h++) horas.push(h);
+
+  const resumo = profs
+    .map(p => `${p.short}: ${livresDoDia(p.id).map(s => hhmm(s.ini)).join(", ") || "sem vaga"}`)
+    .join(". ");
+
+  return (
+    <div className="relo">
+      {/* O palco existe para o mostrador ser limitado pela ALTURA. O SVG tem
+          `viewBox`, então o navegador deriva altura da largura e ele estourava
+          o card, empurrando o rodapé para fora. Aqui o palco recebe a altura que
+          sobrou e o SVG se ajusta dentro dela. */}
+      <div className="relo__palco">
+      <svg
+        className="relo__dial"
+        viewBox={`0 0 ${S} ${S}`}
+        role="img"
+        aria-label={`Horários livres de hoje, agora ${hhmm(AGORA)}. ${resumo}`}
+      >
+        {profs.map((prof, i) => {
+          const e = AGENDA_CONFIG[prof.id].expediente;
+          const r = raio(i);
+          const iIni = e.intervalo, iFim = e.intervalo + e.intervaloMin / 60;
+          const livres = new Set(livresDoDia(prof.id).map(s => s.ini));
+
+          return (
+            <g key={prof.id}>
+              {/* O dia inteiro existe para todo mundo; o que muda é quanto dele
+                  cada um trabalha. O Costa fecha às 19h e esse pedaço fica como
+                  trilho, não como buraco — ausência de expediente não é vaga. */}
+              <path className="relo__fora" strokeWidth={espessura}
+                    d={arcoDaFaixa(c, r, JANELA_DIA.ini, JANELA_DIA.fim)} />
+              <path className="relo__vago" strokeWidth={espessura}
+                    d={arcoDaFaixa(c, r, e.inicio, e.fim)} />
+
+              {/* Intervalo com símbolo próprio. Apagar não serve: apagado já é
+                  "fora do expediente", e os dois significam coisas diferentes. */}
+              <path className="relo__fora"  strokeWidth={espessura}        d={arcoDaFaixa(c, r, iIni, iFim)} />
+              <path className="relo__inter" strokeWidth={espessura * 0.30} d={arcoDaFaixa(c, r, iIni, iFim)} />
+
+              {slotsDoDia(prof.id).map(s => livres.has(s.ini) ? (
+                // Vaga: fio de aviso. É o assunto do painel, não a falta dele.
+                <path key={s.ini} className="relo__livre" strokeWidth={espessura * 0.26}
+                      d={arcoDaFaixa(c, r, s.ini + margem, s.fim - margem)} />
+              ) : (
+                // Ocupado na cor de identidade — a mesma da agenda e da
+                // disponibilidade. O que já passou NÃO apaga: opacidade não
+                // comunica estado nesta tela.
+                <path key={s.ini} stroke={prof.color} strokeWidth={espessura} fill="none"
+                      d={arcoDaFaixa(c, r, s.ini + margem, s.fim - margem)} />
+              ))}
+            </g>
+          );
+        })}
+
+        {horas.map(h => {
+          const a = anguloDaHora(h);
+          const rotulado = h % 3 === 2;
+          const [x0, y0] = pontoNoAnel(c, rBorda + 4, a);
+          const [x1, y1] = pontoNoAnel(c, rBorda + (rotulado ? 9 : 6), a);
+          const [lx, ly] = pontoNoAnel(c, rBorda + 20, a);
+          return (
+            <g key={h}>
+              <path className="relo__tick" d={`M ${x0} ${y0} L ${x1} ${y1}`} />
+              {rotulado && <text className="relo__hora" x={lx} y={ly + 3.5}>{h}h</text>}
+            </g>
+          );
+        })}
+
+        {/* O ponteiro do agora. É ele que faz a peça ser lida como relógio na
+            primeira olhada, e separa o buraco que ainda dá para encher do que
+            já passou. */}
+        {AGORA > JANELA_DIA.ini && AGORA < JANELA_DIA.fim && (() => {
+          const a = anguloDaHora(AGORA);
+          const [x0, y0] = pontoNoAnel(c, raio(profs.length - 1) - espessura / 2 - 6, a);
+          const [x1, y1] = pontoNoAnel(c, rBorda + 4, a);
+          return (
+            <g>
+              <path className="relo__agora" d={`M ${x0} ${y0} L ${x1} ${y1}`} />
+              <circle className="relo__agora-bola" cx={x1} cy={y1} r={2.6} />
+            </g>
+          );
+        })()}
+
+        {sozinho && <text className="relo__quem" x={c} y={c - 26}>{profs[0].short}</text>}
+        <text className="relo__total" x={c} y={c + (sozinho ? 12 : 6)}>{total}</text>
+        <text className="relo__unid"  x={c} y={c + (sozinho ? 32 : 26)}>
+          {total === 1 ? "horário livre" : "horários livres"}
+        </text>
+
+        {/* UMA hora escrita, a do próximo encaixe, e só com um barbeiro em cena.
+            Escrever todas as vagas quebrou no primeiro teste com 5: 18:30, 19:15
+            e 08:00 caem quase no mesmo ponto do mostrador — a volta é 08:00→20:00,
+            então o fim do dia encosta no começo. Uma etiqueta não tem com quem
+            colidir, e é a que interessa: o buraco que ainda dá para vender. */}
+        {sozinho && (() => {
+          const livres = livresDoDia(profs[0].id);
+          const alvo = livres.find(s => s.ini >= AGORA);
+          if (!alvo) return null;
+          const [x, y] = pontoNoAnel(c, raio(0) - espessura * 0.95,
+                                     anguloDaHora((alvo.ini + alvo.fim) / 2));
+          return <text className="relo__vaga-hora" x={x} y={y + 3.5}>{hhmm(alvo.ini)}</text>;
+        })()}
+      </svg>
+      </div>
+
+      <div className="relo__rodape">
+        <div className="relo__ident">
+          {profs.map(p => {
+            const n = livresDoDia(p.id).length;
+            return (
+              <span key={p.id}>
+                <span className="relo__dot" style={{ background: p.color }} />
+                {p.short} · <b>{n}</b> {n === 1 ? "vaga" : "vagas"}
+              </span>
+            );
+          })}
+        </div>
+        {/* Quatro tratamentos diferentes no anel e nenhum cabe escrito por dentro
+            — ao contrário da Disponibilidade, onde `folga` e `bloqueio` couberam
+            na célula e a legenda pôde sair. Aqui ela se paga.
+            O quadradinho de "ocupado" é partido nas cores em cena: verde é o
+            Costa, não é "ocupado". Filtrado num barbeiro, vira a cor dele. */}
+        <div className="relo__chave">
+          <span>
+            <i className="relo__sw" style={profs.length === 1
+              ? { background: profs[0].color }
+              : { background: `linear-gradient(90deg, ${profs.map((p, i) =>
+                  `${p.color} ${(i / profs.length) * 100}% ${((i + 1) / profs.length) * 100}%`).join(", ")})` }} />
+            ocupado
+          </span>
+          <span><i className="relo__sw relo__sw--livre" />livre</span>
+          <span><i className="relo__sw relo__sw--inter" />intervalo</span>
+          <span><i className="relo__sw relo__sw--fora" />fora do expediente</span>
+        </div>
+      </div>
     </div>
   );
 };
@@ -565,7 +802,7 @@ const DockNav = ({ atual, onChange }) => (
 
 Object.assign(window, {
   Icon, Panel, KpiCard, PeriodChips, ProfFilter,
-  StatusPill, DispoStrip, DispoList, DockNav,
+  StatusPill, DispoList, RelogioDoDia, DockNav,
 });
 
 // ============================================================================
@@ -658,8 +895,12 @@ const Desktop = () => {
       {/* A faixa saiu da linguagem visual dos painéis — sem borda e sem sombra —
           para dizer sem uma palavra que ela é resumo e eles são trabalho. */}
       <section className="db-resumo">
+        {/* Sem rótulo. "Resumo do período" dizia pela terceira vez o que o
+            subtítulo da página ("Resumo do calendário · Hoje") e o próprio chip
+            aceso já diziam — e ainda brigava com os chips pela mesma linha. O
+            celular nunca teve rótulo aqui e nunca fez falta. Quem diz o escopo é
+            a posição: colado nos cards, longe do filtro de profissional. */}
         <div className="db-resumo__head">
-          <span className="db-resumo__label">Resumo do período</span>
           <PeriodChips
             value={period}
             onChange={setPeriod}
@@ -749,9 +990,18 @@ const Desktop = () => {
             </ul>
           </Panel>
 
-          <Panel title="Disponibilidade" padding="p-4">
-            <DispoStrip profFilter={prof} />
-          </Panel>
+          {/* Disponibilidade em pé libera a largura que o relógio precisa. A
+              coluna dela é fixa (cabe dia + dois barbeiros e não cresce mais que
+              isso); o relógio fica com o resto. */}
+          <div className="db-duo">
+            <Panel title="Disponibilidade" padding="p-4">
+              <DispoList profFilter={prof} comCapacidade larguraCol={84} colDia="76px" />
+            </Panel>
+
+            <Panel title="O dia" meta={`agora ${hhmm(AGORA)}`} padding="p-4">
+              <RelogioDoDia profFilter={prof} />
+            </Panel>
+          </div>
         </div>
       </div>
 
@@ -832,7 +1082,7 @@ const Mobile = () => {
             <div className="mb-now__head">
               <span className="mb-now__pulse"/>
               <span>Em atendimento agora · {emAtendimento.length}</span>
-              <span className="mb-now__time">11:00</span>
+              <span className="mb-now__time">{hhmm(AGORA)}</span>
             </div>
             <div className="mb-now__rows">
               {emAtendimento.map((a, i) => {

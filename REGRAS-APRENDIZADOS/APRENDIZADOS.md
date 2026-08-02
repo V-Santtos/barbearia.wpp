@@ -201,3 +201,21 @@ Formato de cada entrada:
   regras dele. Um caso que eu não consigo descrever com um cenário concreto
   ("quem, quando, como chega aqui?") provavelmente não existe — e defender-se de um
   cenário inexistente é exatamente o over-engineering que o `REGRAS.md` proíbe.
+
+## [2026-08-02] Inverter um problema de layout em vez de resolver os dois lados
+
+- O que aconteceu: ele pediu para o card do relógio ficar mais compacto e sobrar
+  respiro para a Disponibilidade. Eu inverti as proporções — o relógio virou o
+  estreito e a Disponibilidade ficou com a sobra, **com coluna em branco dentro**.
+  Ele respondeu "agora você fez o contrário, meu amigo… é uma coisa básica que eu
+  estou te falando". Estava certo: em nenhum dos dois estados os dois cards
+  estavam certos ao mesmo tempo, eu só troquei de qual deles estava errado.
+- Correção: **espaço vago dentro de uma grade nunca vira respiro.** Ou a célula
+  estica e fica um retângulo enorme para um dígito, ou fica buraco. Quem tem
+  conteúdo de tamanho fixo pede `auto` e encosta no próprio conteúdo; quem cresce
+  bem (um mostrador, um gráfico) fica com o `1fr`. No caso, a Disponibilidade
+  estava certa como `auto` desde o começo — o defeito real era um `max-width` no
+  SVG, que segurava o mostrador em 288px e deixava a folga como vazio.
+- Como saber que estou errando: se o conserto de "A está folgado" foi mover a
+  folga para B, eu não consertei nada. **Antes de mexer na divisão, medir os dois
+  lados e perguntar qual conteúdo não está usando o que já tem.**
