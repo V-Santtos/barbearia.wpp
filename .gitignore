@@ -4,3 +4,6 @@
 # Para restaurar os junctions num clone novo: npx skills add supabase/agent-skills
 .claude/skills/supabase/
 .claude/skills/supabase-postgres-best-practices/
+# `impeccable` foi copiada a mao (adocao parcial, ver docs/skills-log.md), com
+# junction criada a mao. Mesma regra: a copia versionada e a de .agents/.
+.claude/skills/impeccable/

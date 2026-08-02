@@ -3,6 +3,40 @@
 Registro de toda skill/repositório/conhecimento avaliado para entrar em `.claude/skills/`.
 Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbearia-design.md`.
 
+## [2026-08-01] pbakaus/impeccable
+- Fonte: https://github.com/pbakaus/impeccable
+- Veredito: ✂️ Adotado parcial (só a skill; nada de hooks, CLI, extensão ou adaptadores)
+- Motivo: Trazida pelo usuário para a **tarefa 4 do protótipo do Dashboard**
+  ("passar a camada de design com a skill que ele indicar" —
+  `Dashboard/CONTEXTO_SESSAO.md`), então o encaixe é direto e pedido, não
+  especulativo. Números verificados via API do GitHub em 2026-08-01: **53.724
+  estrelas**, 3.198 forks, **41 issues abertas** (proporção saudável), criado em
+  16/11/2025, último push **no mesmo dia da avaliação** — ativo de verdade.
+  Apache 2.0. Autor: Paul Bakaus. O README declara que partiu do `frontend-design`
+  da Anthropic e acrescenta 23 comandos, 36 documentos de referência e 59 regras
+  determinísticas de detecção.
+  - **Sem sobreposição** com o que já temos: `ponytail-audit` mede
+    over-engineering de código, não desenho; `dataviz` cobre gráfico, não tela;
+    `frontend-design` não existe neste ambiente. O buraco que ela preenche é real.
+  - **O inchaço está no repositório, não na skill.** O repo inteiro tem 60 MB e
+    2.942 arquivos, com `cli/`, `extension/`, `plugin/`, `tests/`, `demos/` e uma
+    dúzia de pastas de adaptador por ferramenta (`.gemini`, `.codex`, `.cursor`,
+    `.grok`, `.kiro`, `.opencode`, `.pi`, `.qoder`, `.rovodev`, `.trae`, `.vibe`).
+    Esse espalhamento é o mesmo padrão que reprovou `ruvnet/ruflo` e `affaan-m/ECC`
+    — a diferença é que aqui ele é separável: a skill sozinha são **152 arquivos,
+    3,0 MB**, e os scripts importam **só builtins do Node**, sem dependência
+    externa e sem chave de API.
+  - **Risco de conflito de memória, registrado antes de morder:** `/impeccable
+    init` escreve `PRODUCT.md` e `DESIGN.md` **na raiz do projeto**. Duas fontes de
+    verdade de projeto competindo foi exatamente o que reprovou o ECC. Se `init`
+    rodar, os arquivos vão para dentro de `Dashboard/`, junto do
+    `uploads/ANEXO_DESIGN_SYSTEM_DASHBOARD.md`, nunca na raiz.
+- Ação: Copiada `.agents/skills/impeccable/` (152 arquivos) para
+  `.agents/skills/impeccable`, com junction em `.claude/skills/` — mesmo padrão do
+  `supabase/agent-skills`. `SOURCE.md` escrito na pasta. **Nenhum hook ligado** em
+  `settings.json` (mesma decisão tomada com os hooks do `ponytail`), e
+  `skills-lock.json` não foi tocado, porque a adoção é parcial e manual.
+
 ## [2026-07-30] supabase/agent-skills (oficial Supabase)
 - Fonte: https://github.com/supabase/agent-skills
 - Veredito: ✅ Adotado integral (as 2 skills)
