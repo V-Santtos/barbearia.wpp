@@ -22,6 +22,7 @@ interface Props {
   presencialIds: Map<number, number>;
   onMenuOpen?: () => void;
   onNavigateToDate?: (date: Date) => void;
+  onOpenDashboard?: () => void;
 }
 
 type HeaderView = 'day' | 'kanban' | 'week' | 'month';
@@ -41,6 +42,7 @@ const CalendarHeader: React.FC<Props> = ({
   presencialIds,
   onMenuOpen,
   onNavigateToDate,
+  onOpenDashboard,
 }) => {
   const getTitle = () => {
     const monthName = currentDate.toLocaleString('pt-BR', { month: 'long' });
@@ -147,7 +149,7 @@ const CalendarHeader: React.FC<Props> = ({
           >
             <Search size={20} className="text-white/55" />
           </button>
-          <UserMenu owner={owner} onLogout={onLogout} professionals={professionals} />
+          <UserMenu owner={owner} onLogout={onLogout} professionals={professionals} onOpenDashboard={onOpenDashboard} />
         </div>
       </div>
 
@@ -361,7 +363,7 @@ const CalendarHeader: React.FC<Props> = ({
             ))}
           </div>
 
-          <UserMenu owner={owner} onLogout={onLogout} professionals={professionals} />
+          <UserMenu owner={owner} onLogout={onLogout} professionals={professionals} onOpenDashboard={onOpenDashboard} />
         </div>
       </div>
     </header>

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Plus } from "lucide-react";
 import CalendarHeader from "./components/CalendarHeader";
 import CalendarGrid from "./components/CalendarGrid";
 import Sidebar from "./components/Sidebar";
@@ -29,6 +30,8 @@ import PresencialFAB from "./components/PresencialFAB";
 import { toast, Toaster } from "./components/Toast";
 import MobileBottomNav, { type MobileTab } from "./components/MobileBottomNav";
 import HamburgerPanel from "./components/HamburgerPanel";
+import DashboardScreen from "./components/dashboard/DashboardScreen";
+import LimiteDeErro from "./components/dashboard/LimiteDeErro";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { usePolling } from "./hooks/usePolling";
 
@@ -73,6 +76,20 @@ function App() {
   const [mobileTab, setMobileTab] = useState<MobileTab>("calendar");
   const [viewMode, setViewMode] = useState<"timeline" | "kanban">("timeline");
   const [appReady, setAppReady] = useState(false);
+
+  // O dashboard é camada, não visualização: `view` não é tocado, então voltar
+  // devolve a agenda exatamente como estava — mesma data, mesma visualização,
+  // mesmo filtro. No celular quem manda é o dock, e `mobileTab` já é o estado
+  // dele; aqui só o desktop precisa de um interruptor próprio.
+  const [dashboardAberto, setDashboardAberto] = useState(false);
+  const dashboardVisivel = isMobile
+    ? mobileTab === "dashboard"
+    : dashboardAberto;
+
+  const fecharDashboard = useCallback(() => {
+    setDashboardAberto(false);
+    setMobileTab((atual) => (atual === "dashboard" ? "calendar" : atual));
+  }, []);
 
   const {
     currentDate,
@@ -833,10 +850,18 @@ function App() {
               presencialIds={presencialIds}
               onMenuOpen={() => setHamburgerOpen(true)}
               onNavigateToDate={setDate}
+              onOpenDashboard={() => setDashboardAberto(true)}
             />
 
             <main
-              className="flex-1 flex flex-col min-h-0 md:p-6 lg:p-8 pb-20 md:pb-6 lg:pb-8"
+              /* pb-28 e não pb-20: o dock flutua POR CIMA da rolagem desde
+                 2026-08-04, então o conteúdo precisa de chão para não morrer
+                 embaixo dele. Mês e semana são exceção, desde 2026-08-04: viram
+                 tela cheia (estilo Google Calendar) e o dock flutua por cima
+                 da própria grade, não de um respiro reservado para ele. */
+              className={`flex-1 flex flex-col min-h-0 md:p-6 lg:p-8 md:pb-6 lg:pb-8 ${
+                view === "month" || view === "week" ? "" : "pb-28"
+              }`}
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
             >
@@ -880,8 +905,38 @@ function App() {
             onActivate={handlePresencialActivate}
             onDeactivate={handlePresencialDeactivate}
             isLoading={presencialLoading}
-            visible={!hamburgerOpen && settingsProfessional === null}
+            visible={
+              !hamburgerOpen &&
+              settingsProfessional === null &&
+              !dashboardVisivel &&
+              (!isMobile || (mobileTab === "calendar" && view === "day"))
+            }
           />
+
+          {/* Mês e semana no celular trocam a tesoura (presencial não faz
+              sentido sem um dia em foco) pelo "+" de novo agendamento, como no
+              Google Calendar — mesmo canto, mesmo `openModalWithDate` que a
+              grade já usa ao tocar num dia. */}
+          {isMobile &&
+            mobileTab === "calendar" &&
+            (view === "month" || view === "week") &&
+            !hamburgerOpen &&
+            settingsProfessional === null &&
+            !dashboardVisivel && (
+              <button
+                onClick={() =>
+                  openModalWithDate(currentDate.toLocaleDateString("en-CA"))
+                }
+                aria-label="Novo agendamento"
+                className="fixed bottom-[100px] right-5 z-50 flex h-14 w-14 items-center
+                           justify-center rounded-2xl bg-[#6B3EFF] text-white shadow-xl
+                           shadow-[#6B3EFF]/30 transition-transform active:scale-90
+                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30
+                           md:hidden"
+              >
+                <Plus size={26} />
+              </button>
+            )}
 
           <EventModal
             isOpen={isModalOpen}
@@ -892,6 +947,14 @@ function App() {
             professionals={professionals}
             eventToEdit={editingEvent}
           />
+
+          <LimiteDeErro onFechar={fecharDashboard}>
+            <DashboardScreen
+              aberto={dashboardVisivel}
+              isMobile={isMobile}
+              onFechar={fecharDashboard}
+            />
+          </LimiteDeErro>
 
           <MobileBottomNav tab={mobileTab} onChange={setMobileTab} />
 

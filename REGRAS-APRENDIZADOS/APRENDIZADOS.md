@@ -219,3 +219,20 @@ Formato de cada entrada:
 - Como saber que estou errando: se o conserto de "A está folgado" foi mover a
   folga para B, eu não consertei nada. **Antes de mexer na divisão, medir os dois
   lados e perguntar qual conteúdo não está usando o que já tem.**
+
+## [2026-08-04] Consertar o arquivo errado por presumir qual componente renderiza
+
+- O que aconteceu: pedido pra dar respiro na borda roxa colada na tela do dia, no
+  celular. Editei `DayView.tsx` — o nome bate com "visão do dia" — rodei o detector
+  de design da skill e o `tsc`, os dois limpos, e disse que estava pronto. O
+  usuário mandou print: defeito idêntico, nada mudou. Só investigando de novo achei
+  que `App.tsx` força `viewMode="kanban"` sempre que `isMobile`, e quem desenha o
+  dia no celular é `DayKanban.tsx` — `DayView` nunca roda lá.
+- Correção: antes de estilizar "a tela X", grep pelo componente no arquivo que
+  decide o que renderiza (aqui, o `switch`/ternário de `view`/`viewMode` em
+  `App.tsx`) — não confiar no nome do arquivo pra saber o que está montado.
+- Como saber que estou errando: `typecheck` e detector de design passarem limpo só
+  prova que o código que editei compila e não viola regra nenhuma — não prova que a
+  mudança tocou o componente que o usuário está olhando. Essa prova só vem de ver o
+  resultado (aqui, só ele via, por print do celular) ou de confirmar antes qual
+  componente está de fato no caminho de render.

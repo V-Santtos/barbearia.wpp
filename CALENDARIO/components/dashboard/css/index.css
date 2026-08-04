@@ -1,0 +1,22 @@
+/* Ponto de entrada do CSS do dashboard. A ordem abaixo E a cascata -- trocar de
+   lugar muda quem ganha. Tokens primeiro.
+
+   Editar os parciais; este arquivo so junta.
+
+   Os parciais 02 a 11 vieram do prototipo SEM alteracao: todos sao escopados por
+   classe (`.db-*`, `.mb-*`, `.kpi`, `.agenda`...), entao nada neles escapa para o
+   resto do app. O `99-preview.css` do prototipo NAO veio — era a moldura de
+   celular e de desktop da tela de validacao, e aqui a moldura e o app. */
+
+@import "./00-tokens.css";
+@import "./02-shell.css";
+@import "./03-filtros.css";
+@import "./04-painel.css";
+@import "./05-kpi.css";
+@import "./06-agenda.css";
+@import "./07-disponibilidade.css";
+@import "./08-abas.css";
+@import "./09-horarios-livres.css";
+@import "./10-mobile.css";
+@import "./11-relogio.css";
+@import "./20-modal.css";

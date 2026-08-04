@@ -229,7 +229,7 @@ const DayKanban: React.FC<DayKanbanProps> = ({
 
   return (
     <div
-      className="flex flex-col h-full w-full bg-[#141314]
+      className="flex flex-col h-full mx-2 md:mx-0 bg-[#141314]
                  border border-[#6B3EFF]/40 rounded-[28px]
                  overflow-hidden px-5 pt-5 pb-5"
     >
@@ -296,7 +296,7 @@ const DayKanban: React.FC<DayKanbanProps> = ({
             style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
           >
             {PERIOD_ORDER.map((p) => (
-              <div key={p} className="flex-shrink-0 w-full snap-start h-full px-0">
+              <div key={p} className="flex-shrink-0 w-full snap-start h-full px-1.5">
                 {renderPeriodColumn(p, true)}
               </div>
             ))}

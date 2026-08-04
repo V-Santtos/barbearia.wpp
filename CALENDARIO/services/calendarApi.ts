@@ -107,7 +107,8 @@ function shouldAttachAdminToken(path: string, init: RequestInit) {
   return (
     path === "agendamentos" ||
     path.startsWith("agendamentos?") ||
-    path.startsWith("whatsapp/")
+    path.startsWith("whatsapp/") ||
+    path.startsWith("dashboard/")
   );
 }
 
@@ -380,6 +381,97 @@ export async function getAvailableSlots(
     `agendamentos/horarios-disponiveis?professionalId=${professionalId}&date=${date}`,
   );
   return res.availableSlots ?? [];
+}
+
+// ─── DASHBOARD ────────────────────────────────────────────────────────────────
+
+export type EstadoDoDia =
+  | { tipo: "fora" }
+  | { tipo: "fechado" }
+  | { tipo: "bloqueio" }
+  | { tipo: "lotado"; vagas: 0 }
+  | { tipo: "vagas"; vagas: number };
+
+export type PeriodoDashboard = "hoje" | "7d" | "15d" | "30d";
+
+export interface AgregadoDashboard {
+  agendamentos: {
+    total: number;
+    concluidos: number;
+    cancelados: number;
+    ativos: number;
+  };
+  ocupacao: {
+    pct: number;
+    capacidade: number;
+    ocupados: number;
+    profissionais: number;
+  };
+  /** Olha para FRENTE: horário livre que já passou não existe. */
+  livres: { total: number; capacidade: number };
+  marcacoes: { total: number };
+}
+
+export interface ProfissionalDashboard {
+  id: number;
+  nome: string;
+  cor: string;
+  expediente: {
+    inicio: string;
+    fim: string;
+    duracao_min: number;
+    intervalo_inicio: string | null;
+    intervalo_duracao_min: number | null;
+  };
+  janela_dias: number;
+  /** Todos os horários que existem hoje. `livres_hoje` é subconjunto dele. */
+  grade_hoje: string[];
+  capacidade_hoje: number;
+  livres_hoje: string[];
+}
+
+export interface LinhaAgendaDashboard {
+  id: number;
+  professional_id: number;
+  hora: string;
+  duracao_min: number;
+  cliente: string | null;
+  telefone: string | null;
+  status: string | null;
+  source: string | null;
+}
+
+export interface DashboardResumo {
+  gerado_em: string;
+  hoje: string;
+  profissionais: ProfissionalDashboard[];
+  agenda: LinhaAgendaDashboard[];
+  disponibilidade: {
+    dias: { data: string; wd: number; hoje: boolean }[];
+    vagas: Record<string, EstadoDoDia[]>;
+  };
+  periodos: Record<
+    PeriodoDashboard,
+    Record<string, AgregadoDashboard> & { all: AgregadoDashboard }
+  >;
+}
+
+/**
+ * Uma chamada só, de propósito. Todo número da tela sai daqui — inclusive os que
+ * dariam para derivar de `getEvents()`, que já está em memória.
+ *
+ * Misturar as duas fontes é o que produziu, no protótipo, três respostas
+ * diferentes para "quantos horários livres hoje" na mesma tela.
+ *
+ * A data vai no parâmetro porque o fuso que importa é o de quem olha a tela, não
+ * o do processo que responde.
+ */
+export async function getDashboardResumo(
+  date = new Date().toLocaleDateString("en-CA"),
+): Promise<DashboardResumo> {
+  return api<DashboardResumo>(
+    `dashboard/resumo?date=${encodeURIComponent(date)}`,
+  );
 }
 
 // ─── WHATSAPP CRM ─────────────────────────────────────────────────────────────

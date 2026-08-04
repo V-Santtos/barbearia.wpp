@@ -21,10 +21,47 @@ process.env.TZ = process.env.TZ || "America/Sao_Paulo";
 
 const { Pool } = pkg;
 
+// `idleTimeoutMillis: 0` — conexao aberta nunca e fechada por ociosidade.
+//
+// O padrao do `pg` e 10s, e ele derrubou o bot em 2026-08-01. Esta API responde em
+// ~200ms com a conexao de pe, mas o Supabase esta na internet e reabrir custa ~2s.
+// Com o pool esvaziando a cada 10s parados, uma rajada normal (o painel do dono
+// fazendo polling + o espelho da conversa gravando + o bot perguntando os dias)
+// abria varias conexoes ao mesmo tempo, e as chamadas empilhavam: 1,6s, 2,2s,
+// 4,6s, 5,5s e por fim 8,7s no `GET /agendamentos/dias-disponiveis`. O bot desiste
+// em 8s, entao o cliente leu "nao consegui abrir a agenda" com a agenda no ar.
+//
+// `max_connections` do Supabase e 60 e `idle_session_timeout` e 0 (ele nunca
+// derruba sessao parada), entao manter estas dez de pe nao aperta nada.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
+  max: 10,
+  idleTimeoutMillis: 0,
+  keepAlive: true,
 });
+
+/**
+ * Abre as conexoes na subida, em paralelo, em vez de deixar a conta pro primeiro
+ * cliente. Quatro porque e o tamanho da rajada real medida: painel + espelho + bot.
+ *
+ * Falhar aqui nao derruba o servidor — sem banco cada rota ja responde 500 com o
+ * motivo, o que e mais util que uma subida que morre calada.
+ */
+async function aquecerPool(quantidade = 4) {
+  const conexoes = await Promise.allSettled(
+    Array.from({ length: quantidade }, async () => {
+      const client = await pool.connect();
+      try {
+        await client.query("select 1");
+      } finally {
+        client.release();
+      }
+    }),
+  );
+
+  return conexoes.filter((r) => r.status === "fulfilled").length;
+}
 
 const BOOKED_STATUSES = ["agendado", "reagendado", "confirmado"];
 const BLOCK_PERIODS = ["morning", "afternoon", "night"];
@@ -257,6 +294,21 @@ function isUndefinedColumnError(err) {
   return err?.code === "42703";
 }
 
+// `toISOString()` devolve UTC, e no Brasil isso vira o dia SEGUINTE a partir das
+// 21:00 — o dashboard mostraria "hoje" errado justo no fim do expediente. Estas
+// duas trabalham no fuso de quem roda o processo, como o front ja faz com
+// `toLocaleDateString("en-CA")`.
+function dataLocalISO(date = new Date()) {
+  return date.toLocaleDateString("en-CA");
+}
+
+function somarDias(dateISO, dias) {
+  const [year, month, day] = String(dateISO).split("-").map(Number);
+  const d = new Date(year, month - 1, day);
+  d.setDate(d.getDate() + dias);
+  return dataLocalISO(d);
+}
+
 function getBreakWindow(config) {
   if (!config?.intervalo_inicio || !config?.intervalo_duracao_min) return null;
   const start = timeToMinutes(config.intervalo_inicio);
@@ -310,6 +362,29 @@ function buildSlots(horaInicio, horaFim, duracaoMin, config = null) {
     current = addMinutes(current, Number(duracaoMin));
   }
   return slots;
+}
+
+/**
+ * A grade de um dia para um profissional: os horarios que EXISTEM ali, ja
+ * descontados o dia de folga, o intervalo de descanso e o bloqueio manual.
+ * Devolve `null` quando o dia inteiro nao existe (folga ou bloqueio cheio), o
+ * que e diferente de devolver `[]` — o dashboard escreve palavras diferentes
+ * para cada um, e colapsar os dois foi o defeito do grid antigo.
+ *
+ * Nao aplica antecedencia minima de proposito: quem conta capacidade do dia
+ * conta o dia inteiro. Quem oferece horario para marcar e outra rota, e essa
+ * filtra.
+ */
+function gradeDoDia(date, config, blockedPeriods) {
+  if (!isWorkingDate(date, config)) return null;
+  if (blockedPeriods === null) return null; // bloqueio do dia inteiro
+  const todos = buildSlots(
+    config.hora_inicio,
+    config.hora_fim,
+    config.duracao_min,
+    config,
+  );
+  return todos.filter((s) => !isSlotBlockedByPeriods(s, blockedPeriods, config));
 }
 
 function isAfterMinimumNotice(date, time) {
@@ -2064,6 +2139,318 @@ function buildServer() {
     },
   );
 
+  // GET /dashboard/resumo — tudo que a tela do Dashboard desenha, numa chamada.
+  //
+  // Uma chamada e nao seis, por duas razoes. A primeira e o teto: leitura admin
+  // tem 30/min por IP e o painel ja gasta parte disso no polling da agenda. A
+  // segunda pesa mais: a conta de "quantos horarios livres" precisa sair de UM
+  // lugar. Enquanto o prototipo tinha tres fontes para esse numero, a tela dava
+  // tres respostas diferentes ao mesmo tempo — 14, 9 e 6.
+  //
+  // A grade de horarios aqui e a mesma `buildSlots` da rota de disponibilidade.
+  // Refazer essa conta no navegador seria a TERCEIRA copia da regra; o bot fala
+  // HTTP com esta API exatamente para nao existir a segunda.
+  fastify.get(
+    "/dashboard/resumo",
+    { preHandler: requireAdmin },
+    async (request, reply) => {
+      // Quem manda a data e o cliente, porque o fuso que importa e o do barbeiro
+      // olhando a tela, nao o do processo. Sem parametro, vale o do servidor.
+      const pedida = request.query?.date;
+      const hoje =
+        typeof pedida === "string" && /^\d{4}-\d{2}-\d{2}$/.test(pedida)
+          ? pedida
+          : dataLocalISO();
+
+      const PERIODOS = { hoje: 1, "7d": 7, "15d": 15, "30d": 30 };
+      const MAIOR_PERIODO = 30;
+
+      try {
+        // `bigint` chega como string do Postgres. Convertido aqui, na entrada,
+        // porque id numero e id texto se misturam calados: `[1].includes("1")`
+        // e falso e nao levanta erro nenhum.
+        const { rows: profRowsRaw } = await pool.query(
+          `SELECT id, nome, cor FROM public.profissionais
+           WHERE ativo = TRUE ORDER BY id`,
+        );
+        const profRows = profRowsRaw.map((p) => ({ ...p, id: Number(p.id) }));
+
+        if (!profRows.length) {
+          return {
+            gerado_em: new Date().toISOString(),
+            hoje,
+            profissionais: [],
+            agenda: [],
+            disponibilidade: { dias: [], vagas: {} },
+            periodos: {},
+          };
+        }
+
+        const configs = new Map(
+          await Promise.all(
+            profRows.map(async (p) => [p.id, await getAgendaConfig(p.id)]),
+          ),
+        );
+
+        const janelaMax = Math.max(
+          ...profRows.map((p) => configs.get(p.id).janela_agendamento_dias),
+        );
+        const inicioRetro = somarDias(hoje, -(MAIOR_PERIODO - 1));
+        const fimFrente = somarDias(hoje, Math.max(janelaMax, MAIOR_PERIODO) - 1);
+
+        const [agRes, blockRes, criadosRes] = await Promise.all([
+          pool.query(
+            `SELECT a.id, a.cliente, a.telefone, a.status, a.source,
+                    a.dia_marcado::text  AS dia_marcado,
+                    a.hora_marcada::text AS hora_marcada,
+                    p.id AS professional_id
+             FROM public.agendamentos a
+             LEFT JOIN public.profissionais p ON a.profissional = p.nome
+             WHERE a.dia_marcado >= $1 AND a.dia_marcado <= $2`,
+            [inicioRetro, fimFrente],
+          ),
+          pool.query(
+            `SELECT profissional_id, data::text AS data, periodos
+             FROM public.dias_bloqueados
+             WHERE data >= $1 AND data <= $2`,
+            [inicioRetro, fimFrente],
+          ),
+          // `created_at` e outro eixo: conta quando alguem MARCOU, nao quando o
+          // atendimento acontece. E o unico numero da tela que cai na hora se o
+          // bot parar de pe. Agrupado em JS para o balde do dia respeitar o mesmo
+          // fuso do resto — `date_trunc` no banco usaria o fuso do Postgres.
+          pool.query(
+            `SELECT a.created_at, p.id AS professional_id
+             FROM public.agendamentos a
+             LEFT JOIN public.profissionais p ON a.profissional = p.nome
+             WHERE a.created_at >= $1::date`,
+            [inicioRetro],
+          ),
+        ]);
+
+        // ── Indices em memoria ──────────────────────────────────────────────
+        // `periodos` do bloqueio: `null` = dia inteiro, array = so aqueles turnos.
+        // A chave carrega o profissional porque o bloqueio e de um so.
+        const bloqueios = new Map();
+        for (const b of blockRes.rows) {
+          bloqueios.set(`${Number(b.profissional_id)}|${b.data}`, b.periodos);
+        }
+        const bloqueioDe = (profId, data) => {
+          const chave = `${profId}|${data}`;
+          return bloqueios.has(chave) ? bloqueios.get(chave) : undefined;
+        };
+
+        // Um horario esta ocupado quando existe linha VIVA nele. Cancelado
+        // devolve o horario para a rua — e assim que um buraco aparece no meio
+        // da tarde. `concluido` continua ocupando: aquele corte aconteceu.
+        // `status` e nulo-permitido, e nulo aqui conta como marcado.
+        for (const a of agRes.rows) {
+          a.professional_id =
+            a.professional_id == null ? null : Number(a.professional_id);
+        }
+
+        const ocupados = new Map();
+        for (const a of agRes.rows) {
+          if (a.status === "cancelado" || !a.professional_id) continue;
+          const chave = `${a.professional_id}|${fmtDate(a.dia_marcado)}`;
+          if (!ocupados.has(chave)) ocupados.set(chave, new Set());
+          ocupados.get(chave).add(fmtTime(a.hora_marcada));
+        }
+        const ocupadosDe = (profId, data) =>
+          ocupados.get(`${profId}|${data}`) ?? new Set();
+
+        const criadosPorDia = new Map();
+        for (const row of criadosRes.rows) {
+          const dia = dataLocalISO(new Date(row.created_at));
+          const chave = `${Number(row.professional_id) || 0}|${dia}`;
+          criadosPorDia.set(chave, (criadosPorDia.get(chave) ?? 0) + 1);
+        }
+
+        // ── Grade de cada profissional em cada dia ──────────────────────────
+        // Calculada UMA vez e reusada por todo mundo: disponibilidade, KPIs de
+        // periodo, relogio. Duas leituras da mesma grade nao podem discordar
+        // porque so existe uma.
+        const grades = new Map(); // "profId|data" -> string[] | null
+        const gradeDe = (profId, data) => {
+          const chave = `${profId}|${data}`;
+          if (!grades.has(chave)) {
+            grades.set(
+              chave,
+              gradeDoDia(data, configs.get(profId), bloqueioDe(profId, data)),
+            );
+          }
+          return grades.get(chave);
+        };
+        const livresDe = (profId, data) => {
+          const grade = gradeDe(profId, data);
+          if (!grade) return [];
+          const tomados = ocupadosDe(profId, data);
+          return grade.filter((s) => !tomados.has(s));
+        };
+
+        // ── Agenda de hoje ──────────────────────────────────────────────────
+        const agenda = agRes.rows
+          .filter(
+            (a) => fmtDate(a.dia_marcado) === hoje && a.professional_id != null,
+          )
+          .map((a) => ({
+            id: Number(a.id),
+            professional_id: a.professional_id,
+            hora: fmtTime(a.hora_marcada),
+            duracao_min: configs.get(a.professional_id)?.duracao_min ?? 60,
+            cliente: a.cliente,
+            telefone: a.telefone,
+            status: a.status,
+            source: a.source,
+          }))
+          .sort((x, y) => x.hora.localeCompare(y.hora));
+
+        // ── Disponibilidade: a janela de cada um, dia a dia ──────────────────
+        // Cinco estados, e cada um com nome proprio. Colapsar "folga" com
+        // "bloqueio" e com "acabou a janela" foi o defeito do grid antigo:
+        // ausencia carregando tres significados diferentes.
+        const dias = [];
+        for (let i = 0; i < janelaMax; i++) {
+          const data = somarDias(hoje, i);
+          dias.push({ data, wd: dayOfWeekFromISO(data), hoje: i === 0 });
+        }
+
+        const vagas = {};
+        for (const p of profRows) {
+          const janelaDele = configs.get(p.id).janela_agendamento_dias;
+          vagas[p.id] = dias.map((dia, i) => {
+            if (i >= janelaDele) return { tipo: "fora" };
+            const bloqueio = bloqueioDe(p.id, dia.data);
+            if (!isWorkingDate(dia.data, configs.get(p.id))) {
+              return { tipo: "fechado" };
+            }
+            if (bloqueio === null) return { tipo: "bloqueio" };
+            const livres = livresDe(p.id, dia.data).length;
+            return livres === 0
+              ? { tipo: "lotado", vagas: 0 }
+              : { tipo: "vagas", vagas: livres };
+          });
+        }
+
+        // ── KPIs por periodo × profissional ─────────────────────────────────
+        // `agendamentos`, `ocupacao` e `marcacoes` olham para TRAS (o periodo
+        // que passou). `livres` olha para FRENTE, porque horario livre que ja
+        // passou nao existe — e a unica direcao em que esse numero significa
+        // alguma coisa. O rotulo na tela diz qual e qual.
+        const agregado = (profIds, nDias) => {
+          const retro = [];
+          for (let i = 0; i < nDias; i++) retro.push(somarDias(hoje, -i));
+          const frente = [];
+          for (let i = 0; i < nDias; i++) frente.push(somarDias(hoje, i));
+
+          const noPeriodo = agRes.rows.filter(
+            (a) =>
+              a.professional_id != null &&
+              profIds.includes(a.professional_id) &&
+              retro.includes(fmtDate(a.dia_marcado)),
+          );
+          const concluidos = noPeriodo.filter(
+            (a) => a.status === "concluido",
+          ).length;
+          const cancelados = noPeriodo.filter(
+            (a) => a.status === "cancelado",
+          ).length;
+
+          let capacidade = 0;
+          let vagosRetro = 0;
+          for (const profId of profIds) {
+            for (const data of retro) {
+              const grade = gradeDe(profId, data);
+              if (!grade) continue;
+              capacidade += grade.length;
+              vagosRetro += livresDe(profId, data).length;
+            }
+          }
+
+          let livresFrente = 0;
+          let capacidadeFrente = 0;
+          for (const profId of profIds) {
+            for (const data of frente) {
+              const grade = gradeDe(profId, data);
+              if (!grade) continue;
+              capacidadeFrente += grade.length;
+              livresFrente += livresDe(profId, data).length;
+            }
+          }
+
+          let marcacoes = 0;
+          for (const profId of profIds) {
+            for (const data of retro) {
+              marcacoes += criadosPorDia.get(`${profId}|${data}`) ?? 0;
+            }
+          }
+
+          return {
+            agendamentos: {
+              total: noPeriodo.length,
+              concluidos,
+              cancelados,
+              ativos: noPeriodo.length - concluidos - cancelados,
+            },
+            ocupacao: {
+              pct: capacidade
+                ? Math.round(((capacidade - vagosRetro) / capacidade) * 100)
+                : 0,
+              capacidade,
+              ocupados: capacidade - vagosRetro,
+              profissionais: profIds.length,
+            },
+            livres: { total: livresFrente, capacidade: capacidadeFrente },
+            marcacoes: { total: marcacoes },
+          };
+        };
+
+        const todosIds = profRows.map((p) => p.id);
+        const periodos = {};
+        for (const [chave, nDias] of Object.entries(PERIODOS)) {
+          periodos[chave] = { all: agregado(todosIds, nDias) };
+          for (const id of todosIds) {
+            periodos[chave][id] = agregado([id], nDias);
+          }
+        }
+
+        return {
+          gerado_em: new Date().toISOString(),
+          hoje,
+          profissionais: profRows.map((p) => ({
+            id: p.id,
+            nome: p.nome,
+            cor: p.cor,
+            expediente: {
+              inicio: configs.get(p.id).hora_inicio,
+              fim: configs.get(p.id).hora_fim,
+              duracao_min: configs.get(p.id).duracao_min,
+              intervalo_inicio: configs.get(p.id).intervalo_inicio,
+              intervalo_duracao_min: configs.get(p.id).intervalo_duracao_min,
+            },
+            janela_dias: configs.get(p.id).janela_agendamento_dias,
+            // A grade inteira do dia vai junto porque o relogio desenha TODOS os
+            // horarios, nao so os vagos. Sem ela o navegador teria que refazer
+            // `buildSlots` para saber o que existe — a terceira copia da regra
+            // que este endpoint existe para nao ter. Com as duas listas na mao,
+            // ocupado e subtracao de conjunto, nao conta de horario.
+            grade_hoje: gradeDe(p.id, hoje) ?? [],
+            capacidade_hoje: gradeDe(p.id, hoje)?.length ?? 0,
+            livres_hoje: livresDe(p.id, hoje),
+          })),
+          agenda,
+          disponibilidade: { dias, vagas },
+          periodos,
+        };
+      } catch (err) {
+        fastify.log.error(err);
+        return reply
+          .status(500)
+          .send({ error: "Erro ao montar o resumo do dashboard." });
+      }
+    },
+  );
+
   // GET /servicos - catalogo de servicos, so leitura.
   //
   // O EventModal usa isto pro dropdown de servico. Quem EDITAVA o catalogo era o
@@ -2087,7 +2474,11 @@ const fastify = buildServer();
 function start() {
   fastify
     .listen({ port: PORT, host: "0.0.0.0" })
-    .then(() => fastify.log.info(`Servidor rodando na porta ${PORT}`))
+    .then(async () => {
+      fastify.log.info(`Servidor rodando na porta ${PORT}`);
+      // Depois do listen, nao antes: a porta ja atende enquanto o pool esquenta.
+      fastify.log.info(`Pool aquecido: ${await aquecerPool()} conexoes`);
+    })
     .catch((err) => {
       fastify.log.error(err);
       process.exit(1);

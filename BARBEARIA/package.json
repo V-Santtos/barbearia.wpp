@@ -12,6 +12,7 @@
     "db:migrar": "node --env-file=.env ferramentas/migrar.mjs",
     "db:schema": "node --env-file=.env ferramentas/ler-schema.mjs",
     "db:dados": "node --env-file=.env ferramentas/ler-dados.mjs",
+    "funil": "node --env-file=.env ferramentas/funil.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

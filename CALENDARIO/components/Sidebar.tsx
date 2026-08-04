@@ -310,7 +310,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     <aside
       className={
         mobilePanel
-          ? "fixed inset-0 z-50 bg-[#1c1c1c] flex flex-col"
+          ? "fixed inset-x-0 top-0 bottom-28 z-50 bg-[#1c1c1c] flex flex-col"
           : "hidden md:flex w-72 pt-8 pb-4 px-4 bg-[#1c1c1c] flex-col gap-6 min-h-0"
       }
     >

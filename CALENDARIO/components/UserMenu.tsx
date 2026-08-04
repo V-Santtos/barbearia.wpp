@@ -9,6 +9,7 @@ interface UserMenuProps {
   owner: OwnerSession;
   onLogout: () => void;
   professionals: Professional[];
+  onOpenDashboard?: () => void;
 }
 
 const DEFAULT_PROFILE_AVATAR_URL =
@@ -20,7 +21,7 @@ function getInitials(name?: string) {
   return parts.map((part) => part[0]?.toUpperCase() ?? '').join('') || 'PR';
 }
 
-export default function UserMenu({ owner, onLogout, professionals }: UserMenuProps) {
+export default function UserMenu({ owner, onLogout, professionals, onOpenDashboard }: UserMenuProps) {
   const [open, setOpen] = React.useState(false);
   const [profileOpen, setProfileOpen] = React.useState(false);
   const [displayName, setDisplayName] = React.useState<string>(owner.name);
@@ -126,16 +127,23 @@ export default function UserMenu({ owner, onLogout, professionals }: UserMenuPro
                 <span>Ver perfil</span>
               </button>
 
+              {/* O selo Premium fica, mas o botão abre para todo mundo no V1:
+                  travar agora esconderia justamente o que precisa ser testado, e
+                  não existe tabela de plano para uma trava se apoiar. O Premium
+                  de verdade vem depois, e o lugar dele já está decidido — seção
+                  própria no rodapé desta página. */}
               <button
                 role="menuitem"
                 type="button"
-                disabled
-                aria-disabled="true"
-                className="flex w-full cursor-not-allowed items-center gap-2 px-3 py-2 text-left text-white/40 transition hover:bg-white/[0.04] focus-visible:outline-none"
+                onClick={() => {
+                  setOpen(false);
+                  onOpenDashboard?.();
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-200 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6B3EFF]/50"
               >
-                <Gem size={16} className="text-[#c4a5ff]/70" />
+                <Gem size={16} className="text-[#c4a5ff]" />
                 <span>Dashboard</span>
-                <span className="ml-auto rounded-full border border-[#6B3EFF]/25 bg-[#6B3EFF]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#c4a5ff]/70">
+                <span className="ml-auto rounded-full border border-[#6B3EFF]/25 bg-[#6B3EFF]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#c4a5ff]">
                   Premium
                 </span>
               </button>

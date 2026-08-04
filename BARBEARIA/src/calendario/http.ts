@@ -32,11 +32,20 @@ export type Resultado<T> =
  * Um teto de 4s reprovava justamente a primeira, e o primeiro cliente depois de cada
  * deploy veria "nao consegui abrir a agenda" sem nada estar quebrado.
  *
- * ponytail: valor fixo, sem retentativa e sem conexao aquecida. Teto: a Meta desiste
- * de esperar o webhook por volta de 15-20s, entao 8s ja e metade do orcamento de uma
- * resposta. Gatilho de upgrade: a espera media passar de ~1s, ou aparecer uma segunda
- * consulta na mesma resposta — ai o caminho e aquecer a conexao do calendario, nao
- * aumentar o teto de novo.
+ * **O gatilho disparou em 2026-08-01, e a conexao foi aquecida.** O teto nao mudou —
+ * o que mudou foi o outro lado: o pool do calendario fechava conexao ociosa a cada
+ * 10s (padrao do `pg`), entao uma rajada normal — painel do dono fazendo polling +
+ * espelho da conversa gravando + o bot perguntando os dias — reabria varias conexoes
+ * com o Supabase ao mesmo tempo e as chamadas empilhavam. O `dias-disponiveis`
+ * respondeu em 8711ms, o bot desistiu aos 8000ms, e o cliente leu "nao consegui abrir
+ * a agenda" com a agenda no ar. Com o pool aquecido (`CALENDARIO/server.js`), a mesma
+ * chamada, na mesma rajada, leva ~630ms.
+ *
+ * ponytail: valor fixo e sem retentativa. Teto: a Meta desiste de esperar o webhook
+ * por volta de 15-20s, entao 8s ja e metade do orcamento de uma resposta — e uma
+ * retentativa aqui dobraria o pior caso. Gatilho de upgrade: a espera media passar de
+ * ~1s de novo, agora com a conexao ja quente; ai a conta e do numero de idas ao banco
+ * dentro de cada rota, nao do handshake.
  */
 export const ESPERA_MAXIMA_MS = 8000;
 

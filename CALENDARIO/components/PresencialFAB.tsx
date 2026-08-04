@@ -145,7 +145,7 @@ export default function PresencialFAB({
         className={[
           'relative flex items-center justify-center rounded-full shadow-xl',
           'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30',
-          isDesktop ? 'h-[65px] w-[65px]' : 'h-[58px] w-[58px]',
+          isDesktop ? 'h-[65px] w-[65px]' : 'h-[52px] w-[52px]',
         ].join(' ')}
         style={{ backgroundColor: 'transparent' }}
       >
@@ -153,15 +153,15 @@ export default function PresencialFAB({
           <div
             className="absolute pointer-events-none animate-blob-cw"
             style={{
-              inset: isDesktop ? '-16px' : '-12px',
-              width: isDesktop ? 97 : 82,
-              height: isDesktop ? 97 : 82,
+              inset: isDesktop ? '-16px' : '-11px',
+              width: isDesktop ? 97 : 74,
+              height: isDesktop ? 97 : 74,
               display: 'grid',
               gridTemplateAreas: "'stack'",
             }}
           >
             {activeBlobs.map((blob, i) => (
-              <span key={i} style={{ ...BLOB_STYLE, ...blob, height: isDesktop ? 97 : 82 }} />
+              <span key={i} style={{ ...BLOB_STYLE, ...blob, height: isDesktop ? 97 : 74 }} />
             ))}
           </div>
         )}
@@ -191,8 +191,8 @@ export default function PresencialFAB({
             >
               <img
                 src={tesouraUrl}
-                width={isDesktop ? 37 : 34}
-                height={isDesktop ? 37 : 34}
+                width={isDesktop ? 37 : 30}
+                height={isDesktop ? 37 : 30}
                 alt="tesoura"
                 style={{ mixBlendMode: 'screen', filter: 'invert(1) drop-shadow(0 0 6px rgba(255,255,255,0.8))', transform: 'rotate(40deg)' }}
               />
@@ -217,7 +217,7 @@ export default function PresencialFAB({
 
       <motion.div
         ref={mobileRef}
-        className="fixed bottom-[96px] right-4 z-50 flex flex-col items-end gap-3 md:hidden"
+        className="fixed bottom-[128px] right-8 z-50 flex flex-col items-end gap-3 md:hidden"
         animate={{ opacity: visible ? 1 : 0, pointerEvents: visible ? 'auto' : 'none' }}
         transition={{ duration: 0.25, ease: 'easeInOut' }}
       >

@@ -295,6 +295,85 @@ configura no painel e o cliente vê no WhatsApp. O teto de 10 não é preferênc
 layout, é limite da Meta; afrouxá-lo no calendário quebra o bot, e o sintoma seria a
 mensagem não chegar.
 
+## [2026-07-30] O bot fala com o calendário por HTTP, nunca direto no banco
+
+**Regra:** o bot consulta a API do calendário (`localhost:3334`) para disponibilidade
+e agendamento, em vez de acessar o Postgres diretamente. Os dois processos rodam lado
+a lado na mesma máquina (bot 3333, calendário 3334); só o bot tem túnel, porque só ele
+recebe da Meta.
+
+**Por quê importa.** A regra de disponibilidade não está em SQL — são sete funções
+JavaScript no `server.js`, com sutilezas (o slot tem o tamanho da `duracao_min`
+*daquele* profissional; a fronteira manhã/tarde nasce do intervalo de descanso dele).
+Ir direto ao banco significaria reescrever tudo isso no bot e conviver com duas
+implementações da mesma regra — elas divergiriam, e o sintoma seria o pior tipo:
+painel mostrando um horário livre e bot oferecendo outro, sem erro e sem log.
+
+O contra-argumento óbvio — "amarra o bot a um segundo serviço" — não se sustenta: o
+painel do dono não funciona sem essa API, então ela está no ar de qualquer jeito. Há
+precedente: o site público consumia os mesmos endpoints, por HTTP, em produção.
+
+**Como aplicar:** toda regra nova de disponibilidade/agendamento nasce em
+`server.js`, nunca duplicada no bot. Mesmo argumento usado depois em 2026-08-04 para
+o dashboard ler de `GET /dashboard/resumo` em vez de recalcular no navegador.
+
+## [2026-07-30] Três ajustes adiados na API do calendário, com gatilho de quando entram
+
+**Regra:** três lacunas de robustez na API foram identificadas e deliberadamente não
+resolvidas ainda, porque corrigi-las agora seria defesa contra volume inexistente num
+serviço que ninguém alcança de fora:
+
+- **Rate limit barra o próprio bot.** `POST /agendamentos` aceita 10/min por IP, e o
+  bot é um IP só atendendo todos os clientes. Gatilho: sair de `localhost` — em
+  produção o 11º cliente da hora leva 429 sem ter feito nada.
+- **`POST /agendamentos` é escrita aberta, sem token.** Era assim porque o site
+  antigo marcava sem login; o site morreu e a porta ficou. Gatilho: a API ganhar
+  endereço público.
+- **Não há idempotência no `POST /agendamentos`** — gatilho já disparou em
+  2026-07-31: o `409` responde "esse horário acabou de ser pego", frase certa quando
+  o ocupante é outra pessoa e **errada** quando é o próprio cliente tocando duas vezes
+  em Confirmar (toque em botão nunca é suprimido pela trava de rajada, que vale só
+  para texto). Conserto mais barato não é na API: o bot consulta se aquele cliente já
+  tem agendamento naquele horário e responde "você já está marcado". **Ainda não
+  implementado.**
+
+**Por quê importa:** são exatamente o tipo de item que "depois" vira "nunca" sem
+registro — mesma razão da convenção `ponytail:`, aqui aplicada a decisões de API em
+vez de linha de código.
+
+**Como aplicar:** revisar estes três antes de qualquer deploy público da API do
+calendário.
+
+## [2026-07-30] `agendamentos.profissional` é texto sem FK — o nome tem que vir do banco, nunca digitado
+
+**Regra:** a trava de double-booking depende do nome do profissional bater
+exatamente com o que está em `profissionais`. O bot já lê essa tabela, então manda o
+nome de lá — nunca hardcoded ou digitado à mão em código novo.
+
+**Por quê importa:** sem FK, um nome digitado com acento/maiúscula diferente não
+dispara erro nenhum — só silenciosamente deixa de proteger contra o double-booking
+que deveria travar.
+
+## [2026-07-30] Forma para encaixar um novo passo no roteador do bot
+
+**Regra**, extraída de como "dia e horário" entrou no fluxo — repetir para toda fatia
+nova:
+
+1. Id com o contexto dentro: `1.dia?b=1&d=2026-08-04`, `1.hora?b=1&d=…&h=13:00`.
+2. Rota no `switch` de `rotear.ts` + nome em `NOMES_RESPOSTA` **e no mapa `AJUDA`** —
+   sem a frase de ajuda o TypeScript recusa compilar, de propósito.
+3. O roteador continua puro: o que vem da API entra pelo `ContextoFluxo`, como
+   `barbeiros` já entrava. Quem decide **o que buscar** é uma função de leitura
+   (`alvoDaAgenda()` em `src/db/eventos.ts` foi o exemplo), que lê o id com o mesmo
+   `lerId` — nunca um parser paralelo.
+4. Escada de feedback, cadastro de contato e dedupe valem sem alteração — são
+   transversais a qualquer passo.
+
+**Por quê importa:** é a forma que já provou reduzir de 5 toques (n8n) para 4 no
+trecho agendar→barbeiro→dia→horário (ver `ANEXO_FLUXO_N8N_AGENDAMENTO.md` para o
+baseline completo); desviar dela reabre os bugs que motivaram o desenho (contexto no
+botão, roteador puro).
+
 ## [2026-07-30] O espelho da conversa no painel do dono
 
 O bot copia a conversa para o CRM do calendário (`POST /whatsapp/events`), que estava
@@ -505,3 +584,225 @@ Decisões do dono do produto, tomadas vendo o cartão real no celular:
 inteiro (400) quando a chave está presente com valor vazio — mesmo motivo pelo qual o
 `header` já era condicional. `rodape` virou opcional no tipo e o `footer` só entra
 quando há texto (`src/whatsapp/enviar.ts`).
+
+## [2026-08-02] Financeiro fica fora do V1, e já tem endereço reservado
+
+**Regra:** o módulo financeiro não entra nesta fase do dashboard. O lugar dele já
+está decidido: seção própria no rodapé da página, sem mexer em nada acima do que já
+foi validado.
+
+**Por quê importa:** evita que qualquer trabalho futuro de financeiro vire discussão
+de layout do que já fechou — o V1 do dashboard (relógio do dia, Disponibilidade,
+KPIs) está aprovado e não é reaberto para caber financeiro.
+
+**Como aplicar:** quando financeiro entrar em pauta, ele ganha rodapé próprio; não
+redesenha o que está acima.
+
+## [2026-08-04] O Dashboard entra como camada sobre a agenda, não como tela nova
+
+**Regra:** no desktop o dashboard é um overlay por cima do calendário — véu escuro
+com `backdrop-filter`, modal a ~94% de largura e 90% de altura, e três saídas: `X`,
+`Esc` e clique no véu. No celular ele é aba de tela cheia, governada pelo dock.
+
+**Por quê importa.** A primeira proposta era trocar o miolo do app, mantendo sidebar
+e cabeçalho. Media-se mal: a `Sidebar` é `w-72` (288px) e o `main` tem 64px de
+padding, então num monitor de 1440 sobravam 1088px contra os 1440 em que o protótipo
+foi validado — **24% a menos**. E o corte não seria democrático: a Disponibilidade
+tem largura de conteúdo fixo (`auto` na `.db-duo`), então o relógio absorveria tudo,
+caindo de 401px para ~210px. Como overlay, o conteúdo fica com ~1294px — perda de 6%,
+medida em 352px de mostrador.
+
+**O que a decisão apagou, e é o ganho maior:** a `db-topbar` do protótipo deixou de
+existir. Marca, navegação de data e avatar são do app e continuam atrás do véu;
+repeti-las dentro do dashboard era o protótipo fingindo ser aplicativo. O bloco de
+data, além de repetido, não navegava nada — esta tela é sempre hoje.
+
+**`X` e não `← Agenda`.** Com o calendário visível atrás, a seta mente sobre o que
+vai acontecer: ela promete levar a outro lugar, e não se vai a lugar nenhum. O `X`
+diz isso sem palavra, e traz `Esc` e clique-fora de graça, que a seta não traz.
+
+**Como aplicar:** qualquer tela secundária que precise da largura inteira e não seja
+destino de navegação segue esta forma. Tela que o dono usa para *trabalhar* (não para
+consultar) não — essa merece ser tela.
+
+## [2026-08-04] O dashboard lê de UMA fonte, e ela é o servidor
+
+**Regra:** todo número do dashboard vem de `GET /dashboard/resumo` (rota admin, uma
+chamada). Mesmo os agendamentos já estando em memória no `App.tsx` — polling de 15s
+via `getEvents()` — eles **não** são usados para montar a tela.
+
+**Por quê importa, e são dois motivos.**
+
+O primeiro é a regra de horário. Capacidade, vagas, horários livres e o relógio
+inteiro não saem de contar linhas: saem da **grade** de cada barbeiro, que nasce de
+`hora_inicio`/`hora_fim`/`duracao_min`/intervalo. Essa conta já existe em
+`server.js` (`buildSlots`, `getBreakWindow`, `overlapsBreak`), e o protótipo teve que
+reescrevê-la em `slotsDoDia` por não ter servidor. Derivar no navegador congelaria
+essa segunda cópia — e o bot fala HTTP com esta API exatamente para não existir a
+segunda. Seriam três. É o mesmo argumento de [2026-07-30], e ele não enfraqueceu.
+
+Por isso `grade_hoje` viaja junto de `livres_hoje`: com as duas listas na mão,
+"ocupado" é subtração de conjunto, não conta de horário.
+
+O segundo é o defeito que a vistoria de 02/08 achou: com três fontes para "quantos
+horários livres hoje", a tela dava **três respostas ao mesmo tempo** — 14, 9 e 6.
+Uma fonte, uma resposta. Conferido contra o banco real em 04/08: KPI = 21, centro do
+relógio = 21, Disponibilidade de hoje = 8 + 13 = 21.
+
+**A direção de cada KPI é parte da regra.** `agendamentos`, `ocupacao` e `marcacoes`
+olham para trás (o período que passou). `livres` olha para **frente**, porque horário
+livre que já passou não existe — contá-lo para trás seria inventar estoque que
+ninguém pode vender. O rótulo do card diz qual é qual ("nos próximos 7 dias").
+
+**Como aplicar:** número novo no dashboard entra no endpoint, não no cliente. Se a
+conta depender da grade de horários, ela é do `server.js`.
+
+## [2026-08-04] O dashboard quebra sozinho — cerca de erro é obrigatória ali
+
+**Regra:** `DashboardScreen` fica dentro de um error boundary (`LimiteDeErro`).
+
+**Por quê importa.** Não é precaução teórica: aconteceu no primeiro teste com dado
+real. A API subiu sem `grade_hoje`, `montarProf` fez `.map` de `undefined`, e o React
+**desmontou a árvore inteira** — o barbeiro não perdeu o dashboard, perdeu o
+calendário, com tela preta e nenhuma mensagem. O sintoma visto foi "abre, dá um flick
+e fecha".
+
+Esta tela tem a maior superfície do app para um campo faltar (uma rota agregando
+quatro tabelas) e é a mais dispensável: quem precisa trabalhar, trabalha na agenda.
+A assimetria entre risco e importância é o que torna a cerca obrigatória aqui.
+
+**Como aplicar:** toda tela nova que consuma um agregado montado no servidor nasce
+cercada.
+
+## [2026-08-04] No celular, o dia é o `DayKanban`, nunca o `DayView`
+
+**Regra:** `App.tsx` força `viewMode="kanban"` sempre que `isMobile` — no primeiro
+mount da view "day" e em toda troca pra ela (`handleViewChange`). `DayView.tsx` só
+renderiza no desktop, mesmo existindo `view === "day"` nos dois. Quem quiser mexer
+"na tela do dia no celular" mexe no `DayKanban.tsx`.
+
+**Por quê importa.** O nome do arquivo engana: `DayView` parece o dono óbvio da view
+de dia, mas no celular é sempre o `DayKanban` que desenha. Um conserto de borda em
+`DayView.tsx` compilou limpo, passou no detector e no `tsc`, e não mudou nada na
+tela — só apareceu no print seguinte do usuário. Caso completo em `APRENDIZADOS.md`
+(2026-08-04).
+
+**Como aplicar:** antes de estilizar "a tela X" achando que sabe o componente pelo
+nome, conferir o `switch`/ternário de `view`/`viewMode` em `App.tsx` pra ver o que
+realmente está montado — typecheck e detector provam que o código compila, não que é
+o componente certo.
+
+## [2026-08-04] Acesso pelo celular (LAN) precisa do IP da máquina, não `localhost`
+
+**Regra:** no `.env` do `CALENDARIO`, `VITE_CALENDAR_API_URL` e `CORS_ORIGINS`
+apontam pro IP de rede da máquina (hoje `192.168.1.7`), não `localhost`. O mesmo
+valor funciona tanto no PC quanto no celular, porque o IP de rede também resolve
+localmente na própria máquina.
+
+**Por quê importa.** `import.meta.env.VITE_*` fica embutido no bundle do Vite. No PC
+"localhost" resolve pro próprio PC e mascarava o problema; aberto do celular,
+"localhost" resolve pro celular, que não tem nada rodando — erro de API sem pista
+nenhuma no servidor (os três serviços estavam de pé e respondendo).
+
+**Como aplicar:** `ponytail` já marcado no `.env`: quebra se o roteador reatribuir o
+IP da máquina (troca de rede, reinício do roteador). Gatilho de upgrade: acesso pelo
+celular parar de achar a API depois de algo assim — não é bug de código, é o `.env`
+desatualizado.
+
+## [2026-08-04] PWA: as bordas da tela são do sistema, não nossas
+
+**Regra:** o app não pinta a barra de status nem a área do indicador de gestos. No
+iOS isso é literal — `apple-mobile-web-app-status-bar-style: black-translucent` deixa
+a barra transparente e quem pinta é o sistema. No Android não existe transparente no
+manifesto (`theme_color` **sempre** pinta), então o mais perto disso é igualar ao
+fundo do app: `theme_color` e `background_color` valem `#1c1c1c`, o mesmo
+`--color-background` do `index.css`. Eram `#000000` — uma faixa mais escura que o
+app, visível como emenda.
+
+**O respiro é do `env(safe-area-inset-*)`, nunca de padding fixo.** `viewport-fit=cover`
+joga o conteúdo por baixo do entalhe de propósito; quem devolve o espaço são os
+componentes de borda (`CalendarHeader`, `Sidebar`, `HamburgerPanel` e o dock em
+`20-modal.css`), cada um com um piso em `max()` para o navegador de mesa, onde o
+`env()` é zero.
+
+**Como aplicar:** componente novo que encoste no topo ou no rodapé pede o `env()`
+com piso, e não um número. Trocar o `black-translucent` por `black`/`default` volta a
+pintar faixa por cima do app — é a regra sendo revertida, não um ajuste.
+
+## [2026-08-04] O ícone do PWA é gerado por script, e o `maskable` tem arquivo próprio
+
+**Regra:** os quatro arquivos de `public/icons/` saem de `npm run icones`
+(`CALENDARIO/ferramentas/icones.mjs`, com o `sharp` que já era dependência), a partir
+da mesma tesoura que o FAB desenha (`assets/Ativo 4.svg`) — branco sobre `#1c1c1c`.
+O script é versionado; os PNGs são derivados.
+
+**Por quê o `maskable` não pode reaproveitar o ícone comum.** O Android recorta o
+`maskable` na forma do sistema (círculo, squircle, gota) e descarta o que estiver
+fora do círculo central de 80%. Até esta rodada o `maskable` apontava para o mesmo
+`icon-512.png`, que era branco sobre **transparente** — o recorte deixava buraco.
+Hoje é arquivo próprio, com o fundo sangrando até a borda e a tesoura em 56% do lado
+(um quadrado de lado L só cabe inteiro num círculo de 80% se L ≤ 0,566 do lado).
+
+**O iOS não lê o manifesto para o ícone da tela de início** — lê
+`<link rel="apple-touch-icon">`, que quer 180×180 e opaco (transparência ali é
+composta sobre preto sem aviso). Por isso o quarto arquivo existe.
+
+**Como aplicar:** trocar a marca é editar o SVG de origem e rodar `npm run icones`,
+nunca substituir PNG à mão — quatro arquivos com regras de recorte diferentes saem
+inconsistentes na mão.
+
+## [2026-08-04] O service worker só existe no build, e o preview reusa a porta 3002
+
+**Regra:** `devOptions.enabled: false` — `npm run dev` nunca registra service
+worker. Conferir o PWA de verdade é `npm run build && npm run preview`, e o
+`vite.config.ts` ganhou um bloco `preview` com `host: '0.0.0.0'` e **a mesma porta
+3002 do dev**.
+
+**Por quê a porta é a mesma, e a consequência.** `VITE_CALENDAR_API_URL` e
+`CORS_ORIGINS` do `.env` já apontam para `192.168.1.7:3002`; qualquer outra porta
+exigiria mexer nos dois. O preço é que dev e preview **não sobem juntos** — com o
+dev de pé, o preview cai na 3003 e a API recusa por CORS, calada (verificado:
+origem 3003 volta sem `access-control-allow-origin`). Parar o dev antes é o
+procedimento, não um contorno.
+
+**Armadilha de verificação:** o dev server responde **200 em `/sw.js`**, porque
+serve o `index.html` como fallback de SPA. Conferir só o código HTTP prova nada —
+olhar o `content-type` (`text/javascript` no preview, `text/html` no dev).
+
+## [2026-08-04] O PWA instalável depende de HTTPS, e o gatilho é o deploy
+
+**Regra:** service worker exige contexto seguro. `localhost` é (por isso funciona no
+PC); `http://192.168.1.7:3002` **não é**. Enquanto o painel for servido por HTTP na
+LAN, o celular tem meio PWA.
+
+**O que funciona mesmo assim, e o que não:** no iOS o "Adicionar à Tela de Início"
+independe de HTTPS — ícone, tela cheia e barras do sistema saem certos. O que falta
+é o service worker (offline) e, no Android, o convite de instalar.
+
+**Armadilha ao tentar destravar por túnel:** painel em HTTPS com a API em HTTP é
+bloqueado pelo navegador como conteúdo misto — todas as chamadas morrem. Resolver
+exigiria proxy no Vite, e metade disso já existe: `calendarApi.ts` tem `/api-proxy`
+como fallback quando `VITE_CALENDAR_API_URL` está ausente.
+
+**Como aplicar:** o conserto real é o deploy, onde HTTPS vem de graça e as duas
+pontas ficam na mesma origem. Não montar túnel + proxy só para antecipar isso.
+
+## [2026-08-04] Mês e semana no celular são tela cheia; só o dia reserva respiro pro dock
+
+**Regra:** `<main>` (App.tsx) só aplica `pb-28` (respiro do dock) quando
+`view === "day"`. Em mês e semana a grade vai até o fim da tela e o dock flutua por
+cima dela — estilo Google Calendar — em vez de a grade parar antes pra não ficar
+embaixo dele.
+
+**Por quê importa.** Sem o respiro reservado, a última linha da grade do mês ganha o
+espaço que sobrou; distribuí-lo igual entre as seis linhas deixaria todas maiores à
+toa. Em vez disso só a última linha cresce (`gridTemplateRows` com peso
+`LAST_ROW_WEIGHT_MOBILE = 1.6` só nela, as outras em `1fr`), igual à referência do
+Google Calendar. `cellHeight` (usada pra saber quantos eventos cabem por dia antes do
+"+N mais") teve que aprender essa desigualdade — a média simples errava a conta pras
+duas linhas.
+
+**Como aplicar:** o FAB de tesoura (presencial) só aparece com `view === "day"` — não
+faz sentido sem um dia em foco. Em mês/semana o botão flutuante virou um "+" de novo
+agendamento, reaproveitando `openModalWithDate`. Visão nova em tela cheia no celular
+segue essa mesma forma: `<main>` sem `pb-28` pra ela, dock por cima.

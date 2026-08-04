@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "server": "node server.js"
+    "server": "node server.js",
+    "icones": "node ferramentas/icones.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

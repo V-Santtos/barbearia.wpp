@@ -2,6 +2,7 @@ import React from 'react';
 import type { CalendarDay, Event, Professional } from '../types';
 import EventPopover, { type Anchor } from './EventPopover';
 import DayEventsPopover, { type Anchor as DayAnchor } from './DayEventsPopover';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 
 interface CalendarGridProps {
   days: CalendarDay[];
@@ -22,6 +23,8 @@ const CELL_VERTICAL_PADDING = 8;
 const FIRST_ROW_HEADER_HEIGHT = 34;
 const DAY_HEADER_HEIGHT = 24;
 const MIN_EVENT_ROWS = 4;
+/** No celular, quanto a última linha da grade pesa a mais que as outras — ver o `gridTemplateRows` abaixo. */
+const LAST_ROW_WEIGHT_MOBILE = 1.6;
 
 const CalendarGrid: React.FC<CalendarGridProps> = ({
   days,
@@ -54,6 +57,9 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({
       ? color
       : '#6B3EFF'; // fallback padrão
   };
+
+  const isMobile = useMediaQuery('(max-width: 767px)');
+  const rowCount = Math.ceil(days.length / 7);
 
   const [open, setOpen] = React.useState<{ event: Event; anchor: Anchor } | null>(null);
   const getProfessional = (id: number) => professionals.find((p) => p.id === id);
@@ -149,6 +155,17 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({
         ref={gridRef}
         onWheel={handleWheel}
         className="grid grid-cols-7 auto-rows-fr flex-1 h-full min-w-0 w-full bg-[#141314] md:rounded-[28px] overflow-hidden md:border md:border-[#6B3EFF]/45"
+        style={
+          // No celular a grade agora vai atrás do dock (não sobra mais pb-28
+          // reservado pra ele) — esse respiro extra vira altura pra ÚLTIMA
+          // linha, como no Google Calendar, em vez de esticar as seis
+          // igualmente. As de cima ficam do jeito que já estavam.
+          isMobile
+            ? {
+                gridTemplateRows: `repeat(${rowCount - 1}, minmax(0, 1fr)) minmax(0, ${LAST_ROW_WEIGHT_MOBILE}fr)`,
+              }
+            : undefined
+        }
       >
         {days.map((day, index) => {
           const isFirstRow = index < 7;
@@ -159,8 +176,15 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({
           const highlight = day.isToday;
 
           const all = eventsByDate[day.date] || [];
-          const rowCount = Math.ceil(days.length / 7);
-          const cellHeight = gridHeight > 0 ? gridHeight / rowCount : 0;
+          // A ultima linha pesa diferente das outras no celular (mesmo
+          // `gridTemplateRows` do container) -- a media simples erraria a
+          // altura das duas.
+          const totalWeight = isMobile
+            ? rowCount - 1 + LAST_ROW_WEIGHT_MOBILE
+            : rowCount;
+          const rowWeight = isMobile && isLastRow ? LAST_ROW_WEIGHT_MOBILE : 1;
+          const cellHeight =
+            gridHeight > 0 ? (gridHeight * rowWeight) / totalWeight : 0;
           const headerHeight = isFirstRow ? FIRST_ROW_HEADER_HEIGHT : DAY_HEADER_HEIGHT;
           const eventRowsThatFit = cellHeight
             ? Math.max(

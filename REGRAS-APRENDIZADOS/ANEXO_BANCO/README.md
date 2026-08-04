@@ -117,6 +117,32 @@ duplicadas), sem índice além da PK, sem FK, `created_at` **sem default** (há 
 `dados_cliente.atendimento_temporario` (usado) e `whatsapp_conversations.status='human'`
 (nunca escrito).
 
+## Ao ligar um processo novo no banco
+
+**O pool do `pg` fecha conexão ociosa em 10s por padrão, e aqui isso custa caro.** O
+Supabase está na internet, não no localhost: reabrir custa ~2s (chegou a 4,8s medido em
+2026-07-30). Entre dois toques do cliente no WhatsApp passam mais de 10s com folga, então
+*toda* mensagem pagava handshake novo.
+
+**Como isso apareceu (2026-08-01):** não como lentidão — como bug. O cliente escolheu o
+barbeiro e leu *"não consegui abrir a agenda"* com a agenda no ar. A API do calendário
+respondeu o `dias-disponiveis` em **8711ms**; o bot desiste em 8000ms. O que empilhou foram
+conexões, não consultas: painel do dono fazendo polling + espelho da conversa gravando + o
+bot perguntando os dias, todos ao mesmo tempo, cada um abrindo a sua. A escada dava para ver
+no log da API — 203ms de rotina, depois 1,6s, 2,2s, 4,6s, 5,5s, 8,7s.
+
+Os dois processos (`BARBEARIA/src/db/cliente.ts` e `CALENDARIO/server.js`) agora abrem o
+pool com `idleTimeoutMillis: 0` + `keepAlive: true` e **aquecem as conexões na subida**, em
+paralelo, depois do `listen`. Mesma chamada, mesma rajada: **~630ms**.
+
+O banco topa sem apertar: `idle_session_timeout` é **0** (o Supabase nunca derruba sessão
+parada) e `max_connections` é **60** — o calendário segura no máximo 10 e o bot 5.
+
+**O que sobrou, e é outra conta:** com a conexão quente, o que resta de latência é o
+*número* de idas ao banco dentro de cada rota. `POST /whatsapp/events` leva ~1,25s porque
+faz ~6 consultas em sequência, e o webhook inteiro fica em 5-8s (a Meta desiste por volta de
+15-20s e reentrega — o dedupe absorve). Não é handshake; é ida e volta.
+
 ## Coisas que enganam
 
 - `configuracao['servicos']` e `['categorias']` **duplicam em jsonb** o conteúdo das tabelas

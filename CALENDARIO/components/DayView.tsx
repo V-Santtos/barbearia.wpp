@@ -60,7 +60,7 @@ const DayView: React.FC<DayViewProps> = ({
   const currentHour = now.getHours() + now.getMinutes() / 60;
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 bg-[#141314] border border-[#6B3EFF]/45 rounded-[28px] overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 mx-4 md:mx-0 bg-[#141314] border border-[#6B3EFF]/45 rounded-[28px] overflow-hidden">
       <div className="flex-1 overflow-y-auto custom-scrollbar relative px-4 py-6">
         <div className="flex relative min-h-[1080px]"> {/* 18 horas * 60px */}
           {/* Coluna de Horas */}
