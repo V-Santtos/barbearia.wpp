@@ -74,7 +74,7 @@ interativa) — não é o caminho de acesso, a conexão direta é.
 do repo. Já existe esqueleto do webhook (Hono + TypeScript, sem ORM ainda) — ver
 `CONTEXTO.md` para o que está lá. Não assumir que lint existe.
 
-Git local apenas, sem remote configurado ainda.
+Remote no GitHub: `https://github.com/V-Santtos/barbearia.wpp` (branch `main`).
 
 ## Ferramentas locais já disponíveis (não óbvias)
 

@@ -260,8 +260,8 @@ anunciar "zerado" sem olhar (aconteceu errado duas vezes, ver
 - **Teto de 2 barbeiros do plano** não está travado em código — hoje é regra
   comercial; o lugar dela é a futura tabela de barbearias/plano.
 - **Hospedagem definitiva** — hoje é túnel ngrok. Migrar pra Vercel quando o
-  fluxo estabilizar. Subir no GitHub é parte do mesmo assunto, combinado mas
-  ainda não aberto.
+  fluxo estabilizar. Repositório já está no GitHub
+  (`github.com/V-Santtos/barbearia.wpp`, branch `main`) — falta o deploy em si.
 - **Trocar o token de envio antes da produção** — ver `ANEXO_WHATSAPP_META/`.
 - **Coexistência** — parada por decisão, caminho em aberto. Ver
   `ANEXO_WHATSAPP_META/COEXISTENCIA.md`.

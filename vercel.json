@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm install --prefix CALENDARIO",
+  "buildCommand": "npm run build --prefix CALENDARIO",
+  "outputDirectory": "CALENDARIO/dist",
+  "rewrites": [{ "source": "/((?!api-proxy/).*)", "destination": "/index.html" }]
+}
