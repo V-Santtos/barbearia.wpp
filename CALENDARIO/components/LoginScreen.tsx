@@ -17,6 +17,7 @@ interface LoginScreenProps {
 
 const OWNER_EMAIL = ((import.meta as any).env.VITE_OWNER_EMAIL as string | undefined)?.trim().toLowerCase();
 const OWNER_PASSWORD = ((import.meta as any).env.VITE_OWNER_PASSWORD as string | undefined)?.trim();
+const CREDENCIAL_NO_BUILD = Boolean(OWNER_EMAIL && OWNER_PASSWORD);
 const MOBILE_QUERY = '(max-width: 767px)';
 
 const isInitiallyMobile = () =>
@@ -401,6 +402,15 @@ function LoginCard({ onLogin }: LoginScreenProps) {
 
     setError('');
 
+    // Build sem credencial embutida (o caso do deploy): a tela e passagem, nao
+    // barreira. `VITE_*` vai dentro do bundle que qualquer um baixa, entao
+    // conferir aqui nunca protegeu nada — exigir o segredo so travava a porta
+    // pra quem tem a chave. Quem protege dado e o token do lado da API.
+    if (!CREDENCIAL_NO_BUILD) {
+      onLogin({ name: 'Proprietário', email: email || 'proprietario', remember });
+      return;
+    }
+
     if (!email) {
       setError('Informe o e-mail de acesso.');
       return;
@@ -408,11 +418,6 @@ function LoginCard({ onLogin }: LoginScreenProps) {
 
     if (!password) {
       setError('Informe a senha de acesso.');
-      return;
-    }
-
-    if (!OWNER_EMAIL || !OWNER_PASSWORD) {
-      setError('Configure VITE_OWNER_EMAIL e VITE_OWNER_PASSWORD no .env.local.');
       return;
     }
 
