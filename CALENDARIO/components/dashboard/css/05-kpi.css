@@ -65,4 +65,4 @@
 .kpi--compact { padding: 13px 14px; border-radius: 12px; }
 .kpi--compact .kpi__label { font-size: 12px; margin-bottom: 5px; }
 .kpi--compact .kpi__value { font-size: 24px; }
-.kpi--compact .kpi__sub { font-size: 10.5px; margin-top: 5px; }
+.kpi--compact .kpi__sub { font-size: 12px; margin-top: 5px; }

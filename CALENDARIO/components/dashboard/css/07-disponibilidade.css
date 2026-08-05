@@ -20,7 +20,7 @@
 /* Dia cheio e a melhor noticia do mes para o dono. O ambar pintava a vitoria de
    alerta -- e ambar ja significa "Reagendado" no painel colado. Cheio agora e
    MAIS forte que um dia com vaga, sem ser amarelo. */
-.dcell--cheio  { color: rgba(255,255,255,.88); background: rgba(255,255,255,.10); font-size: 10.5px; font-weight: 600; letter-spacing: .02em; }
+.dcell--cheio  { color: rgba(255,255,255,.88); background: rgba(255,255,255,.10); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
 .dcell--nao    { background: rgba(255,255,255,.015); }
 /* A coluna de hoje era marcada pela metade: so o cabecalho recebia o roxo. */
 .dcell.is-today { background: rgba(107,62,255,.16); }
@@ -40,13 +40,13 @@
 
 .dlist__head { padding: 0 6px 6px; margin-bottom: 2px; border-bottom: 1px solid rgba(255,255,255,.07); }
 .dlist__prof { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.dlist__profname { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; color: rgba(255,255,255,.58); }
+.dlist__profname { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,.58); }
 .dlist__dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 /* A capacidade do dia, uma vez por barbeiro -- so no desktop, onde a coluna tem
    largura. E ela que torna "3" e "6" comparaveis: 3 de 9 nao e a mesma coisa que
    3 de 13. Escrita, nunca em cor -- escala de cor por ocupacao mentiria com
    capacidades diferentes. */
-.dlist__cap { font-size: 9.5px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
+.dlist__cap { font-size: 11px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
 
 .dlist__row { padding: 2px 6px; border-radius: 8px; }
 .dlist__row.is-today { background: rgba(107,62,255,.14); }
@@ -55,8 +55,8 @@
 .dlist .dcell { min-height: 30px; }
 
 /* O rotulo do que nao da: palavra pequena, nunca um vazio a ser adivinhado. */
-.dcell--rot { font-size: 9.5px; font-weight: 600; letter-spacing: .02em; color: var(--text-muted); background: rgba(255,255,255,.025); }
+.dcell--rot { font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--text-muted); background: rgba(255,255,255,.025); }
 
 /* Dia sem ninguem atendendo: risco fino, nao linha vazia de altura cheia. */
-.dlist__fechado { display: flex; align-items: center; gap: 9px; padding: 2px 6px; font-size: 10.5px; color: var(--text-muted); }
+.dlist__fechado { display: flex; align-items: center; gap: 9px; padding: 2px 6px; font-size: 12px; color: var(--text-muted); }
 .dlist__fechado::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,.07); }

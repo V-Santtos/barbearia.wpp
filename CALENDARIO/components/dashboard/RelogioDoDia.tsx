@@ -14,7 +14,14 @@
  * posição e abertura, nunca comprimento.
  */
 import React from "react";
-import { hhmm, type DashboardVm, type ProfVm } from "./modelo";
+import { hhmm, statusDoDia, type DashboardVm, type ProfVm } from "./modelo";
+
+/* Vão da costura, em graus: onde o fim do dia encosta no começo (o topo do
+   anel). Sem ele, `t=janelaDia.fim` e `t=janelaDia.ini` caem no MESMO ponto
+   -- a volta fecha em círculo contínuo e sugere ciclo, quando na verdade é
+   uma linha enrolada. O corte é o que ensina o olho que ali é a emenda, não
+   meio-dia (Frente 2 do ANEXO-PLANO-LAPIDACAO). */
+const CORTE_DEG = 3;
 
 const RAD = Math.PI / 180;
 
@@ -42,8 +49,14 @@ export const RelogioDoDia: React.FC<Props> = ({ vm, profs }) => {
   const rBorda = rExterno + espessura / 2;
   const margem = 0.03; // respiro entre slots vizinhos
 
+  // 360 - CORTE_DEG, não 360: a volta inteira (abertura -> fechamento) some
+  // um pouco menos que o círculo cheio, deixando o vão da costura no topo.
+  // `- 90 - CORTE_DEG / 2` centraliza o corte exatamente nos 12h (topo),
+  // então abertura e fechamento ficam simétricos ao redor dele.
   const anguloDaHora = (t: number) =>
-    ((t - janelaDia.ini) / (janelaDia.fim - janelaDia.ini)) * 360 - 90;
+    ((t - janelaDia.ini) / (janelaDia.fim - janelaDia.ini)) * (360 - CORTE_DEG) -
+    90 -
+    CORTE_DEG / 2;
 
   const arcoDaFaixa = (r: number, t0: number, t1: number) => {
     const a0 = anguloDaHora(t0);
@@ -63,8 +76,18 @@ export const RelogioDoDia: React.FC<Props> = ({ vm, profs }) => {
   // quantos; o anel diz onde.
   const total = profs.reduce((s, p) => s + p.livres.length, 0);
 
+  // Rótulo do meio a cada N horas, nunca de `h % 3` (que só acertava por
+  // coincidência de a barbearia abrir às 8h) -- N escala com a duração pra o
+  // mostrador nunca passar de ~6 rótulos. Abertura e fechamento são âncoras
+  // à parte, sempre rotuladas, mesmo quando não caem em hora cheia.
+  const duracaoDia = janelaDia.fim - janelaDia.ini;
+  const passoRotulo = Math.max(2, Math.round(duracaoDia / 5));
+
   const horas: number[] = [];
-  for (let h = Math.ceil(janelaDia.ini); h < janelaDia.fim; h++) horas.push(h);
+  for (let h = Math.ceil(janelaDia.ini); h < janelaDia.fim; h++) {
+    if (h === janelaDia.ini) continue; // a âncora "abre" cobre esta posição
+    horas.push(h);
+  }
 
   const resumo = profs
     .map(
@@ -83,7 +106,7 @@ export const RelogioDoDia: React.FC<Props> = ({ vm, profs }) => {
           className="relo__dial"
           viewBox={`0 0 ${S} ${S}`}
           role="img"
-          aria-label={`Horários livres de hoje, agora ${hhmm(agora)}. ${resumo}`}
+          aria-label={`Horários livres de hoje, ${statusDoDia(vm)}. ${resumo}`}
         >
           {profs.map((prof, i) => {
             const r = raio(i);
@@ -150,7 +173,7 @@ export const RelogioDoDia: React.FC<Props> = ({ vm, profs }) => {
 
           {horas.map((h) => {
             const a = anguloDaHora(h);
-            const rotulado = h % 3 === 2;
+            const rotulado = h % passoRotulo === 0;
             const [x0, y0] = pontoNoAnel(c, rBorda + 4, a);
             const [x1, y1] = pontoNoAnel(c, rBorda + (rotulado ? 9 : 6), a);
             const [lx, ly] = pontoNoAnel(c, rBorda + 20, a);
@@ -166,29 +189,64 @@ export const RelogioDoDia: React.FC<Props> = ({ vm, profs }) => {
             );
           })}
 
+          {/* Costura: o traço mais forte exatamente no meio do vão de
+              CORTE_DEG -- é o corte que diz "aqui a volta emenda", não meio-dia. */}
+          {(() => {
+            const [x0, y0] = pontoNoAnel(c, raio(profs.length - 1) - espessura / 2 - 4, -90);
+            const [x1, y1] = pontoNoAnel(c, rBorda + 9, -90);
+            return <path className="relo__costura" d={`M ${x0} ${y0} L ${x1} ${y1}`} />;
+          })()}
+
+          {/* Âncoras: abertura e fechamento, sempre rotuladas (mesmo fora de
+              hora cheia), com peso maior e a palavra que diz o que aquele
+              ponto é -- sem isso ninguém descobre sozinho que o topo não é
+              meio-dia. */}
+          {(
+            [
+              { hora: janelaDia.ini, palavra: "abre" },
+              { hora: janelaDia.fim, palavra: "fecha" },
+            ] as const
+          ).map(({ hora, palavra }) => {
+            const a = anguloDaHora(hora);
+            const [x0, y0] = pontoNoAnel(c, rBorda + 4, a);
+            const [x1, y1] = pontoNoAnel(c, rBorda + 9, a);
+            const [lx, ly] = pontoNoAnel(c, rBorda + 20, a);
+            return (
+              <g key={palavra}>
+                <path className="relo__tick relo__tick--ancora" d={`M ${x0} ${y0} L ${x1} ${y1}`} />
+                <text className="relo__hora relo__hora--ancora" x={lx} y={ly + 3.5}>
+                  {hhmm(hora)}
+                  <tspan className="relo__hora-palavra" dx="3">{palavra}</tspan>
+                </text>
+              </g>
+            );
+          })}
+
           {/* O ponteiro do agora. É ele que faz a peça ser lida como relógio na
               primeira olhada, e separa o buraco que ainda dá para encher do que
-              já passou. */}
-          {agora > janelaDia.ini &&
-            agora < janelaDia.fim &&
-            (() => {
-              const a = anguloDaHora(agora);
-              const [x0, y0] = pontoNoAnel(
-                c,
-                raio(profs.length - 1) - espessura / 2 - 6,
-                a,
-              );
-              const [x1, y1] = pontoNoAnel(c, rBorda + 4, a);
-              return (
-                <g>
-                  <path
-                    className="relo__agora"
-                    d={`M ${x0} ${y0} L ${x1} ${y1}`}
-                  />
-                  <circle className="relo__agora-bola" cx={x1} cy={y1} r={2.6} />
-                </g>
-              );
-            })()}
+              já passou. Fora do expediente ele não some mais -- encosta na
+              ponta correspondente, esmaecido, e o cabeçalho (statusDoDia) é
+              quem passa a explicar o estado ("fechado desde ..."). */}
+          {(() => {
+            const dentro = agora > janelaDia.ini && agora < janelaDia.fim;
+            const alvo = dentro ? agora : agora <= janelaDia.ini ? janelaDia.ini : janelaDia.fim;
+            const a = anguloDaHora(alvo);
+            const [x0, y0] = pontoNoAnel(
+              c,
+              raio(profs.length - 1) - espessura / 2 - 6,
+              a,
+            );
+            const [x1, y1] = pontoNoAnel(c, rBorda + 4, a);
+            return (
+              <g className={dentro ? undefined : "relo__agora--fora"}>
+                <path
+                  className="relo__agora"
+                  d={`M ${x0} ${y0} L ${x1} ${y1}`}
+                />
+                <circle className="relo__agora-bola" cx={x1} cy={y1} r={2.6} />
+              </g>
+            );
+          })()}
 
           {sozinho && (
             <text className="relo__quem" x={c} y={c - 26}>
@@ -238,9 +296,10 @@ export const RelogioDoDia: React.FC<Props> = ({ vm, profs }) => {
             </span>
           ))}
         </div>
-        {/* Quatro tratamentos no anel e nenhum cabe escrito por dentro — ao
-            contrário da Disponibilidade, onde `folga` e `bloqueio` couberam na
-            célula e a legenda pôde sair. Aqui ela se paga. */}
+        {/* Três tratamentos, não mais quatro: "fora do expediente" saiu da
+            legenda (Frente 2) -- com a costura marcando a emenda e as âncoras
+            abre/fecha nomeando as pontas, a faixa apagada já se explica pela
+            posição, sem precisar de entrada própria. */}
         <div className="relo__chave">
           <span>
             <i
@@ -269,10 +328,6 @@ export const RelogioDoDia: React.FC<Props> = ({ vm, profs }) => {
           <span>
             <i className="relo__sw relo__sw--inter" />
             intervalo
-          </span>
-          <span>
-            <i className="relo__sw relo__sw--fora" />
-            fora do expediente
           </span>
         </div>
       </div>

@@ -54,9 +54,149 @@ deploy; hoje o iPhone instala pela "Tela de Início" e o Android não.
 
 **Três levas de ajuste visual no mobile** rodaram a partir de prints reais do
 usuário — ele manda print, eu ajusto, ele confere de novo, é assim que essa
-frente avança. A última leva (mês/semana em tela cheia, FAB virando "+", última
-linha da grade absorvendo o espaço sobrando) **não foi reconferida no
-celular** — é a primeira coisa a olhar ao retomar esta frente.
+frente avança.
+
+**Lapidação do dock/Naviba, feita nesta sessão:** vidro translúcido de verdade
+(alfa e blur baixaram juntos — blur forte deixava opaco mesmo com pouco alfa),
+ícone da aba Conversas trocado para `MessageCircleMore`, pílula ativa deslizando
+por `layoutId` (framer-motion) em vez de trocar de lugar, ícones brancos sem
+bolha roxa nem ponto embaixo, FAB de tesoura reposicionado no canto do card do
+dia (que esticou verticalmente, dock passou a flutuar levemente por cima da
+borda dele) e diminuído de tamanho. Decisões em `REGRAS.md` (2026-08-04).
+**A última rodada (alfa 0.08/blur 14px, ícones mais brancos, FAB mais alto e
+menor) ainda não foi reconferida no celular** — primeira coisa a olhar.
+
+**Rodada Liquid Glass no dock (2026-08-04), também não reconferida no
+celular.** O dono trouxe `github.com/callstack/liquid-glass` pra melhorar o
+vidro; avaliado e **rejeitado** (React Native só-iOS, sem nada extraível —
+veredito completo em `docs/skills-log.md`). O que ficou foi o que a avaliação
+ensinou, aplicado à mão em `10-mobile.css` + `MobileBottomNav.tsx`: anel
+especular direcional na borda do dock (substituiu o `border` chapado),
+`brightness(1.08)` no `backdrop-filter` (vidro devolve luz, não só desfoca), e
+a animação do toque redesenhada — os botões agora **incham** no toque em vez
+de encolher (`scale(.9)` era idioma Android), com um clarão radial que acende
+rápido e apaga devagar, e a pílula ativa viaja entre abas com mola e
+**deforma** (estica no eixo do movimento, achata no outro, desincha ao
+chegar) em vez de deslizar rígida. Decisões e a armadilha de dividir a pílula
+em casca+pele (pra deformação líquida não brigar com o `layoutId`) estão
+travadas no `REGRAS.md` (2026-08-04). **Teto conhecido:** refração de verdade
+precisa de `feDisplacementMap` via `backdrop-filter: url()`, que o WebKit não
+suporta — não vale gastar rodada tentando de novo, o caminho é sempre a
+aproximação (especular + toque).
+
+## Painel de Conversas — lapidação em andamento (2026-08-04), não terminada
+
+O header do painel mobile (`Sidebar.tsx`, `mobilePanel === "conversations"`) foi
+refeito parecido com o do WhatsApp: os "..." (`MoreHorizontal`) numa linha
+sozinha à esquerda, acima da seta+"Conversas" (que virou uma linha só, seta
+primeiro, título ao lado, fonte maior). O rótulo antigo ("Conversas" com ícone
+verde) saiu, e no lugar do aviso de lista vazia entrou uma linha de exemplo
+("Maria Silva (exemplo)") com o mesmo visual de uma conversa real, só pra ver o
+desenho antes de ter dado de verdade.
+
+**De quebra, achado e corrigido:** o dock estava com `z-index` menor que o
+painel de Conversas (`40` contra `50`) — a parte de cima da pílula ficava
+escondida atrás do painel sempre que os dois se sobrepunham. Subiu pra `100`,
+maior que qualquer overlay do app hoje. Duas armadilhas registradas em
+`REGRAS.md`: `.mb-dock` tem `z-index` definido em dois arquivos CSS (só o de
+`20-modal.css` vale, por vir depois na cascata), e o respiro inferior do card
+do dia (`pb-16` em `App.tsx`) precisa seguir igual ao do painel de Conversas
+(`bottom-16` em `Sidebar.tsx`) — divergir os dois é o mesmo defeito de novo.
+
+**Os "..." ainda são placeholder.** Função combinada: igual ao WhatsApp,
+selecionar conversas ou marcar tudo como lido — **não construída ainda**, só o
+botão e um modal vazio pra ver a interação. Falta decidir o desenho de verdade
+desse menu e seguir lapidando o resto da tela de conversa (o `WhatsAppPanel`
+que abre ao tocar numa conversa não entrou nesta rodada).
+
+**Nesta mesma sessão, a linha da lista de conversas cresceu** (pedido do dono:
+"aproveitar mais o espaço" do placeholder) — avatar 40→52px, nome 13→16px,
+prévia 12→14px, botão "..." 36→48px. Vale só pro painel mobile
+(`mobilePanel === "conversations"` em `Sidebar.tsx`); a sidebar do desktop
+segue com os tamanhos antigos, de propósito, porque a coluna lá é estreita.
+**Também não reconferido no celular ainda.**
+
+## Menu lateral (Hamburger) — clonado do Figma nesta sessão (2026-08-04), não visto no celular
+
+`HamburgerPanel.tsx` (o menu que desliza da esquerda no mobile, `md:hidden`,
+diferente do painel de Conversas acima) levou duas rodadas:
+
+1. **Botão "Criar agendamento"** deixou de ser um retângulo roxo chapado e
+   virou um clone do botão de vidro que o dono trouxe do Figma
+   (`Liquid Glass Button — Amber Glow`, nó `1:13`, comunidade). Anatomia de
+   quatro camadas copiada do arquivo (medidas reais via `get_design_context`,
+   não estimativa): casca externa translúcida com brilho interno, pílula preta
+   com gradiente e sombra interna, dois brilhos elípticos borrados (um fino em
+   cima, um largo e fraco embaixo) e texto duplicado com cópia borrada atrás
+   fazendo halo. Reduzido a ~metade da escala do arquivo (peça de botão de
+   menu, não banner) mas mantendo os cantos concêntricos (raio da casca menos
+   o respiro até a pílula = raio da pílula). Toque incha e acende, mesma
+   linguagem travada no dock.
+2. **"Dia" selecionado virou branco sólido**, não mais roxo — pedido do dono
+   ("muita firula", quer o painel mais minimalista). Junto veio uma passada de
+   tipografia/espaço no painel inteiro (estava "pequenininho"): header "Menu"
+   14→19px, itens de visualização e lista de profissionais 14→15px, ícones e
+   checkbox maiores, largura do painel de `w-72` fixo pra `82%`/teto 320px.
+
+Decisões completas em `REGRAS-APRENDIZADOS/REGRAS.md` e o veredito do repo
+`callstack/liquid-glass` (rejeitado, RN/iOS-only) em `docs/skills-log.md`
+(ambos 2026-08-04). **Nada disso foi visto no celular ainda** — junto com o
+dock e a lista de conversas, são três rodadas empilhadas esperando print.
+
+## Lapidação do app mobile (2026-08-04) — plano das cinco frentes executado, nada reconferido no aparelho ainda
+
+Duas rodadas foram aplicadas e **não reconferidas no aparelho** (o dono validou por print no
+navegador; o login impede o agente de printar sozinho — ver "Como verificar" no plano).
+
+**Rodada 1 (pedido direto do dono):** gaveta 10% mais estreita (`w-[74%] max-w-[288px]`); "Menu"
+19→24px; a gaveta passa a **fechar ao trocar de aba** no dock; dock mais compacto
+(`justify-content: center` — era o `space-around` quem espalhava os três botões); Conversas com
+campo de busca funcional, filete entre contatos e segundo placeholder.
+
+**Rodada 2 (a partir do `$impeccable critique`, nota 21/36):** FAB sem barra de rolagem e sem a
+sombra funda; pílulas Manhã/Tarde/Noite e mês ativo saíram do roxo para o vidro do dock; cabeçalho
+do Dashboard realinhado (estava a 32px enquanto todo o resto está a 16px) e a linha "atualizado há
+Ns" + o pulso verde saíram do celular; varredura de tipos (17 tamanhos distintos → escala de
+Conversas), com o nome do cliente subindo de 14 para 16px; `EventModal` sem os contornos roxos e
+acima do dock; login com proporção corrigida; dois cards de exemplo na coluna da Noite;
+`NeonCheckbox` na gaveta.
+
+**As cinco frentes do [`ANEXO-PLANO-LAPIDACAO.md`](ANEXO-PLANO-LAPIDACAO.md) foram executadas
+nesta mesma sessão**, com as decisões em aberto do plano resolvidas em conversa antes de codar
+cada uma (registradas em `REGRAS-APRENDIZADOS/REGRAS.md`, entrada de 2026-08-04 "As cinco frentes
+do ANEXO-PLANO-LAPIDACAO foram executadas nesta sessão"):
+
+- **Frente 3** — menu dos "..." de Conversas virou popover ancorado no botão (não mais card
+  centralizado), "Marcar tudo como lido" ligado de verdade.
+- **Frente 4** — Serviço saiu de tela (oculto atrás de `SERVICO_HABILITADO`, sem perder dado de
+  agendamento antigo), Telefone e Descrição viraram campos próprios, Início passou a vir da agenda
+  real (`getAvailableSlots`) e Término virou texto calculado. Os três dropdowns que escapavam do
+  card (Profissional/Data/Início) viraram `BottomSheet`, o que permitiu rodapé fixo
+  (Cancelar/Salvar sempre alcançáveis) com o miolo rolando por dentro.
+- **Frente 1** — cards do dia viraram chips de ~48px fechados (o vidro do botão da gaveta foi
+  extraído pra `components/ui/vidro.ts` antes disso, e o chip herda o material). Acordeão
+  exclusivo, "Marcar como Feito" virou botão de vidro discreto, editar é o lápis dentro do estado
+  aberto.
+- **Frente 2** — relógio "O dia" **ficou no Dashboard** (decisão do dono). Três defeitos
+  corrigidos: costura visível na emenda do ciclo (fim do dia encostando no começo), rótulos de
+  abertura/fechamento sempre presentes (não mais `h % 3`), ponteiro esmaecido em vez de sumir fora
+  do expediente.
+
+Verificado por `tsc --noEmit`, o detector do `impeccable` e compilação de cada módulo via dev
+server — **nada disso substitui o dono olhar no celular**, que é a próxima etapa. O backlog da
+crítica `$impeccable` (7 itens, fim do anexo) segue **não pedido**, não foi tocado.
+
+⚠️ **Armadilha registrada no plano (4.1), ler antes de mexer no `EventModal`:** `description` é
+**uma coluna de texto só**. Telefone, Serviço e Anotação são linhas prefixadas dentro dela
+(`composeDescription()` escreve, regex lê). O bot depende desse formato — separar em colunas de
+verdade é migração, não refactor de tela.
+
+**Próximo passo:** o dono confere as cinco frentes no celular (mais as duas rodadas anteriores da
+lapidação mobile, que também seguem sem reconferência) e traz ajuste por rodada de print, como de
+costume. Quando as cinco frentes estiverem validadas, o `ANEXO-PLANO-LAPIDACAO.md` pode ser
+esvaziado/removido — o que sobrar de aprendizado já está em `REGRAS-APRENDIZADOS/REGRAS.md`, e o
+backlog não pedido no fim do anexo é o único conteúdo que ainda precisa de um lugar (ficar no
+anexo, ou migrar, é decisão de quando isso for revisitado).
 
 ## Ambiente de desenvolvimento
 

@@ -806,3 +806,203 @@ duas linhas.
 faz sentido sem um dia em foco. Em mês/semana o botão flutuante virou um "+" de novo
 agendamento, reaproveitando `openModalWithDate`. Visão nova em tela cheia no celular
 segue essa mesma forma: `<main>` sem `pb-28` pra ela, dock por cima.
+
+## [2026-08-04] O dia esticou, e o `bottom-16` do painel de Conversas precisou seguir junto
+
+**Regra:** o card do dia (`DayKanban.tsx`) e o painel mobile de Conversas
+(`Sidebar.tsx`, `aside` quando `mobilePanel` está setado) compartilham a mesma
+medida de respiro inferior — hoje `16` (64px) dos dois lados, antes `28` (112px)
+dos dois. Mudar um sem o outro deixa a agenda aparecer atrás do painel de
+Conversas, na faixa que sobra entre os dois valores — foi exatamente o defeito
+visto no print do dono ao esticar o card do dia sem atualizar o painel junto.
+
+**Por quê importa.** Os dois números não têm nenhuma ligação estrutural (um é
+`pb-16` no `<main>` do `App.tsx`, o outro é `bottom-16` no `aside` do
+`Sidebar.tsx`) — só convenção implícita. Nada no TypeScript ou no build avisa
+quando eles divergem; o sintoma só aparece no celular, como fresta.
+
+**Como aplicar:** ao mexer no respiro inferior de qualquer tela mobile, grep por
+`pb-16`/`bottom-16` (ou o valor vigente) nos dois arquivos antes de mudar só um.
+
+## [2026-08-04] O dock é `z-index: 100` — tem que vencer qualquer painel ou popover
+
+**Regra:** `.mb-dock` é `z-index: 100`, maior que qualquer outro elemento do app
+(o mais alto depois dele é `z-[80]`, dos popovers pontuais de color picker e
+dropdown de serviço; painéis mobile como o de Conversas são `z-50`).
+
+**Por quê importa.** O dock é a navegação do app inteiro, sobrevive a troca de
+aba — nada deveria conseguir cobri-lo. Ele estava em `40` (por causa de uma
+segunda definição de `.mb-dock` em `20-modal.css`, que vence a de `10-mobile.css`
+por vir depois na cascata) e o painel de Conversas em `50` — o painel ficava por
+cima do dock sempre que os dois se sobrepunham, cobrindo a parte de cima da
+pílula. Sintoma visto pelo dono: dock "quebrado"/cortado ao abrir Conversas.
+
+**Armadilha que isso destravou:** `.mb-dock` tem DUAS definições de `z-index`,
+uma em `10-mobile.css` (a base) e outra em `20-modal.css` (que sobrescreve
+`position` e `z-index` para o contexto de janela real, não a moldura do
+protótipo). Só mudar a de `10-mobile.css` não teria efeito nenhum — quem vale é
+a última na cascata. As duas foram atualizadas juntas pra não divergir nem
+confundir quem for mexer aqui de novo.
+
+**Como aplicar:** qualquer overlay/modal novo entra abaixo de 100. Se algo
+precisar ficar por cima do dock de propósito (nunca aconteceu até agora), é
+decisão explícita, não acidente de ordem de import do CSS.
+
+## [2026-08-04] Liquid Glass no navegador: o que dá pra imitar e o que não dá
+
+**Regra:** o vidro do dock é uma **aproximação declarada**, não o Liquid Glass da
+Apple. A parte que define o efeito de verdade — a refração, o fundo entortando
+como visto através de uma lente na borda — **não é reproduzível no iPhone hoje**:
+ela exigiria `backdrop-filter: url(#filtro-svg)` com `feDisplacementMap`, e o
+WebKit não aplica filtro SVG em `backdrop-filter`. Justamente o navegador do
+aparelho de teste. Não gastar rodada tentando de novo.
+
+**O que restou, e por que cada peça está lá:**
+
+- **Fio especular direcional** (`.mb-dock::before`), no lugar do
+  `border: 1px solid` chapado. Vidro real não tem contorno de espessura única: a
+  luz vem de cima, a quina superior acende forte, as laterais quase somem, a
+  inferior volta fraca. Um gradiente recortado em anel (duas máscaras que se
+  subtraem) faz isso; um `border` de cor única, não. É a diferença entre
+  "retângulo contornado" e "peça de vidro".
+- **`brightness(1.08)` no `backdrop-filter`.** Vidro não só desfoca, devolve luz:
+  o que passa por baixo sai um tico mais claro do que entrou. Sem isso o dock lia
+  como buraco escuro em vez de material.
+- **Franja cromática** nas bordas verticais (fio vermelho de um lado, azul do
+  outro, sub-pixel) — já existia, continua sendo o que mais aproxima de lente.
+
+**A animação é metade do efeito, e essa dá pra fazer inteira.** O visual parado
+engana pouco; o que faz ler como líquido é como ele reage:
+
+- **Toque incha, não encolhe.** `scale(.9)` — recuar sob o dedo — é o idioma do
+  Material/Android. Vidro cresce e acende. Hoje é `whileTap` com mola no wrapper
+  do ícone (1.18) + um clarão radial no `::after` que sobe em 60ms e desce em
+  320ms: o dedo chegando é fato, o dedo saindo é rastro.
+- **A pílula ativa viaja com mola, não com `tween`.** Curva chega seca, mola passa
+  um fio do alvo e volta. E chega **deformada**: alongada no eixo da viagem,
+  achatada no outro (volume constante), desinchando na chegada. Sem esse esticão
+  o efeito lê como "retângulo que se moveu".
+- **O clarão do toque vale nas três abas**, não só na ativa — no iOS qualquer
+  controle de vidro responde ao dedo, mesmo o não-selecionado.
+
+**Armadilha estrutural, a que custaria uma rodada:** a deformação líquida **não
+pode** ser aplicada na mesma caixa que carrega o `layoutId`. O framer-motion
+corrige a escala dessa caixa durante o voo (pra borda não esticar junto), e as
+duas contas brigam. Por isso a pílula virou casca vazia (`.mb-dock__highlight`,
+só posição) + pele que pinta e deforma (`.mb-dock__highlight-skin`).
+
+**Mesmo motivo, outro lugar:** o `whileTap` do botão propaga uma *variante* pro
+wrapper do ícone em vez de aplicar `scale` no `<button>`. Escalar o botão
+escalaria também a pílula do `layoutId`, e o framer mede a posição dela no
+instante do clique — com o dedo ainda apertando. Medida tirada de dentro de um
+pai deformado sai errada, e a pílula chega torta na aba nova.
+
+**Como aplicar:** ao mexer em qualquer superfície de vidro nova (painel, modal,
+FAB), copiar o conjunto — anel especular + brightness + mola no toque. Vidro sem
+resposta ao dedo é `backdrop-filter` de enfeite, que é exatamente o que a skill
+`impeccable` marca como falha de craft.
+
+**Ver também:** `docs/skills-log.md` (2026-08-04, `callstack/liquid-glass`) — o
+repositório que levantou o assunto, rejeitado por ser React Native/iOS e não ter
+nada extraível: é casca fina sobre o `UIGlassEffect` da Apple.
+
+## [2026-08-04] As cinco frentes do ANEXO-PLANO-LAPIDACAO foram executadas nesta sessão
+
+**Regra:** o plano descrito em `ANEXO-PLANO-LAPIDACAO.md` (Frentes 1, 2, 3, 4)
+foi implementado inteiro numa única sessão, com as decisões em aberto do
+próprio plano resolvidas em conversa antes de codar cada frente (é a regra que
+o plano já pedia: "perguntar antes de codar, não depois"). Verificado por
+`tsc --noEmit`, `detect.mjs` (impeccable) e `curl` nos módulos alterados via
+dev server (200 = compilou) — **nada disso substitui o dono olhar no celular**,
+que ainda não aconteceu. Ver `CONTEXTO.md` para o estado vivo.
+
+**Decisões travadas em cada frente:**
+
+- **Frente 3 (menu dos "..." de Conversas):** virou popover ancorado no
+  botão (`Sidebar.tsx`), nasce no canto onde o dedo tocou, `transformOrigin`
+  no canto superior esquerdo — não mais card centralizado. "Marcar tudo como
+  lido" ligado de verdade (zera `unread` no estado local antes de disparar as
+  chamadas, otimista). "Selecionar conversas" fica desabilitado
+  (`aria-disabled`, `opacity-40`) até o modo de seleção existir — nunca
+  clicável abrindo aviso.
+- **Frente 4.2 (Serviço oculto):** `SERVICO_HABILITADO` é uma constante em
+  `EventModal.tsx`, `false` até existir dashboard premium com financeiro.
+  **Armadilha evitada:** `composeDescription()` não pode ter um gate de
+  `SERVICO_HABILITADO` na hora de decidir se emite a linha `Serviço:` —
+  `service` só chega não-vazio quando um agendamento antigo já trouxe a
+  linha (parse no load), então reescrever sem ela apagaria o dado do
+  cliente na primeira vez que alguém reabrisse e salvasse o card. Evento
+  novo nunca preenche `service` (campo sem UI), então a linha não nasce
+  sozinha. `SERVICE_LINE_RE` continua parseando sempre.
+- **Frente 4.3 (campos próprios) + 4.4 (horário real):** Telefone e
+  Descrição saíram da caixa combinada "Descrição" e viraram campos
+  independentes, na ordem Nome → Telefone → Profissional → Data → Início →
+  Descrição. `Início` passou a vir de `getAvailableSlots(professionalId,
+  date)` (refeito a cada troca de profissional/data); horário ocupado
+  deixa de ser oferecido. `Término` não é mais controle: texto derivado
+  (`início + duracao_min` de `getAgendaConfig`), ao lado do rótulo
+  "Início". **Ao editar um evento, o próprio horário dele é reinserido em
+  `availableSlots`** se não vier da API (ele mesmo o ocupa, senão a edição
+  fica impossível).
+- **Frente 4.5 (rodapé fixo):** os três dropdowns que "escapavam" do card
+  de propósito (Profissional, Data, Início) viraram **BottomSheet**
+  (`components/ui/BottomSheet.tsx`, folha que sobe do rodapé da TELA, z-
+  `[130]`, acima do backdrop do modal em `z-[110]`) — decisão do dono sobre
+  portal vs. bottom-sheet, escolhendo bottom-sheet porque a lista de
+  horários livres pode ficar longa. Isso permitiu o card virar
+  `overflow-hidden` com três fatias (`flex-col`): header fixo, miolo
+  `overflow-y-auto`, rodapé fixo com Cancelar/Salvar sempre alcançáveis.
+  **Serviço continua com dropdown `absolute` antigo** (dormente, atrás de
+  `SERVICO_HABILITADO`) — `ponytail:` marcado no arquivo: se a constante
+  virar `true`, esse dropdown também precisa virar BottomSheet, senão o
+  miolo rolável corta a lista.
+- **Frente 1 (chips do dia):** `DayKanban.tsx` — card fechado (~48px): fio
+  de 3px na cor do barbeiro, chevron, nome do cliente (16px), horário de
+  início. Estado aberto por acordeão **exclusivo** (`openId: number |
+  null`, um só por vez, decidido com o dono). Dentro do aberto: serviço,
+  nome do profissional com dot na cor dele, horário completo, e duas
+  ações — lápis (edita, só quando `!inerte`: some em presencial/
+  placeholder) e "Marcar como Feito" (virou botão de vidro discreto, cor
+  do barbeiro só no texto — decidido com o dono, deixou de ser o maior
+  volume de roxo do app). O card em si adotou o material de vidro (casca +
+  rampa, sem os dois brilhos borrados — pequenos demais pra caber) no lugar
+  do fundo chapado `#1f1f1f`; fundo tingido por cor de barbeiro saiu
+  inteiro (cor só em três lugares: fio, dot, `focus-visible:ring`).
+  Placeholder mantém a badge redundante removida: quando o texto já diz
+  "Atendimento presencial" (com ícone `UserCheck`), não repete num badge
+  "presencial" ao lado — pedido do dono depois de ver o print.
+- **Vidro extraído:** `CASCA`, `PILULA`, `BRILHO_TOPO`,
+  `BRILHO_BASE_INFERIOR`, `RAMPA`, `RAMPA_CASCA`, `CASCA_BORDER`,
+  `CASCA_BACKGROUND`, `PILULA_BACKGROUND` saíram de dentro de
+  `HamburgerPanel.tsx` pra `components/ui/vidro.ts` — pré-requisito que o
+  plano exigia antes de qualquer peça nova (chip do dia) usar o mesmo
+  material, pra não virar a terceira cópia dos mesmos valores.
+- **Frente 2 (relógio "O dia"):** continua no **Dashboard** (decisão do
+  dono — mudar de tela é trabalho de layout novo, melhor corrigir a leitura
+  primeiro e decidir relocação depois de ver funcionando). Três defeitos
+  corrigidos em `RelogioDoDia.tsx`/`modelo.ts`:
+  - **Costura visível:** `anguloDaHora` reserva `CORTE_DEG = 3°` de vão no
+    topo (onde fim do dia encosta no começo), com um traço mais forte
+    (`.relo__costura`) no meio do vão — sem isso `t=janelaDia.fim` e
+    `t=janelaDia.ini` caíam no mesmo ponto e a volta lia como ciclo.
+  - **Rótulos pela janela, não por `h % 3`:** abertura e fechamento são
+    âncoras à parte, sempre rotuladas (mesmo fora de hora cheia), peso
+    maior + a palavra "abre"/"fecha" ao lado da hora
+    (`.relo__hora--ancora`, `.relo__hora-palavra`). O miolo rotula a cada
+    `passoRotulo = max(2, round(duração/5))` horas — nunca mais de ~6
+    rótulos, e não quebra mais se o expediente mudar de 8h pra 7h.
+  - **Ponteiro nunca some:** fora do expediente ele encosta na ponta
+    correspondente (`janelaDia.ini` ou `.fim`), esmaecido
+    (`.relo__agora--fora`, `opacity: .4`), em vez de desaparecer. O
+    cabeçalho ("O dia") usa `statusDoDia(vm)` — nova função em
+    `modelo.ts` — que diz `"agora HH:MM"` dentro do expediente,
+    `"abre às HH:MM"` antes de abrir, `"fechado desde HH:MM"` depois de
+    fechar.
+  - Legenda perdeu a entrada "fora do expediente" (`.relo__sw--fora`
+    removida do CSS): com a costura e as âncoras, a faixa apagada já se
+    explica pela posição.
+
+**Como aplicar:** ao reabrir qualquer uma dessas telas, essas decisões estão
+fechadas — não as reabrir sem o dono pedir. O que ainda falta (backlog da
+crítica `$impeccable`, listado no fim do `ANEXO-PLANO-LAPIDACAO.md`) segue
+**não pedido** e não foi tocado nesta sessão.

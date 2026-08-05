@@ -119,10 +119,10 @@ const DayView: React.FC<DayViewProps> = ({
                     width: `calc(${width} - 8px)`,
                   }}
                 >
-                  <span className="text-xs font-bold truncate">{event.title}</span>
-                  <span className="text-[10px] opacity-90">{event.startTime} - {event.endTime}</span>
+                  <span className="text-[14px] font-bold truncate">{event.title}</span>
+                  <span className="text-[12px] opacity-90">{event.startTime} - {event.endTime}</span>
                   {height > 50 && event.description && (
-                     <p className="text-[10px] mt-1 line-clamp-2 opacity-80">{event.description}</p>
+                     <p className="text-[12px] mt-1 line-clamp-2 opacity-80">{event.description}</p>
                   )}
                 </div>
               );

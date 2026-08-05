@@ -32,9 +32,11 @@
 .proffilter { position: relative; }
 .proffilter__btn {
   display: inline-flex; align-items: center; gap: 8px;
-  height: 34px;
-  padding: 0 12px;
-  font-size: 12px;
+  /* 34px -> 44px: e o filtro que governa a tela inteira do dashboard, tocado
+     de pe e com uma mao. 44 e o piso de alvo de toque. */
+  height: 44px;
+  padding: 0 14px;
+  font-size: 14px;
   font-family: inherit;
   font-weight: 500;
   color: var(--text);

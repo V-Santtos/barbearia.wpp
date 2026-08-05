@@ -100,6 +100,20 @@ export function plural(n: number, um: string, varios: string): string {
   return `${n} ${n === 1 ? um : varios}`;
 }
 
+/**
+ * Status do dia em uma linha: "agora HH:MM" dentro do expediente, honesto
+ * fora dele -- "abre às HH:MM" antes de abrir, "fechado desde HH:MM" depois
+ * de fechar. Sem isto o cabeçalho anunciava um horário ("agora 21:24") que o
+ * relógio do dashboard não tinha onde marcar (Frente 2 do
+ * ANEXO-PLANO-LAPIDACAO).
+ */
+export function statusDoDia(vm: Pick<DashboardVm, "agora" | "janelaDia">): string {
+  const { agora, janelaDia } = vm;
+  if (agora < janelaDia.ini) return `abre às ${hhmm(janelaDia.ini)}`;
+  if (agora >= janelaDia.fim) return `fechado desde ${hhmm(janelaDia.fim)}`;
+  return `agora ${hhmm(agora)}`;
+}
+
 function nomeCurto(nome: string): string {
   const partes = String(nome ?? "").trim().split(/\s+/);
   if (partes.length <= 2) return partes.join(" ");

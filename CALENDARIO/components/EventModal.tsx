@@ -12,8 +12,16 @@ import React, {
 import type { Event, Professional } from "../types";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
-import { getAgendaConfig, getConfiguredServices, type AgendaConfig, type ConfiguredService } from "../services/calendarApi";
+import { getAgendaConfig, getAvailableSlots, getConfiguredServices, type AgendaConfig, type ConfiguredService } from "../services/calendarApi";
 import cardBgTexture from "../assets/4b5627d79bc66c97c95c39ec56cdaf20.jpg";
+import BottomSheet from "./ui/BottomSheet";
+
+/* Serviço só existe de verdade com dashboard premium + financeiro (V1 não
+   tem). "Ocultar, nunca apagar": o campo some da tela e composeDescription()
+   para de escrever a linha, mas SERVICE_LINE_RE continua lendo o que já foi
+   gravado -- agendamento antigo não perde o dado, e o campo volta inteiro no
+   dia em que esta constante virar `true`. Ver ANEXO-PLANO-LAPIDACAO 4.2. */
+const SERVICO_HABILITADO = false;
 
 export interface EventModalHandles {
   deleteCurrent: () => void;
@@ -83,6 +91,12 @@ function formatPhoneValue(digits: string) {
 }
 
 function composeDescription(phone: string, service: string, notes: string) {
+  // Sem gate de SERVICO_HABILITADO aqui de propósito: com o campo oculto,
+  // `service` só chega não-vazio quando um agendamento antigo já trouxe a
+  // linha (parse no load). Reescrever sem ela apagaria o dado do cliente só
+  // por reabrir e salvar o card -- exatamente o que a regra "nunca apagar"
+  // (4.2) proíbe. Evento novo nunca preenche `service` (campo sem UI), então
+  // a linha simplesmente não nasce.
   return [
     phone ? `Telefone: ${phone}` : null,
     service.trim() ? `Serviço: ${service.trim()}` : null,
@@ -90,6 +104,16 @@ function composeDescription(phone: string, service: string, notes: string) {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function timeToMins(time: string) {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function minsToTime(totalMinutes: number) {
+  const total = ((totalMinutes % 1440) + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
 const EventModal = forwardRef<EventModalHandles, EventModalProps>(
@@ -108,7 +132,6 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
     const [title, setTitle] = useState("");
     const [date, setDate] = useState("");
     const [startTime, setStartTime] = useState("");
-    const [endTime, setEndTime] = useState("");
     const [phone, setPhone] = useState("");
     const [service, setService] = useState("");
     const [notes, setNotes] = useState("");
@@ -118,9 +141,14 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
     );
     const [error, setError] = useState("");
 
+    // Término deixa de ser escolha (Frente 4.4): Início vem de
+    // getAvailableSlots, Término é início + duracao_min, texto derivado.
+    const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+    const [slotsLoading, setSlotsLoading] = useState(false);
+    const [slotsError, setSlotsError] = useState(false);
+
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [isStartOpen, setIsStartOpen] = useState(false);
-    const [isEndOpen, setIsEndOpen] = useState(false);
     const [isDateOpen, setIsDateOpen] = useState(false);
     const [isServiceOpen, setIsServiceOpen] = useState(false);
     const [agendaConfig, setAgendaConfig] = useState<AgendaConfig | null>(null);
@@ -128,7 +156,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
     const prefersReducedMotion = useReducedMotion();
     const titleInputRef = useRef<HTMLInputElement | null>(null);
     const serviceInputRef = useRef<HTMLInputElement | null>(null);
-    const notesInputRef = useRef<HTMLInputElement | null>(null);
+    const notesInputRef = useRef<HTMLTextAreaElement | null>(null);
     const cardRef = useRef<HTMLDivElement>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -158,7 +186,6 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
         setTitle(eventToEdit.title);
         setDate(eventToEdit.date);
         setStartTime(eventToEdit.startTime);
-        setEndTime(eventToEdit.endTime);
         setPhone(formatPhoneValue(getPhoneDigitsFromDescription(nextDescription)));
         setService(getLineValue(nextDescription, SERVICE_LINE_RE));
         setNotes(getLineValue(nextDescription, NOTES_LINE_RE));
@@ -177,8 +204,60 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
       getAgendaConfig(professionalId).then(setAgendaConfig).catch(() => setAgendaConfig(null));
     }, [isOpen, professionalId]);
 
+    // Início alimentado pela agenda de verdade, não mais uma lista estática:
+    // horário ocupado deixa de ser oferecido. Refaz a busca sempre que
+    // profissional ou data mudarem (ANEXO-PLANO-LAPIDACAO 4.4).
     useEffect(() => {
-      if (!isOpen) return;
+      if (!isOpen || !professionalId || !date) {
+        setAvailableSlots([]);
+        return;
+      }
+      let cancelled = false;
+      setSlotsLoading(true);
+      setSlotsError(false);
+
+      getAvailableSlots(professionalId, date)
+        .then((slots) => {
+          if (cancelled) return;
+          // Editando: o próprio horário do evento está ocupado por ele mesmo
+          // e some da lista -- sem repor, dá pra editar tudo do evento menos
+          // o horário que ele já tem.
+          const ownSlot =
+            eventToEdit &&
+            eventToEdit.professionalId === professionalId &&
+            eventToEdit.date === date
+              ? eventToEdit.startTime
+              : null;
+          const withOwnSlot =
+            ownSlot && !slots.includes(ownSlot)
+              ? [...slots, ownSlot].sort()
+              : slots;
+          setAvailableSlots(withOwnSlot);
+        })
+        .catch(() => {
+          if (!cancelled) setSlotsError(true);
+        })
+        .finally(() => {
+          if (!cancelled) setSlotsLoading(false);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }, [isOpen, professionalId, date, eventToEdit]);
+
+    // Horário escolhido pode deixar de valer se profissional ou data mudarem
+    // depois -- sem isto, dava pra marcar em cima de um horário que não é
+    // mais livre (o próprio defeito que esta frente resolve).
+    useEffect(() => {
+      if (!isOpen || slotsLoading) return;
+      if (startTime && !availableSlots.includes(startTime)) {
+        setStartTime("");
+      }
+    }, [isOpen, availableSlots, slotsLoading]);
+
+    useEffect(() => {
+      if (!isOpen || !SERVICO_HABILITADO) return;
       let cancelled = false;
 
       getConfiguredServices()
@@ -209,15 +288,13 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
         setDate(today);
       }
 
-      setStartTime("09:00");
-      setEndTime("10:00");
+      setStartTime("");
     };
 
     const closeAllDropdowns = () => {
       setIsDropdownOpen(false);
       setIsDateOpen(false);
       setIsStartOpen(false);
-      setIsEndOpen(false);
       setIsServiceOpen(false);
     };
 
@@ -291,21 +368,6 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
       const digits = value.replace(/\D/g, "").slice(0, 11);
       setPhone(formatPhoneValue(digits));
       if (error) setError("");
-
-      if (digits.length === 11) {
-        window.setTimeout(() => serviceInputRef.current?.focus(), 0);
-      }
-    };
-
-    const handlePhoneKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key !== "Enter") return;
-
-      e.preventDefault();
-      if (phone.replace(/\D/g, "").length < 10) {
-        setError("Complete o telefone antes de avançar.");
-        return;
-      }
-      serviceInputRef.current?.focus();
     };
 
     const handleServiceKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
@@ -324,7 +386,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
-      if (!title || !date || !startTime || !endTime || !professionalId) {
+      if (!title || !date || !startTime || !professionalId) {
         setError("Por favor, preencha todos os campos obrigatórios.");
         return;
       }
@@ -340,7 +402,17 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
         return;
       }
 
+      // A agenda só é dispensável quando a checagem falhou de vez
+      // (`slotsError`, que já libera a entrada manual). Fora disso, o
+      // horário tem que vir da lista de livres -- é a correção que esta
+      // frente existe pra fazer.
+      if (!slotsError && !availableSlots.includes(startTime)) {
+        setError("Selecione um horário disponível na agenda.");
+        return;
+      }
+
       if (
+        SERVICO_HABILITADO &&
         service &&
         serviceOptions.length > 0 &&
         !serviceOptions.some((option) => option.name === service)
@@ -354,7 +426,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
         title: title.trim(),
         date,
         startTime,
-        endTime,
+        endTime: minsToTime(timeToMins(startTime) + (agendaConfig?.duracao_min ?? 60)),
         description: composeDescription(phone, service, notes),
         professionalId,
       });
@@ -398,19 +470,45 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
     const monthName = currentSelectedDate.toLocaleString("default", { month: "long" });
     const modalDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-    // CAMPOS
+    // Término não é escolha: início + duração configurada do profissional
+    // (a mesma que o bot usa) -- ANEXO-PLANO-LAPIDACAO 4.4.
+    const duracaoMin = agendaConfig?.duracao_min ?? 60;
+    const computedEndTime = startTime
+      ? minsToTime(timeToMins(startTime) + duracaoMin)
+      : "";
+
+    /* CAMPOS
+       Eram `border-2 border-[#8b5cf6]/80`: contorno roxo de 2px, em alfa
+       alto, em TODOS os campos ao mesmo tempo. É a razão nº 1 de o modal ler
+       como se fosse de outro aplicativo -- em nenhuma outra tela um campo tem
+       contorno colorido, e o de busca de Conversas (que o dono validou) não
+       tem contorno nenhum: é superfície preenchida e ponto.
+       Aqui a régua vira a mesma: superfície preenchida, fio de 1px neutro, e
+       cor SÓ no foco -- que é o único momento em que o contorno carrega
+       informação ("é aqui que você está digitando"). Com 8 campos na tela,
+       contorno permanente não destaca nada, só faz barulho.
+       `p-3` -> `px-3.5 py-3.5` leva o campo a ~52px, o mesmo do login. */
     const fieldClass =
-      "w-full rounded-xl p-3 text-white placeholder:text-white/60 " +
-      "bg-[#191919] border-2 border-[#8b5cf6]/80 " +
-      "focus:outline-none focus:border-[#8b5cf6] focus-visible:ring-2 focus-visible:ring-[#8b5cf6]/20 " +
-      "shadow-[inset_0_1px_4px_rgba(255,255,255,0.05),inset_0_-1px_4px_rgba(0,0,0,0.6)] " +
+      "w-full rounded-xl px-3.5 py-3.5 text-[15px] text-white placeholder:text-white/40 " +
+      "bg-white/[0.05] border border-white/[0.10] " +
+      "focus:outline-none focus:border-white/25 focus-visible:ring-2 focus-visible:ring-white/20 " +
+      "shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] " +
       "transition-all duration-200";
 
     return (
       <AnimatePresence>
         <motion.div
           key="backdrop"
-          className="fixed inset-0 z-50 flex items-center justify-center px-4 sm:px-0"
+          /* z-50 era MENOR que o z-index 100 do dock -- por isso o dock era
+             desenhado POR CIMA do rodapé do modal e comia os botões
+             "Cancelar" e "Salvar". Não era o modal ser alto demais: era o
+             dock estar na frente. 110 põe o modal acima de tudo, que é o
+             certo para um diálogo modal. Os dropdowns de Profissional/Data/
+             Início viraram BottomSheet (4.5, z-[130]), então não precisam
+             mais escapar do card -- `overflow-y-auto` aqui é só um piso de
+             segurança pra telas baixíssimas; quem rola de verdade agora é o
+             miolo do card. */
+          className="fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto px-4 py-6 sm:px-0"
           style={{
             overscrollBehavior: 'contain',
             backgroundColor: "rgba(0,0,0,0.72)",
@@ -434,7 +532,16 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
             role="dialog"
             aria-modal="true"
             aria-labelledby="event-modal-title"
-            className="relative w-full max-w-md overflow-visible rounded-3xl text-white"
+            /* `my-auto` centraliza enquanto couber e vira topo-do-scroll
+               quando não couber -- com `items-center` puro, conteúdo mais
+               alto que a tela tem o topo cortado e inalcançável.
+               `max-h-[85vh]` + `flex-col` + `overflow-hidden`: o card virou
+               moldura de altura fixa com três fatias (header, miolo rolável,
+               rodapé fixo) -- Cancelar/Salvar sempre alcançáveis mesmo num
+               dia cheio de campos (4.5). Só dá pra fechar em `overflow-hidden`
+               porque os três dropdowns que escapavam do card viraram
+               BottomSheet -- nada mais precisa vazar pra fora dele. */
+            className="relative my-auto flex max-h-[85vh] w-full max-w-md flex-shrink-0 flex-col overflow-hidden rounded-3xl text-white"
             style={{
               backgroundImage: CARD_TEXTURE,
               backgroundSize: "cover",
@@ -475,14 +582,29 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
             }} />
 
 
-            {/* CONTEÚDO */}
-            <div className="relative z-10 px-8 pt-8 pb-10">
-              <h2 id="event-modal-title" className="mb-5 text-center text-2xl font-semibold tracking-wide text-white" style={{ textShadow: "0 1px 12px rgba(0,0,0,0.8), 0 0 32px rgba(0,0,0,0.6)" }}>
-                {eventToEdit ? "Editar Evento" : "Criar Evento"}
-              </h2>
-              <div aria-hidden="true" className="mb-6 h-px w-full" style={{ background: "linear-gradient(to right, transparent, rgba(255,255,255,0.18), transparent)" }} />
+            {/* CONTEÚDO -- três fatias dentro do <form>: header fixo, miolo
+                rolável (os campos) e rodapé fixo (Cancelar/Salvar), pra eles
+                nunca saírem de alcance num dia cheio de campos (4.5). */}
+            <form onSubmit={handleSubmit} className="relative z-10 flex min-h-0 flex-1 flex-col">
+              {/* Header -- fora do scroll. Respiro de 32px de lateral e
+                  topo, o dobro do resto do app (tudo aqui anda em 16px) de
+                  propósito: é a única peça que não compete por altura com o
+                  miolo rolável. */}
+              <div className="flex-shrink-0 px-5 pt-6">
+                {/* Título alinhado à esquerda e em 22px, o padrão da casa
+                    (Conversas, Agenda, Dashboard). Centralizado em 24px era a
+                    única tela do app com esse tratamento -- parte do porquê
+                    ele lia como peça de outro produto. */}
+                <h2 id="event-modal-title" className="mb-4 text-[22px] font-bold leading-tight tracking-[-0.01em] text-white" style={{ textShadow: "0 1px 12px rgba(0,0,0,0.8), 0 0 32px rgba(0,0,0,0.6)" }}>
+                  {eventToEdit ? "Editar Evento" : "Criar Evento"}
+                </h2>
+                <div aria-hidden="true" className="h-px w-full" style={{ background: "linear-gradient(to right, transparent, rgba(255,255,255,0.18), transparent)" }} />
+              </div>
 
-              <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Miolo -- só ele rola. `space-y-5` -> `space-y-4`: com 8
+                  campos, cada 4px a menos entre eles tira 28px da altura
+                  total. */}
+              <div className={`min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-4 pt-5 ${SCROLLBAR_CLASS}`}>
                 {/* Nome */}
                 <div>
                   <label className="mb-1 ml-1 block text-sm font-medium text-white">
@@ -504,8 +626,33 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                   />
                 </div>
 
-                {/* Profissional */}
-                <div className="relative">
+                {/* Telefone -- campo próprio, não mais linha dentro da caixa
+                    "Descrição". Sobe pra logo abaixo do nome porque os dois
+                    são a pessoa (ANEXO-PLANO-LAPIDACAO 4.3). O formato
+                    gravado no banco não muda: composeDescription() continua
+                    escrevendo "Telefone: ..." dentro da mesma coluna de
+                    texto que o bot lê (4.1). */}
+                <div>
+                  <label className="mb-1 ml-1 block text-sm font-medium text-white">
+                    Telefone
+                  </label>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    value={phone}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
+                    placeholder="(33) 99999-9999"
+                    className={fieldClass}
+                    required
+                  />
+                </div>
+
+                {/* Profissional -- BottomSheet (4.5): folha ancorada no
+                    rodapé da tela, não mais caixa flutuando perto do campo
+                    (o campo é `absolute` cortado se o card tiver que rolar
+                    por dentro). */}
+                <div>
                   <label className="mb-1 ml-1 block text-sm font-medium text-white">
                     Profissional
                   </label>
@@ -513,9 +660,8 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                   <button
                     type="button"
                     onClick={() => {
-                      const next = !isDropdownOpen;
                       closeAllDropdowns();
-                      setIsDropdownOpen(next);
+                      setIsDropdownOpen(true);
                     }}
                     className={"flex w-full items-center justify-between gap-2 " + fieldClass}
                   >
@@ -535,48 +681,39 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                     <ChevronDown size={16} />
                   </button>
 
-                  <AnimatePresence>
-                    {isDropdownOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        transition={{ duration: 0.15 }}
-                        className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-white/10 text-sm text-white shadow-[0_8px_30px_rgba(0,0,0,0.45)]"
-                        style={{ backgroundColor: "#1c1c1c" }}
+                  <BottomSheet
+                    open={isDropdownOpen}
+                    onClose={() => setIsDropdownOpen(false)}
+                    title="Profissional"
+                  >
+                    {professionals.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setProfessionalId(p.id);
+                          setIsDropdownOpen(false);
+                        }}
+                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-3.5 text-left text-[15px] transition hover:bg-white/10 ${
+                          professionalId === p.id ? "bg-white/10" : ""
+                        }`}
                       >
-                        <div className={`max-h-60 overflow-y-auto ${SCROLLBAR_CLASS}`}>
-                          {professionals.map((p) => (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => {
-                                setProfessionalId(p.id);
-                                setIsDropdownOpen(false);
-                              }}
-                              className={`flex items-center gap-2 w-full px-3 py-2 text-left transition hover:bg-white/10 ${
-                                professionalId === p.id ? "bg-white/10" : ""
-                              }`}
-                            >
-                              <span
-                                className="inline-block h-3 w-3 rounded-full"
-                                style={
-                                  p.color?.startsWith("#")
-                                    ? { backgroundColor: p.color }
-                                    : undefined
-                                }
-                              />
-                              {p.name}
-                            </button>
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                        <span
+                          className="inline-block h-3 w-3 flex-shrink-0 rounded-full"
+                          style={
+                            p.color?.startsWith("#")
+                              ? { backgroundColor: p.color }
+                              : undefined
+                          }
+                        />
+                        {p.name}
+                      </button>
+                    ))}
+                  </BottomSheet>
                 </div>
 
-                {/* Data */}
-                <div className="relative">
+                {/* Data -- BottomSheet (4.5). */}
+                <div>
                   <label className="mb-1 ml-1 block text-sm font-medium text-white">
                     Data
                   </label>
@@ -584,9 +721,8 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                   <button
                     type="button"
                     onClick={() => {
-                      const next = !isDateOpen;
                       closeAllDropdowns();
-                      setIsDateOpen(next);
+                      setIsDateOpen(true);
                     }}
                     className={"flex w-full items-center justify-between " + fieldClass}
                   >
@@ -596,262 +732,238 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                     <ChevronDown size={16} />
                   </button>
 
-                  <AnimatePresence>
-                    {isDateOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        transition={{ duration: 0.15 }}
-                        className="absolute z-50 mt-2 w-full rounded-xl border border-white/10 p-3 text-white shadow-[0_8px_30px_rgba(0,0,0,0.45)]"
-                        style={{ backgroundColor: "#1c1c1c" }}
-                      >
-                        <div className="mb-2 text-center text-xs text-white/70 capitalize">
-                          {monthName} {currentYear}
-                        </div>
+                  <BottomSheet
+                    open={isDateOpen}
+                    onClose={() => setIsDateOpen(false)}
+                    title={`${monthName} ${currentYear}`}
+                  >
+                    <div className="grid grid-cols-7 gap-1 px-3 text-center text-sm">
+                      {modalDays.map((d) => {
+                        const dayNum = d.toString().padStart(2, "0");
+                        const dateValue = `${currentYear}-${(
+                          currentMonth + 1
+                        )
+                          .toString()
+                          .padStart(2, "0")}-${dayNum}`;
+                        const isSelected = date === dateValue;
 
-                        <div className="grid grid-cols-7 gap-1 text-center text-sm">
-                          {modalDays.map((d) => {
-                            const dayNum = d.toString().padStart(2, "0");
-                            const dateValue = `${currentYear}-${(
-                              currentMonth + 1
-                            )
-                              .toString()
-                              .padStart(2, "0")}-${dayNum}`;
-                            const isSelected = date === dateValue;
-
-                            return (
-                              <button
-                                key={d}
-                                type="button"
-                                onClick={() => {
-                                  setDate(dateValue);
-                                  setTimeout(() => setIsDateOpen(false), 120);
-                                }}
-                                className={`rounded-xl p-2 transition ${
-                                  isSelected
-                                    ? "bg-[#8b5cf6] text-white"
-                                    : "text-white/90 hover:bg-white/10"
-                                }`}
-                              >
-                                {d}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                        return (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => {
+                              setDate(dateValue);
+                              setTimeout(() => setIsDateOpen(false), 120);
+                            }}
+                            className={`rounded-xl p-2.5 transition ${
+                              isSelected
+                                ? "bg-[#8b5cf6] text-white"
+                                : "text-white/90 hover:bg-white/10"
+                            }`}
+                          >
+                            {d}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </BottomSheet>
                 </div>
 
-                {/* Início / Término */}
-                <div className="grid grid-cols-2 gap-4">
-                  {[
-                    {
-                      label: "Início",
-                      state: startTime,
-                      setter: setStartTime,
-                      open: isStartOpen,
-                      setOpen: setIsStartOpen,
-                    },
-                    {
-                      label: "Término",
-                      state: endTime,
-                      setter: setEndTime,
-                      open: isEndOpen,
-                      setOpen: setIsEndOpen,
-                    },
-                  ].map(({ label, state, setter, open, setOpen }) => (
-                    <div key={label} className="relative">
-                      <label className="mb-1 ml-1 block text-sm font-medium text-white">
-                        {label}
-                      </label>
+                {/* Início -- alimentado pela agenda de verdade
+                    (getAvailableSlots), não mais uma lista estática que
+                    ignorava o que já está marcado. Término deixa de ser
+                    escolha: texto derivado ao lado do rótulo
+                    (ANEXO-PLANO-LAPIDACAO 4.4). Uma coluna só -- devolve os
+                    ~88px que o grid de duas colunas gastava. Dropdown virou
+                    BottomSheet (4.5). */}
+                <div>
+                  <div className="mb-1 ml-1 flex items-baseline justify-between gap-2">
+                    <label className="block text-sm font-medium text-white">
+                      Início
+                    </label>
+                    {startTime && !slotsLoading && (
+                      <span className="text-xs text-white/45">
+                        Término {computedEndTime}
+                      </span>
+                    )}
+                  </div>
 
+                  {slotsLoading ? (
+                    <div className={`${fieldClass} animate-pulse text-white/20`}>
+                      Carregando horários…
+                    </div>
+                  ) : slotsError ? (
+                    <>
+                      <input
+                        type="time"
+                        value={startTime}
+                        onChange={(e) => {
+                          setStartTime(e.target.value);
+                          if (error) setError("");
+                        }}
+                        className={fieldClass}
+                      />
+                      <p className="mt-1.5 ml-1 text-xs text-amber-300/80">
+                        Não deu pra conferir a agenda -- confira o horário à
+                        mão antes de salvar.
+                      </p>
+                    </>
+                  ) : availableSlots.length === 0 ? (
+                    <div className={`${fieldClass} text-white/40`}>
+                      {selectedProfessional?.name ?? "Este profissional"} não
+                      tem horário livre em{" "}
+                      {currentSelectedDate.toLocaleDateString("pt-BR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                      })}
+                      . Escolha outra data ou outro profissional.
+                    </div>
+                  ) : (
+                    <>
                       <button
                         type="button"
                         onClick={() => {
-                          const next = !open;
                           closeAllDropdowns();
-                          setOpen(next);
+                          setIsStartOpen(true);
                         }}
                         className={"flex w-full items-center justify-between " + fieldClass}
                       >
-                        {state || "Selecionar"}
+                        {startTime || "Selecionar"}
                         <ChevronDown size={16} />
                       </button>
 
-                      <AnimatePresence>
-                        {open && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -6 }}
-                            transition={{ duration: 0.15 }}
-                            className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-white/10 text-sm text-white shadow-[0_8px_30px_rgba(0,0,0,0.45)]"
-                            style={{ backgroundColor: "#1c1c1c" }}
+                      <BottomSheet
+                        open={isStartOpen}
+                        onClose={() => setIsStartOpen(false)}
+                        title="Início"
+                      >
+                        {availableSlots.map((time) => (
+                          <button
+                            key={time}
+                            type="button"
+                            onClick={() => {
+                              setStartTime(time);
+                              setIsStartOpen(false);
+                              if (error) setError("");
+                            }}
+                            className={`w-full rounded-xl px-3 py-3.5 text-left text-[15px] tabular-nums transition hover:bg-white/10 ${
+                              startTime === time ? "bg-white/10" : ""
+                            }`}
                           >
-                            <div className={`max-h-60 overflow-y-auto ${SCROLLBAR_CLASS}`}>
-                              {(() => {
-                                const startH = agendaConfig
-                                  ? parseInt(agendaConfig.hora_inicio.split(':')[0], 10)
-                                  : 8;
-                                const endH = agendaConfig
-                                  ? parseInt(agendaConfig.hora_fim.split(':')[0], 10)
-                                  : 19;
-                                const slots: string[] = [];
-                                for (let h = startH; h <= endH; h++) {
-                                  for (const m of ['00', '30']) {
-                                    const totalMin = h * 60 + parseInt(m, 10);
-                                    const endMin = endH * 60 + parseInt(agendaConfig?.hora_fim.split(':')[1] ?? '0', 10);
-                                    if (totalMin <= endMin) slots.push(`${h.toString().padStart(2, '0')}:${m}`);
-                                  }
-                                }
-                                return slots.map((time) => {
-                                  const isSel = state === time;
-                                  return (
-                                    <button
-                                      key={time}
-                                      type="button"
-                                      onClick={() => {
-                                        setter(time);
-                                        setOpen(false);
-                                      }}
-                                      className={`w-full px-3 py-2 text-left transition hover:bg-white/10 ${
-                                        isSel ? "bg-white/10" : ""
-                                      }`}
-                                    >
-                                      {time}
-                                    </button>
-                                  );
-                                });
-                              })()}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  ))}
+                            {time}
+                          </button>
+                        ))}
+                      </BottomSheet>
+                    </>
+                  )}
                 </div>
 
-                {/* Descrição */}
+                {/* Serviço -- oculto no V1 (4.2), campo próprio pronto pra
+                    religar quando o dashboard premium com financeiro
+                    existir. Nunca apagado: composeDescription() só para de
+                    emitir a linha, SERVICE_LINE_RE continua lendo o que já
+                    foi gravado.
+                    ponytail: dropdown ainda `absolute` (não virou BottomSheet
+                    como Profissional/Data/Início em 4.5) porque fica dormente
+                    -- gatilho de upgrade: no dia de religar SERVICO_HABILITADO,
+                    converter pro mesmo padrão, senão o miolo `overflow-y-auto`
+                    do card corta a lista se o campo cair perto da borda. */}
+                {SERVICO_HABILITADO && (
+                  <div className="relative">
+                    <label className="mb-1 ml-1 block text-sm font-medium text-white">
+                      Serviço
+                    </label>
+                    <input
+                      ref={serviceInputRef}
+                      type="text"
+                      value={service}
+                      onFocus={() => {
+                        if (serviceOptions.length > 0 && service.trim()) setIsServiceOpen(true);
+                      }}
+                      onChange={(e) => {
+                        setService(e.target.value);
+                        setIsServiceOpen(serviceOptions.length > 0 && Boolean(e.target.value.trim()));
+                        if (error) setError("");
+                      }}
+                      onKeyDown={handleServiceKeyDown}
+                      placeholder="opcional"
+                      className={fieldClass}
+                    />
+
+                    <AnimatePresence>
+                      {isServiceOpen && serviceOptions.length > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -6 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-white/10 text-sm text-white shadow-[0_8px_30px_rgba(0,0,0,0.45)]"
+                          style={{ backgroundColor: "#1c1c1c" }}
+                        >
+                          <div className={`max-h-48 overflow-y-auto ${SCROLLBAR_CLASS}`}>
+                            {filteredServiceOptions.length > 0 ? (
+                              filteredServiceOptions.map((option) => (
+                                <button
+                                  key={option.slug ?? option.id ?? option.name}
+                                  type="button"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    setService(option.name);
+                                    setIsServiceOpen(false);
+                                    notesInputRef.current?.focus();
+                                  }}
+                                  className={`w-full px-3 py-2 text-left transition hover:bg-white/10 ${
+                                    service === option.name ? "bg-white/10" : ""
+                                  }`}
+                                >
+                                  <span className="block truncate">{option.name}</span>
+                                  {option.price && (
+                                    <span className="text-[11px] text-white/35">{option.price}</span>
+                                  )}
+                                </button>
+                              ))
+                            ) : (
+                              <div className="px-3 py-2 text-xs text-white/35">
+                                Nenhum serviço encontrado
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+
+                {/* Descrição -- campo próprio, texto livre e mais nada. Os
+                    rótulos roxos internos ("Telefone:" / "Anotação:") saem
+                    junto com a caixa combinada que os continha (4.3). */}
                 <div>
                   <label className="mb-1 ml-1 block text-sm font-medium text-white">
                     Descrição
                   </label>
-
-                  <div className={`${fieldClass} space-y-1.5 overflow-visible py-3`}>
-                    <div className="flex items-center gap-2">
-                      <span className="w-[92px] shrink-0 text-sm font-semibold text-[#a78bfa]">
-                        Telefone:
-                      </span>
-                      <input
-                        type="tel"
-                        inputMode="numeric"
-                        autoComplete="tel"
-                        value={phone}
-                        onChange={(e) => handlePhoneChange(e.target.value)}
-                        onKeyDown={handlePhoneKeyDown}
-                        placeholder="(33) 99999-9999"
-                        className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-white/20 focus:outline-none"
-                        required
-                      />
-                    </div>
-
-                    <div className="relative flex items-center gap-2">
-                      <span className="w-[92px] shrink-0 text-sm font-semibold text-[#a78bfa]">
-                        Serviço:
-                      </span>
-                      <input
-                        ref={serviceInputRef}
-                        type="text"
-                        value={service}
-                        onFocus={() => {
-                          if (serviceOptions.length > 0 && service.trim()) setIsServiceOpen(true);
-                        }}
-                        onChange={(e) => {
-                          setService(e.target.value);
-                          setIsServiceOpen(serviceOptions.length > 0 && Boolean(e.target.value.trim()));
-                          if (error) setError("");
-                        }}
-                        onKeyDown={handleServiceKeyDown}
-                        placeholder="opcional"
-                        className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-white/20 focus:outline-none"
-                      />
-                      <ChevronDown
-                        size={13}
-                        className={`shrink-0 text-white/35 transition-transform duration-150 ${
-                          isServiceOpen ? "rotate-180" : ""
-                        }`}
-                      />
-
-                      <AnimatePresence>
-                        {isServiceOpen && serviceOptions.length > 0 && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -6 }}
-                            transition={{ duration: 0.15 }}
-                            className="absolute left-[100px] right-0 top-7 z-[80] overflow-hidden rounded-xl border border-white/10 text-sm text-white shadow-[0_8px_30px_rgba(0,0,0,0.45)]"
-                            style={{ backgroundColor: "#1c1c1c" }}
-                          >
-                            <div className={`max-h-48 overflow-y-auto ${SCROLLBAR_CLASS}`}>
-                              {filteredServiceOptions.length > 0 ? (
-                                filteredServiceOptions.map((option) => (
-                                  <button
-                                    key={option.slug ?? option.id ?? option.name}
-                                    type="button"
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => {
-                                      setService(option.name);
-                                      setIsServiceOpen(false);
-                                      notesInputRef.current?.focus();
-                                    }}
-                                    className={`w-full px-3 py-2 text-left transition hover:bg-white/10 ${
-                                      service === option.name ? "bg-white/10" : ""
-                                    }`}
-                                  >
-                                    <span className="block truncate">{option.name}</span>
-                                    {option.price && (
-                                      <span className="text-[11px] text-white/35">{option.price}</span>
-                                    )}
-                                  </button>
-                                ))
-                              ) : (
-                                <div className="px-3 py-2 text-xs text-white/35">
-                                  Nenhum serviço encontrado
-                                </div>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="w-[92px] shrink-0 text-sm font-semibold text-[#a78bfa]">
-                        Anotação:
-                      </span>
-                      <input
-                        ref={notesInputRef}
-                        type="text"
-                        value={notes}
-                        onChange={(e) => {
-                          setNotes(e.target.value);
-                          if (error) setError("");
-                        }}
-                        placeholder="opcional"
-                        className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-white/20 focus:outline-none"
-                      />
-                    </div>
-                  </div>
+                  <textarea
+                    ref={notesInputRef}
+                    rows={3}
+                    value={notes}
+                    onChange={(e) => {
+                      setNotes(e.target.value);
+                      if (error) setError("");
+                    }}
+                    placeholder="Observações (opcional)"
+                    className={`${fieldClass} resize-none`}
+                  />
                 </div>
 
                 {error && (
                   <p role="alert" aria-live="assertive" className="mt-2 text-sm text-red-400">{error}</p>
                 )}
+              </div>
 
-                {/* Botões */}
-                <div className="mt-6 flex items-center justify-between">
+              {/* Rodapé -- fixo, fora do scroll (4.5). Antes, num dia cheio
+                  de campos, dava pra rolar a página inteira e nunca alcançar
+                  Cancelar/Salvar -- o "canto mais difícil da tela". */}
+              <div className="flex-shrink-0 border-t border-white/[0.08] px-5 pb-6 pt-4">
+                <div className="flex items-center justify-between">
                   <div>
                     {eventToEdit && (
                       <button
@@ -871,33 +983,30 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                         closeAllDropdowns();
                         onClose();
                       }}
-                      className="rounded-xl px-4 py-2 text-sm font-medium text-white/50 transition-all duration-200 hover:text-white/80"
+                      /* py-2 dava ~34px numa dupla de botões que fica no
+                         canto mais difícil da tela. 44px é o piso. */
+                      className="min-h-[44px] rounded-xl px-4 py-2.5 text-[15px] font-medium text-white/50 transition-all duration-200 hover:text-white/80"
                     >
                       Cancelar
                     </button>
 
-                    {/* ============================
-                        BOTÃO ROXO CORRIGIDO
-                    ============================= */}
+                    {/* O "Salvar" é a ÚNICA peça que continua roxa neste
+                        modal, e de propósito: é a ação primária, e depois de
+                        tirar o roxo dos 8 campos ele volta a ser o que a cor
+                        deveria marcar desde o começo -- o que confirma. O
+                        halo de 14px saiu junto com os contornos: com um único
+                        elemento colorido na tela, ele já é o mais forte sem
+                        precisar brilhar. */}
                     <button
                       type="submit"
-                      className="
-                        rounded-xl 
-                        bg-[#6a3dff] 
-                        px-5 py-2 
-                        text-sm font-medium text-white 
-                        shadow-[0_0_14px_rgba(106,61,255,0.45)] 
-                        transition-all duration-200 
-                        hover:bg-[#5b2ee6]
-                      "
+                      className="min-h-[44px] rounded-xl bg-[#6a3dff] px-6 py-2.5 text-[15px] font-semibold text-white transition-all duration-200 hover:bg-[#5b2ee6] active:scale-[0.98]"
                     >
                       Salvar
                     </button>
-
                   </div>
                 </div>
-              </form>
-            </div>
+              </div>
+            </form>
           </motion.div>
         </motion.div>
       </AnimatePresence>

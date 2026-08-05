@@ -95,11 +95,56 @@
   padding-top: max(44px, env(safe-area-inset-top));
 }
 
+/* CABECALHO DO DASHBOARD NO CELULAR (2026-08-04).
+   O `.db-pagehead` e regra de desktop e nunca foi sobrescrita aqui, entao no
+   celular acontecia isto:
+
+   - O titulo comecava a 32px da borda esquerda e TUDO abaixo dele comeca a
+     16px (`mb-topfilter`, `mb-period`, `mb-kpis`, `.mb-shell .db-panel`). O
+     titulo estava desalinhado 16px a direita da propria tela -- e e isso que
+     lia como "fora do lugar".
+   - Verticalmente somava 44px do `.mb-shell` + 28px daqui = ~72px de vazio
+     ABSOLUTO acima do titulo, sem um unico controle dentro. Conversas tem
+     36px de topo com um botao de 48px la; a Agenda tem 44px com hamburguer,
+     lupa e avatar. O Dashboard e a unica aba cujo cabecalho nao tem controle
+     nenhum, e o recuo fazia o vazio parecer descuido em vez de respiro.
+   - 24px de titulo contra os 22px de Conversas: duas telas irmas, mesmo nivel
+     de navegacao, dois tamanhos. 22 e o padrao da casa.
+   - `.db-resumo` tambem nasce a 32px, entao os estados de "Carregando o
+     resumo..." e de erro apareciam deslocados do conteudo que substituem --
+     a tela pulava lateralmente ao carregar.
+   - `align-items: flex-end` so faz sentido com o filtro do lado; no celular
+     `.db-pagehead__filters` renderiza VAZIO (os dois filhos sao `!isMobile`)
+     e ainda consome os 24px de `gap`. */
+.dash-mobile .db-pagehead {
+  padding: 6px 16px 14px;
+  align-items: flex-start;
+  gap: 0;
+}
+.dash-mobile .db-pagehead__filters { display: none; }
+.dash-mobile .db-pagehead__title {
+  font-size: 22px;
+  line-height: 1.15;
+  font-weight: 700;
+}
+/* Sem `nowrap` no celular: em 360px, "terca-feira, 4 de agosto" cortava em
+   silencio no meio da palavra. */
+.dash-mobile .db-pagehead__sub { white-space: normal; }
+.dash-mobile .db-resumo { padding: 0 16px 14px; }
+
 /* O dock e a navegacao do app inteiro, nao so do dashboard: ele sobrevive a
    troca de aba e por isso mora fora do `.mb-shell`. No prototipo era `absolute`
-   dentro da moldura do celular desenhado; aqui a moldura e a janela. */
+   dentro da moldura do celular desenhado; aqui a moldura e a janela.
+
+   z-index 100, e nao 40: o painel de Conversas (`Sidebar.tsx`, mobilePanel) e
+   `z-50`, mais alto que o 40 daqui -- o dock ficava parcialmente coberto por
+   tras do painel sempre que os dois se sobrepunham (2026-08-04, "quebrada" no
+   print do dono). O dock e navegacao do app inteiro; nada deveria ficar por
+   cima dele, exceto os popovers pontuais que ja existem em z-[80]
+   (color picker, dropdown de servico), entao 100 fica acima de tudo que o
+   app usa hoje. */
 .mb-dock {
   position: fixed;
   bottom: max(26px, calc(env(safe-area-inset-bottom) + 12px));
-  z-index: 40;
+  z-index: 100;
 }

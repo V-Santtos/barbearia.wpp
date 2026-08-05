@@ -3,6 +3,38 @@
 Registro de toda skill/repositório/conhecimento avaliado para entrar em `.claude/skills/`.
 Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbearia-design.md`.
 
+## [2026-08-04] callstack/liquid-glass
+- Fonte: https://github.com/callstack/liquid-glass
+- Veredito: ❌ Rejeitado — plataforma errada, e sem nada extraível
+- Motivo: Trazido pelo dono pra melhorar o vidro do dock. Números verificados via
+  API do GitHub em 2026-08-04: 1.605 estrelas, 60 forks, **5 issues abertas**,
+  criado em 02/09/2025, último push em 16/06/2026 — repo pequeno, saudável e ativo.
+  Nada contra a qualidade dele; o problema é encaixe.
+  - **É React Native, só iOS.** Exige RN 0.80+, Xcode ≥ 26 e compilação nativa;
+    não roda no Expo Go. O `CALENDARIO/` é React DOM servido pelo Vite, rodando
+    no navegador do celular. Não existe build web — não é caso de adaptar, é caso
+    de não haver ponto de entrada.
+  - **E não há o que portar.** A árvore inteira do `ios/` é uma casca fina em
+    cima do `UIGlassEffect` da Apple; o `src/` é encanamento de props em
+    TypeScript. A lente, o brilho especular e a resposta ao toque acontecem
+    dentro do iOS, fechado. Diferente do `tool-design` e do `ponytail-audit`,
+    aqui não existe "só uma parte que serve" — não existe parte nenhuma.
+  - **O que ele entregou de valor foi a lista de botões**, não código: a API
+    expõe `interactive` (resposta ao toque), `effect: clear | regular`,
+    `tintColor`, `colorScheme` e um `LiquidGlassContainerView` com `spacing`,
+    que funde vidros vizinhos. Isso é o inventário do que a Apple considera
+    parte do material — e serviu de checklist contra o que o dock já tinha.
+  - **Teto conhecido, registrado antes de morder:** a refração de verdade (o
+    fundo entortando na borda) precisa de `feDisplacementMap` via
+    `backdrop-filter: url(#filtro)`, e **isso não funciona no WebKit** — ou seja,
+    justamente no iPhone que é o aparelho de teste. Não existe Liquid Glass
+    "exato" no navegador hoje; o que dá é a aproximação honesta (fio especular
+    direcional + franja cromática + mola no toque), que foi o caminho tomado.
+- Ação: Não instalado, nada extraído. Melhorias aplicadas à mão em
+  `CALENDARIO/components/dashboard/css/10-mobile.css` e `MobileBottomNav.tsx`
+  (decisões em `REGRAS-APRENDIZADOS/REGRAS.md`, 2026-08-04). Revisitar só se o
+  produto virar app nativo em React Native — aí ele passa a ser a escolha certa.
+
 ## [2026-08-01] pbakaus/impeccable
 - Fonte: https://github.com/pbakaus/impeccable
 - Veredito: ✂️ Adotado parcial (só a skill; nada de hooks, CLI, extensão ou adaptadores)

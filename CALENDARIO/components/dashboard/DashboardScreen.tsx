@@ -134,13 +134,31 @@ export const DashboardScreen: React.FC<Props> = ({
             "Resumo do calendário" é a parte que o título já implica, então é ela
             que sai — o período e a idade do dado ficam, porque nenhum dos dois
             está escrito em outro lugar. */}
+        {/* No celular a linha perdeu o pulso verde e a idade do dado
+            (2026-08-04). Os dois motivos são mecânicos:
+
+            - O `.db-pulse` verde e o `.mb-now__pulse` do card "Em atendimento
+              agora" piscavam ao mesmo tempo, a ~200px um do outro, dizendo a
+              mesma coisa em cores diferentes. O que carrega informação é o do
+              atendimento.
+            - `idade` re-renderiza a cada 5s (`useIdade`), então a linha
+              embaixo do título ficava SEMPRE se mexendo na visão periférica
+              de quem está lendo os números. E ela fala quando não precisa e
+              cala quando precisaria: o `useResumo` esconde falha de propósito
+              depois do primeiro carregamento, e é justamente aí que saber a
+              idade do dado importaria. Volta como aviso quando envelhecer de
+              verdade, não como cronômetro.
+
+            O que sobra é a única informação nova da linha: a data. O período
+            some porque o chip logo abaixo já diz "Hoje" / "7 dias" -- eram a
+            mesma palavra duas vezes, com 8px de distância. */}
         <p className="db-pagehead__sub">
-          <span className="db-pulse" />
+          {!isMobile && <span className="db-pulse" />}
           {isMobile ? "" : "Resumo do calendário"}
           {vm
             ? `${isMobile ? "" : " · "}${rotuloDoPeriodo(periodo, vm.hoje)}`
             : ""}
-          {idade ? ` · ${idade}` : ""}
+          {!isMobile && idade ? ` · ${idade}` : ""}
         </p>
       </div>
       {/* O filtro de profissional fica no nível da página porque governa MESMO

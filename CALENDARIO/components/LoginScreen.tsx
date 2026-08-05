@@ -22,13 +22,21 @@ const MOBILE_QUERY = '(max-width: 767px)';
 const isInitiallyMobile = () =>
   typeof window !== 'undefined' && window.matchMedia(MOBILE_QUERY).matches;
 
+/* Os campos liam "esticados" (2026-08-04) e a causa era proporção, não
+   largura sozinha: numa coluna de 384px o campo tinha 46px de altura -- razão
+   de ~8:1, que é faixa, não campo. A correção é dos dois lados ao mesmo
+   tempo: a coluna estreitou para 330px e o campo subiu para ~52px, o que leva
+   a razão para ~5,6:1. Só estreitar deixaria o campo baixo do mesmo jeito.
+   `py-3` -> `py-3.5` e `text-sm` -> 15px, que é o corpo de controle do resto
+   do app (o campo de busca de Conversas usa o mesmo). */
 const fieldClassName = `w-full bg-[rgba(25,25,25,0.6)]
-  border border-[rgba(100,100,100,0.4)] rounded-2xl py-3 pl-10 pr-4 text-sm
+  border border-[rgba(100,100,100,0.4)] rounded-2xl py-3.5 pl-11 pr-4 text-[15px]
   focus:outline-none focus:border-purple-500
   shadow-[inset_0_1px_4px_rgba(255,255,255,0.05),inset_0_-1px_4px_rgba(0,0,0,0.6)]
   transition-all duration-200 placeholder-gray-400`;
 
-const iconClassName = 'absolute left-3 top-3.5 text-[#6a3dff]';
+/* Centro real: com o campo mais alto, um `top` fixo desalinha o icone. */
+const iconClassName = 'absolute left-4 top-1/2 -translate-y-1/2 text-[#6a3dff]';
 
 const BackgroundCanvas = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -425,12 +433,12 @@ function LoginCard({ onLogin }: LoginScreenProps) {
     <div
       className="relative z-10 flex min-h-screen flex-col items-center justify-center pb-12 text-white"
     >
-      <div className="flex w-full max-w-sm flex-col items-center gap-5 px-6">
+      <div className="flex w-full max-w-[330px] flex-col items-center gap-5 px-6">
         <div className={`text-center ${enterClassName}`} style={enterStyle(0)}>
           <img
             src={ownerLogoUrl}
             alt="Lucas Costa Barbearia"
-            className="mx-auto mb-7 h-64 w-64 object-contain"
+            className="mx-auto mb-6 h-52 w-52 object-contain"
             draggable={false}
           />
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary-soft/80">
@@ -452,7 +460,7 @@ function LoginCard({ onLogin }: LoginScreenProps) {
         >
           <button
             type="button"
-            className={`flex-1 rounded-2xl py-2 font-medium transition-all duration-300 ${
+            className={`flex-1 rounded-2xl py-2.5 min-h-[44px] text-[15px] font-medium transition-all duration-300 ${
               isLogin
                 ? 'bg-[linear-gradient(180deg,rgba(40,40,40,1)_0%,rgba(15,15,15,1)_100%)] text-white shadow-[inset_0_0_8px_rgba(255,255,255,0.15),0_0_10px_rgba(168,85,247,0.2)]'
                 : 'text-gray-400 hover:text-white hover:shadow-[0_0_8px_rgba(168,85,247,0.1)]'
@@ -463,7 +471,7 @@ function LoginCard({ onLogin }: LoginScreenProps) {
           </button>
           <button
             type="button"
-            className={`flex-1 rounded-2xl py-2 font-medium transition-all duration-300 ${
+            className={`flex-1 rounded-2xl py-2.5 min-h-[44px] text-[15px] font-medium transition-all duration-300 ${
               !isLogin
                 ? 'bg-[linear-gradient(180deg,rgba(40,40,40,1)_0%,rgba(15,15,15,1)_100%)] text-white shadow-[inset_0_0_8px_rgba(255,255,255,0.15),0_0_10px_rgba(168,85,247,0.2)]'
                 : 'text-gray-400 hover:text-white hover:shadow-[0_0_8px_rgba(168,85,247,0.1)]'

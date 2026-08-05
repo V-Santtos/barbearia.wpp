@@ -16,7 +16,7 @@ import { KpiCard, Panel, PeriodChips } from "./primitivos";
 import { DispoList } from "./Disponibilidade";
 import { RelogioDoDia } from "./RelogioDoDia";
 import { OPCOES_PERIODO, montarKpis } from "./kpis";
-import { hhmm, proximosLivres, type DashboardVm } from "./modelo";
+import { hhmm, proximosLivres, statusDoDia, type DashboardVm } from "./modelo";
 import type { FiltroProf } from "./primitivos";
 
 interface Props {
@@ -181,7 +181,7 @@ export const DashboardMobile: React.FC<Props> = ({
         <DispoList profs={profs} dias={vm.dias} vagas={vm.vagas} />
       </Panel>
 
-      <Panel title="O dia" meta={`agora ${hhmm(vm.agora)}`} padding="p-4">
+      <Panel title="O dia" meta={statusDoDia(vm)} padding="p-4">
         <div style={{ height: 380 }}>
           <RelogioDoDia vm={vm} profs={profs} />
         </div>

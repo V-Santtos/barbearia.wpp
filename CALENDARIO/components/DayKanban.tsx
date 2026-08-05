@@ -1,7 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import type { CSSProperties } from 'react';
 import type { Event, Professional } from '../types';
-import { Scissors, UserCheck, Sun, Sunset, Moon } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Scissors, UserCheck, Sun, Sunset, Moon, ChevronRight, Pencil } from 'lucide-react';
 import { NeonCheckbox } from './ui/NeonCheckbox';
+import { CASCA_BACKGROUND, CASCA_BORDER, PILULA_BACKGROUND } from './ui/vidro';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 
 interface DayKanbanProps {
@@ -44,6 +47,12 @@ const DayKanban: React.FC<DayKanbanProps> = ({
   const [completingIds, setCompletingIds] = useState<Set<number>>(() => new Set());
   const [liveMessage, setLiveMessage] = useState('');
   const [activePeriod, setActivePeriod] = useState<Period>(currentPeriod);
+  /* Acordeão exclusivo (decidido com o dono): só um chip aberto por vez em
+     todo o dia, não por coluna -- é o que garante que nenhuma coluna volta a
+     crescer pros ~445px que a Frente 1 existe pra resolver. */
+  const [openId, setOpenId] = useState<number | null>(null);
+  const toggleOpen = (id: number) =>
+    setOpenId((prev) => (prev === id ? null : id));
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrolling = useRef(false);
@@ -63,10 +72,60 @@ const DayKanban: React.FC<DayKanbanProps> = ({
     return 'night';
   };
 
+  /* Dois cards de exemplo na coluna da Noite, no lugar do "Noite livre" --
+     pedido do dono em 2026-08-04, mesmo idioma dos placeholders da tela de
+     Conversas: só aparecem quando NÃO há dado real, e somem sozinhos assim
+     que o primeiro agendamento de verdade cair no período.
+
+     São um de cada tipo, porque as duas anatomias de card são diferentes e
+     ele quer ver as duas lado a lado:
+       - `presencial`: como se tivesse acabado de sair do FAB -- fundo tingido
+         com a cor do barbeiro, borda esquerda tracejada, tag "presencial",
+         card não clicável.
+       - agendado: o card normal do bot, com serviço e horário.
+
+     `id` NEGATIVO de propósito: é o que `isPlaceholder` usa lá embaixo para
+     desligar clique e conclusão. O banco só emite id positivo, então não há
+     como um evento real cair nessa peneira. */
+  const nightPlaceholders: Event[] = React.useMemo(() => {
+    const hoje = currentDate.toLocaleDateString('en-CA');
+    const primeiro = professionals[0];
+    const segundo = professionals[1] ?? professionals[0];
+    if (!primeiro) return [];
+    return [
+      {
+        id: -101,
+        title: 'Cliente presencial (exemplo)',
+        date: hoje,
+        startTime: '19:00',
+        endTime: '19:40',
+        professionalId: primeiro.id,
+        servico: null,
+        source: 'presencial',
+      },
+      {
+        id: -102,
+        title: 'João Pereira (exemplo)',
+        date: hoje,
+        startTime: '20:00',
+        endTime: '20:40',
+        professionalId: segundo.id,
+        servico: 'Corte + barba',
+        source: 'bot',
+      },
+    ];
+  }, [currentDate, professionals]);
+
+  const eventosDaNoite = filteredEvents.filter((e) => getPeriod(e.startTime) === 'night');
+
+  /* Contagem que os rótulos mostram: só o que é real. Card de exemplo desenha
+     mas não conta -- "Noite 2" com dois exemplos seria número inventado. */
+  const contarReais = (lista: Event[]) => lista.filter((e) => e.id > 0).length;
+
   const byPeriod: Record<Period, Event[]> = {
     morning:   filteredEvents.filter((e) => getPeriod(e.startTime) === 'morning'),
     afternoon: filteredEvents.filter((e) => getPeriod(e.startTime) === 'afternoon'),
-    night:     filteredEvents.filter((e) => getPeriod(e.startTime) === 'night'),
+    night:     eventosDaNoite.length > 0 ? eventosDaNoite : nightPlaceholders,
   };
 
   // Scroll to activePeriod on mount (mobile only)
@@ -109,78 +168,147 @@ const DayKanban: React.FC<DayKanbanProps> = ({
     const profColor = professional?.color || '#6B3EFF';
     const isCompleting = completingIds.has(event.id);
     const isPresencial = event.source === 'presencial';
+    /* Card de exemplo (id negativo): desenha igual, mas não abre modal e não
+       conclui -- não existe no banco, então qualquer uma das duas ações
+       falharia contra a API. Continua podendo abrir/fechar (é só estado
+       local), só perde as duas ações de dentro. */
+    const isPlaceholder = event.id < 0;
+    const inerte = isPresencial || isPlaceholder;
+    const isOpen = openId === event.id;
 
     return (
       <div
         key={event.id}
-        onClick={() => !isPresencial && onEventClick(event)}
-        role={isPresencial ? undefined : 'button'}
-        tabIndex={isPresencial ? undefined : 0}
-        onKeyDown={isPresencial ? undefined : (e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            if (e.key === ' ') e.preventDefault();
-            onEventClick(event);
-          }
-        }}
-        className={`rounded-xl p-3 border transition-[opacity,transform,box-shadow] duration-300
+        className={`overflow-hidden rounded-xl transition-[opacity,transform] duration-300
                    ease-[cubic-bezier(0.25,0.1,0.25,1)]
-                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20
-                   ${isPresencial
-                     ? 'border-[#2a2a2a] cursor-default'
-                     : 'bg-[#1f1f1f] border-[#2a2a2a] cursor-pointer hover:-translate-y-[2px] hover:shadow-[0_4px_12px_rgba(0,0,0,0.35)]'
-                   }
-                   ${isCompleting ? 'translate-y-2 opacity-0' : 'opacity-100'}`}
+                   ${isCompleting ? 'translate-y-2 opacity-0' : isPlaceholder ? 'opacity-70' : 'opacity-100'}`}
         style={{
-          backgroundColor: isPresencial ? `${profColor}18` : undefined,
+          backgroundImage: CASCA_BACKGROUND,
+          border: CASCA_BORDER,
           borderLeftColor: profColor,
           borderLeftWidth: '3px',
           borderLeftStyle: isPresencial ? 'dashed' : 'solid',
-          boxShadow: `0 2px 8px ${profColor}${isPresencial ? '22' : '14'}`,
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14)',
         }}
       >
-        <div className="flex items-center justify-between mb-0.5">
-          <p className="text-sm font-semibold leading-tight truncate"
-             style={{ color: isPresencial ? profColor : '#ffffff' }}>
-            {event.title}
-          </p>
-          {isPresencial && (
-            <span className="ml-2 flex-shrink-0 rounded-md px-1.5 py-0.5
-                             text-[9px] font-bold uppercase tracking-wider"
-                  style={{ backgroundColor: `${profColor}25`, color: profColor }}>
-              presencial
-            </span>
-          )}
-        </div>
-
-        <p className="text-xs text-gray-500 mt-0.5 mb-2 tabular-nums">
-          {event.startTime} → {event.endTime}
-        </p>
-
-        <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-2">
-          {isPresencial ? (
-            <UserCheck size={11} className="flex-shrink-0" style={{ color: profColor }} />
-          ) : (
-            <Scissors size={11} className="flex-shrink-0 text-gray-600" />
-          )}
-          <span className="truncate">
-            {isPresencial ? professional?.name ?? 'Presencial' : event.servico}
-          </span>
-        </div>
-
+        {/* Fechado (~48px): fio de cor + chevron + nome + horário de início.
+            A cor do barbeiro entra só aqui, no dot de baixo e no focus-ring --
+            fundo tingido e sombra colorida saíram (Frente 1, "cromática"). */}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleMarkAsDone(event);
-          }}
-          disabled={isCompleting}
-          className={`mt-1 w-full rounded-lg py-1.5 text-xs font-semibold text-white
-                     transition-colors disabled:opacity-60
-                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30
-                     ${!isPresencial ? 'bg-[#6B3EFF] hover:bg-[#825CFF]' : ''}`}
-          style={isPresencial ? { backgroundColor: profColor } : undefined}
+          type="button"
+          onClick={() => toggleOpen(event.id)}
+          aria-expanded={isOpen}
+          className="flex h-12 w-full items-center gap-2.5 rounded-xl px-3 text-left
+                     focus-visible:outline-none focus-visible:ring-2"
+          style={{ '--tw-ring-color': profColor } as CSSProperties}
         >
-          Marcar como Feito
+          <ChevronRight
+            size={16}
+            className={`flex-shrink-0 text-white/40 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}
+          />
+          {/* O nome do cliente é a resposta da única pergunta que o dono faz
+              ao abrir o app ("quem é o próximo") -- 16px, o mesmo da linha de
+              Conversas que ele validou. */}
+          <span
+            className="min-w-0 flex-1 truncate text-[16px] font-semibold leading-tight"
+            style={{ color: isPresencial ? profColor : '#ffffff' }}
+          >
+            {event.title}
+          </span>
+          <span className="flex-shrink-0 text-[14px] tabular-nums text-white/50">
+            {event.startTime}
+          </span>
         </button>
+
+        {/* Aberto: o mesmo chip cresce, sem trocar de peça -- serviço,
+            profissional, horário completo, tag presencial e as duas ações. */}
+        <AnimatePresence initial={false}>
+          {isOpen && (
+            <motion.div
+              key="content"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{
+                height: { type: 'spring', stiffness: 420, damping: 34, mass: 0.9 },
+                opacity: { duration: 0.15 },
+              }}
+              className="overflow-hidden"
+            >
+              <div className="space-y-2 px-3 pb-3 pt-0.5">
+                <div className="flex items-center gap-1.5 text-[14px] text-white/60">
+                  {isPresencial ? (
+                    <UserCheck size={14} className="flex-shrink-0" style={{ color: profColor }} />
+                  ) : (
+                    <Scissors size={14} className="flex-shrink-0 text-white/35" />
+                  )}
+                  <span className="truncate">
+                    {isPresencial ? 'Atendimento presencial' : event.servico || 'Sem serviço informado'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-[14px] text-white/60">
+                  <span
+                    className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                    style={{ backgroundColor: profColor }}
+                  />
+                  <span className="truncate">{professional?.name ?? 'Profissional'}</span>
+                </div>
+
+                <p className="text-[14px] tabular-nums text-white/50">
+                  {event.startTime} → {event.endTime}
+                </p>
+
+                <div className="flex items-center gap-2 pt-1">
+                  {/* Lápis -- a porta de editar depois que o toque no chip
+                      passou a abrir/fechar em vez de abrir o EventModal
+                      direto (Frente 1, decidido com o dono). Mesmo gate de
+                      antes: presencial e placeholder continuam sem edição. */}
+                  {!inerte && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEventClick(event);
+                      }}
+                      aria-label={`Editar ${event.title}`}
+                      className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl
+                                 text-white/50 transition-colors hover:bg-white/10 hover:text-white
+                                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                  )}
+
+                  {!isPlaceholder && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleMarkAsDone(event);
+                      }}
+                      disabled={isCompleting}
+                      /* Discreto: vidro + cor do barbeiro só no texto -- deixou
+                         de ser o maior volume de roxo do app (decidido com o
+                         dono). h-11 mantém o piso de 44px de alvo de toque. */
+                      className="flex h-11 flex-1 items-center justify-center rounded-xl text-[14px]
+                                 font-semibold transition-opacity disabled:opacity-60
+                                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+                      style={{
+                        backgroundImage: PILULA_BACKGROUND,
+                        border: CASCA_BORDER,
+                        color: profColor,
+                        boxShadow: '0 0 4px rgba(0,0,0,0.4), inset 0 -3px 2px rgba(0,0,0,0.3)',
+                      }}
+                    >
+                      Marcar como Feito
+                    </button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   };
@@ -201,8 +329,8 @@ const DayKanban: React.FC<DayKanbanProps> = ({
         <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-white/60 mb-3 flex-shrink-0">
           <Icon size={12} className="opacity-60" />
           {label}
-          {periodEvents.length > 0 && (
-            <span className="ml-auto normal-case tracking-normal font-medium text-white/30">{periodEvents.length}</span>
+          {contarReais(periodEvents) > 0 && (
+            <span className="ml-auto normal-case tracking-normal font-medium text-white/30">{contarReais(periodEvents)}</span>
           )}
         </h3>
 
@@ -219,7 +347,7 @@ const DayKanban: React.FC<DayKanbanProps> = ({
           ) : (
             <div className="flex flex-col items-center gap-2 pt-8">
               <Icon size={22} className="text-white/10" />
-              <p className="text-xs text-white/25 text-center">{label} livre</p>
+              <p className="text-[14px] text-white/40 text-center">{label} livre</p>
             </div>
           )}
         </div>
@@ -246,7 +374,7 @@ const DayKanban: React.FC<DayKanbanProps> = ({
             size={20}
             label={
               <span
-                className={`text-xs font-medium transition-colors duration-200 ${
+                className={`text-[14px] font-medium transition-colors duration-200 ${
                   activePros.has(p.id) ? 'text-white/80' : 'text-white/35'
                 }`}
               >
@@ -264,22 +392,39 @@ const DayKanban: React.FC<DayKanbanProps> = ({
             {PERIOD_ORDER.map((p) => {
               const { label, Icon } = periodConfig[p];
               const isActive = activePeriod === p;
-              const count = byPeriod[p].length;
+              const count = contarReais(byPeriod[p]);
               return (
+                /* Selecionado deixou de ser ROXO em 2026-08-04 (pedido do
+                   dono, terceira peça a sair do roxo depois do dock e do
+                   Dia/Semana/Mês da gaveta). Pegou emprestado o idioma do
+                   DOCK -- pílula cinza/vidro -- e não o da gaveta (pílula
+                   branca), porque os dois controles fazem a MESMA coisa:
+                   trocar a fatia do conteúdo que continua na tela, sem
+                   comprometer nada. A pílula branca é o maior contraste que
+                   o app consegue pintar e marca destino escolhido (a gaveta
+                   fecha depois de clicar); gastá-la num filtro que ele estala
+                   o dia inteiro faria do FILTRO a coisa mais gritante da tela
+                   de Agenda, no lugar dos agendamentos. Os dois controles
+                   ainda são fileiras de três pílulas na mesma tela: dois
+                   idiomas de "ativo" em peças gêmeas era a inconsistência.
+                   Os valores são os literais do dock (`10-mobile.css:322` e
+                   `:336`), não aproximações.
+                   Inativo subiu de `white/35` (3,32:1 -- reprova AA) para
+                   `white/45`, e a altura de 30px para 44 (alvo de toque). */
                 <button
                   key={p}
                   onClick={() => scrollToPeriod(p)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-xs font-semibold transition-colors
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6B3EFF]/60
+                  className={`flex-1 flex min-h-[44px] items-center justify-center gap-1.5 py-2.5 rounded-xl text-[14px] font-semibold transition-colors
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40
                     ${isActive
-                      ? 'bg-[#6B3EFF]/20 text-white border border-[#6B3EFF]/40'
-                      : 'bg-white/[0.04] text-white/35 border border-transparent hover:bg-white/[0.07]'
+                      ? 'bg-white/[0.12] text-white border border-white/[0.18] shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]'
+                      : 'bg-white/[0.04] text-white/45 border border-transparent'
                     }`}
                 >
-                  <Icon size={11} />
+                  <Icon size={15} strokeWidth={isActive ? 2.3 : 1.8} />
                   {label}
                   {count > 0 && (
-                    <span className={`text-[10px] font-bold ${isActive ? 'text-[#a98bff]' : 'text-white/25'}`}>
+                    <span className={`text-[12px] font-bold ${isActive ? 'text-white/70' : 'text-white/40'}`}>
                       {count}
                     </span>
                   )}

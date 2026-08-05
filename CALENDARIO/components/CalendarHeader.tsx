@@ -127,15 +127,19 @@ const CalendarHeader: React.FC<Props> = ({
         <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={onMenuOpen}
-            className="p-2 -ml-1 rounded-xl hover:bg-white/[0.08] transition-colors flex-shrink-0"
+            className="p-2.5 -ml-1.5 rounded-xl hover:bg-white/[0.08] transition-colors flex-shrink-0"
             aria-label="Abrir menu"
           >
-            <Menu size={22} className="text-white/80" />
+            <Menu size={24} className="text-white/80" />
           </button>
+          {/* A data é o TÍTULO DESTA TELA e estava em 15px -- o mesmo corpo de
+              um item da gaveta, e 7px menor que o título de Conversas. Era a
+              única das três abas sem título no tamanho de título. 22px é o
+              padrão da casa, herdado de Conversas. */}
           <button
             onClick={onToday}
             aria-current={isTodayActive ? 'date' : undefined}
-            className="text-[15px] font-semibold capitalize text-white/90 hover:text-white transition-colors truncate"
+            className="text-[22px] font-bold capitalize leading-tight tracking-[-0.01em] text-white hover:text-white transition-colors truncate"
           >
             {mobileTitle}
           </button>

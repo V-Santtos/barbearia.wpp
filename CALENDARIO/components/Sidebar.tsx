@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import type { Professional } from "../types";
 import { useCalendar } from "../hooks/useCalendar";
 import { AnimatePresence, motion } from "framer-motion";
@@ -6,11 +6,14 @@ import {
   Settings,
   PaintBucket,
   Trash2,
-  MessageCircle,
   ChevronLeft,
   ChevronRight,
   UserPlus,
   Clock,
+  MoreHorizontal,
+  Search,
+  CircleCheck,
+  CheckCheck,
 } from "lucide-react";
 import WhatsAppPanel, { type Conversation } from "./WhatsAppPanel";
 import {
@@ -207,6 +210,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [showColorPicker, setShowColorPicker] = useState<number | null>(null);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  /* Menu dos "..." da aba Conversas -- popover ancorado no botão, no lugar
+     do card centralizado que existia antes (Frente 3, ANEXO-PLANO-LAPIDACAO). */
+  const conversaMenuBtnRef = useRef<HTMLButtonElement>(null);
+  const [showConversaMenu, setShowConversaMenu] = useState(false);
+  const [conversaMenuPos, setConversaMenuPos] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+  /* Busca da aba Conversas. Vive só no celular, que é onde o campo existe. */
+  const [buscaConversa, setBuscaConversa] = useState("");
 
   const [addStep, setAddStep] = useState<1 | 2>(1);
   const [newProfId, setNewProfId] = useState<number | null>(null);
@@ -306,16 +319,96 @@ const Sidebar: React.FC<SidebarProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const openConversaMenu = () => {
+    const rect = conversaMenuBtnRef.current?.getBoundingClientRect();
+    if (rect) setConversaMenuPos({ top: rect.bottom + 8, left: rect.left });
+    setShowConversaMenu(true);
+  };
+
+  // Fecha o popover no Escape, igual a qualquer menu de contexto.
+  useEffect(() => {
+    if (!showConversaMenu) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowConversaMenu(false);
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [showConversaMenu]);
+
+  const handleMarkAllAsRead = () => {
+    const unreadIds = conversations
+      .filter((c) => c.unread > 0)
+      .map((c) => c.id);
+    setShowConversaMenu(false);
+    if (unreadIds.length === 0) return;
+    // Otimista: zera tudo no estado local de uma vez, depois dispara as
+    // chamadas -- o dono não deve esperar N respostas de rede pra ver a lista
+    // limpa.
+    setConversations((prev) =>
+      prev.map((c) => (c.unread > 0 ? { ...c, unread: 0 } : c)),
+    );
+    unreadIds.forEach((id) => {
+      markWhatsAppConversationAsRead(id).catch((err) => {
+        console.error("Erro ao marcar conversa como lida:", err);
+      });
+    });
+  };
+
+  /* A lista de conversas serve dois lugares com largura muito diferente: a
+     sidebar do desktop (estreita, ao lado da agenda) e o painel de Conversas
+     no celular (tela inteira). No celular tudo cresce -- avatar, nome, prévia,
+     altura da linha -- pra ocupar o espaço que sobra; no desktop segue miúdo,
+     senão a coluna estoura. Pedido do dono em 2026-08-04. */
+  const convGrande = mobilePanel === "conversations";
+  const convLinha = convGrande
+    ? "w-full flex items-center gap-3.5 px-2 py-3"
+    : "w-full flex items-center gap-3 px-2 py-2.5";
+  const convAvatar = convGrande
+    ? "w-[52px] h-[52px] rounded-full flex-shrink-0 flex items-center justify-center text-[17px] font-bold text-white"
+    : "w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-[13px] font-bold text-white";
+  const convNome = convGrande ? "text-[16px]" : "text-[13px]";
+  const convHora = convGrande ? "text-[12px]" : "text-[11px]";
+  const convPrevia = convGrande ? "text-[14px]" : "text-xs";
+
+  /* Filete entre contatos, recuado: começa onde começa o nome, não na borda
+     da tela -- é assim na referência do WhatsApp, e o motivo é que uma linha
+     de ponta a ponta corta a lista em fatias e transforma a coluna de
+     avatares em tabela.
+     É `::after` absoluto e não `border-b` porque a linha tem que nascer no
+     fim da FILEIRA, e o bloco de texto não é o elemento mais alto dela (o
+     avatar de 52px é) -- uma borda no texto flutuaria no meio do vão.
+     74px = px-2 (8) + avatar (52) + gap-3.5 (14). O último não tem filete:
+     traço solto no fim da lista lê como "tem mais coisa aí embaixo".
+     Só no celular; na sidebar do desktop a lista continua sem divisória. */
+  const convDivisor = convGrande
+    ? " relative after:absolute after:bottom-0 after:left-[74px] after:right-2 after:h-px after:bg-white/[0.07] last:after:hidden"
+    : "";
+
+  /* A busca vive só no celular, então no desktop o termo é sempre vazio e
+     este filtro não muda nada. Casa por nome, pela prévia e pelo telefone --
+     o telefone porque é por ele que o dono cruza cliente com a agenda. */
+  const termoBusca = buscaConversa.trim().toLowerCase();
+  const casaComBusca = (nome: string, previa: string, telefone = "") =>
+    !termoBusca ||
+    nome.toLowerCase().includes(termoBusca) ||
+    previa.toLowerCase().includes(termoBusca) ||
+    telefone.includes(termoBusca);
+
   return (
     <aside
       className={
         mobilePanel
-          ? "fixed inset-x-0 top-0 bottom-28 z-50 bg-[#1c1c1c] flex flex-col"
+          ? /* bottom-16 pra bater com o pb-16 do <main> na visão do dia
+               (App.tsx) -- os dois pararam de ser 28 juntos em 2026-08-04,
+               quando o card do dia esticou. Divergir aqui deixa a agenda
+               aparecer atrás do painel de Conversas, na faixa que sobra
+               entre os dois valores. */
+            "fixed inset-x-0 top-0 bottom-16 z-50 bg-[#1c1c1c] flex flex-col"
           : "hidden md:flex w-72 pt-8 pb-4 px-4 bg-[#1c1c1c] flex-col gap-6 min-h-0"
       }
     >
-      {/* Header no modo mobile panel */}
-      {mobilePanel && (
+      {/* Header do painel "Equipe" -- layout original, não tocado. */}
+      {mobilePanel === "professionals" && (
         <div
           className="flex items-center gap-3 px-4 pb-4 border-b border-white/10 flex-shrink-0"
           style={{ paddingTop: "max(3.5rem, env(safe-area-inset-top))" }}
@@ -326,31 +419,93 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <ChevronLeft size={20} />
           </button>
-          <h2 className="text-base font-semibold text-white">
-            {mobilePanel === "professionals" ? "Equipe" : "Conversas"}
-          </h2>
-          {mobilePanel === "professionals" && (
-            <button
-              onClick={() => setShowAddModal(true)}
-              aria-label="Adicionar profissional"
-              className="ml-auto rounded-xl p-1.5 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+          <h2 className="text-base font-semibold text-white">Equipe</h2>
+          <button
+            onClick={() => setShowAddModal(true)}
+            aria-label="Adicionar profissional"
+            className="ml-auto rounded-xl p-1.5 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Header do painel "Conversas" -- parecido com o do WhatsApp: título
+          grande abaixo da linha de ícones, sem câmera nem "+" (só o "...").
+          Sem abas Todas/Não lidas/Favoritos/Grupos nem Arquivadas -- pedido
+          do dono em 2026-08-04, não veio junto da referência.
+
+          A linha divisória embaixo do header saiu (2026-08-04): com o campo
+          de busca logo abaixo do título, o filete virava um segundo traço
+          horizontal a dois dedos do primeiro. Quem separa o header da lista
+          agora é o respiro. Divisória, só entre contatos.
+
+          O respiro do topo caiu de 3.5rem para 2.25rem no mesmo dia: os
+          "..." ficavam soltos no meio do vão da status bar. O `max()` com o
+          `safe-area` continua, que é quem protege o notch. */}
+      {mobilePanel === "conversations" && (
+        <div
+          className="px-4 pb-3 flex-shrink-0"
+          style={{ paddingTop: "max(2.25rem, env(safe-area-inset-top))" }}
+        >
+          {/* Os "..." sobem pra linha de cima, sozinhos à esquerda -- pedido
+              do dono em 2026-08-04 (antes estavam ao lado da seta, na mesma
+              linha). Função pretendida, igual ao WhatsApp: selecionar
+              conversas ou marcar tudo como lido. Ainda é placeholder. */}
+          <button
+            ref={conversaMenuBtnRef}
+            onClick={openConversaMenu}
+            aria-label="Selecionar conversas ou marcar tudo como lido"
+            aria-haspopup="menu"
+            aria-expanded={showConversaMenu}
+            className="flex items-center justify-center w-12 h-12 rounded-full bg-white/10 text-white/70 hover:bg-white/15 hover:text-white transition-colors mb-2"
+          >
+            <MoreHorizontal size={24} />
+          </button>
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              onClick={onCloseMobilePanel}
+              aria-label="Voltar"
+              className="rounded-xl p-1.5 -ml-1.5 text-gray-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+            >
+              <ChevronLeft size={22} />
             </button>
-          )}
+            <h2 className="text-[22px] font-bold text-white leading-tight truncate">
+              Conversas
+            </h2>
+          </div>
+
+          {/* Campo de busca. Posição e altura saíram da referência do próprio
+              WhatsApp que o dono mandou: a faixa logo abaixo do título, na
+              escala dos chips de filtro dele.
+              É pílula (`rounded-full`), não caixa: o raio total é o que faz o
+              campo ler como controle solto sobre o fundo em vez de formulário.
+              A lupa fica DENTRO do balão, à esquerda -- lupa fora vira botão,
+              e aqui ela é rótulo do campo, não ação. */}
+          <div className="mt-3 flex h-11 items-center gap-2.5 rounded-full bg-white/[0.07] px-4">
+            <Search size={18} className="flex-shrink-0 text-white/40" />
+            <input
+              type="search"
+              value={buscaConversa}
+              onChange={(e) => setBuscaConversa(e.target.value)}
+              placeholder="Pesquisar"
+              aria-label="Pesquisar conversas"
+              className="min-w-0 flex-1 bg-transparent text-[15px] text-white placeholder:text-white/35 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+            />
+          </div>
         </div>
       )}
 
@@ -563,34 +718,83 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       )}
 
-      {/* Conversas WhatsApp */}
+      {/* Conversas WhatsApp -- sem o rótulo "Conversas" com ícone verde
+          (tirado a pedido do dono em 2026-08-04, junto com o header novo). */}
       {(!mobilePanel || mobilePanel === "conversations") && (
         <div
-          className={`flex-1 min-h-0 flex flex-col${mobilePanel === "conversations" ? " px-4 pt-4" : ""}`}
+          className={`flex-1 min-h-0 flex flex-col${convGrande ? " px-3 pt-2" : ""}`}
         >
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-gray-300 text-sm font-medium flex items-center gap-1.5">
-              <MessageCircle size={14} className="text-[#25D366]" />
-              Conversas
-            </h3>
-            {conversations.filter((c) => c.unread > 0).length > 0 && (
-              <span className="min-w-4 h-4 rounded-full bg-[#25D366] px-1 text-[9px] font-bold text-white flex items-center justify-center">
-                {conversations.filter((c) => c.unread > 0).length}
-              </span>
-            )}
-          </div>
-
+          {/* O `space-y-1` saiu no celular: com o filete entre as fileiras,
+              o vão de 4px deixava a linha boiando longe das duas linhas que
+              ela separa. No desktop, que não tem filete, o respiro fica. */}
           <div
-            className="flex-1 min-h-0 overflow-y-auto space-y-1 -mx-1 [&::-webkit-scrollbar]:hidden"
+            className={`flex-1 min-h-0 overflow-y-auto -mx-1 [&::-webkit-scrollbar]:hidden${convGrande ? "" : " space-y-1"}`}
             style={{ scrollbarWidth: "none" }}
           >
-            {conversations.length === 0 && (
-              <div className="px-2 py-3 text-xs leading-relaxed text-white/35">
-                Nenhuma conversa espelhada ainda.
-              </div>
-            )}
+            {/* Placeholders de conversa, no lugar do aviso de lista vazia --
+                pedido do dono em 2026-08-04, pra ver o desenho da linha antes
+                de ter dado de verdade. São DOIS desde então: com um só não dá
+                pra ver a divisória entre contatos, que é justamente o que
+                está sendo validado. Mesma estrutura visual da linha real logo
+                abaixo, só com dado fixo e "(exemplo)" no nome pra não passar
+                por conversa de cliente de verdade. Entram na busca junto com
+                as reais, senão o campo parece quebrado numa lista vazia. */}
+            {conversations.length === 0 &&
+              [
+                {
+                  iniciais: "MS",
+                  cor: "#6B3EFF",
+                  nome: "Maria Silva (exemplo)",
+                  hora: "14:32",
+                  previa: "Oi, gostaria de agendar um horário...",
+                },
+                {
+                  iniciais: "JP",
+                  cor: "#25D366",
+                  nome: "João Pereira (exemplo)",
+                  hora: "09:05",
+                  previa: "Bom dia! Tem horário amanhã de manhã?",
+                },
+              ]
+                .filter((ex) => casaComBusca(ex.nome, ex.previa))
+                .map((ex) => (
+                  <div
+                    key={ex.nome}
+                    className={`${convLinha}${convDivisor} rounded-xl opacity-70`}
+                  >
+                    <div
+                      className={convAvatar}
+                      style={{ backgroundColor: ex.cor }}
+                    >
+                      {ex.iniciais}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-1">
+                        <span
+                          className={`${convNome} truncate font-medium text-gray-300`}
+                        >
+                          {ex.nome}
+                        </span>
+                        <span
+                          className={`${convHora} flex-shrink-0 text-white/35`}
+                        >
+                          {ex.hora}
+                        </span>
+                      </div>
+                      <p
+                        className={`${convPrevia} truncate mt-0.5 text-white/40`}
+                      >
+                        {ex.previa}
+                      </p>
+                    </div>
+                  </div>
+                ))}
 
-            {conversations.map((conv) => (
+            {conversations
+              .filter((conv) =>
+                casaComBusca(conv.name, conv.preview, conv.phone),
+              )
+              .map((conv) => (
               <button
                 key={conv.id}
                 type="button"
@@ -610,10 +814,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                     });
                   }
                 }}
-                className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl hover:bg-white/5 transition-colors text-left"
+                className={`${convLinha}${convDivisor} rounded-xl hover:bg-white/5 transition-colors text-left`}
               >
                 <div
-                  className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-[13px] font-bold text-white"
+                  className={convAvatar}
                   style={{ backgroundColor: conv.color }}
                 >
                   {conv.name
@@ -626,23 +830,25 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline justify-between gap-1">
                     <span
-                      className={`text-[13px] truncate ${conv.unread > 0 ? "font-semibold text-white" : "font-medium text-gray-300"}`}
+                      className={`${convNome} truncate ${conv.unread > 0 ? "font-semibold text-white" : "font-medium text-gray-300"}`}
                     >
                       {conv.name}
                     </span>
-                    <span className="text-[11px] flex-shrink-0 text-white/35">
+                    <span className={`${convHora} flex-shrink-0 text-white/35`}>
                       {conv.time}
                     </span>
                   </div>
                   <p
-                    className={`text-xs truncate mt-0.5 ${conv.unread > 0 ? "text-white/70" : "text-white/40"}`}
+                    className={`${convPrevia} truncate mt-0.5 ${conv.unread > 0 ? "text-white/70" : "text-white/40"}`}
                   >
                     {conv.preview}
                   </p>
                 </div>
 
                 {conv.unread > 0 && (
-                  <span className="w-5 h-5 rounded-full bg-[#25D366] text-[10px] font-bold text-white flex items-center justify-center flex-shrink-0">
+                  <span
+                    className={`${convGrande ? "w-6 h-6 text-[11px]" : "w-5 h-5 text-[10px]"} rounded-full bg-[#25D366] font-bold text-white flex items-center justify-center flex-shrink-0`}
+                  >
                     {conv.unread}
                   </span>
                 )}
@@ -658,6 +864,62 @@ const Sidebar: React.FC<SidebarProps> = ({
           onClose={() => setSelectedConv(null)}
         />
       )}
+
+      {/* Menu dos "..." em Conversas -- popover ancorado no botão, não card
+          centralizado (Frente 3, ANEXO-PLANO-LAPIDACAO): nasce logo abaixo de
+          onde o dedo tocou, com `transformOrigin` no canto de cima à
+          esquerda. O fundo escurece e desfoca atrás, reaproveitando o mesmo
+          overlay que o placeholder antigo já usava. */}
+      <AnimatePresence>
+        {showConversaMenu && conversaMenuPos && (
+          <motion.div
+            key="conversa-menu-backdrop"
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[3px]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            onClick={() => setShowConversaMenu(false)}
+          >
+            <motion.div
+              role="menu"
+              aria-label="Opções de conversas"
+              className="fixed z-50 w-64 overflow-hidden rounded-[28px] border border-white/[0.14] bg-[#1c1c1c]/90 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.14)]"
+              style={{
+                top: conversaMenuPos.top,
+                left: conversaMenuPos.left,
+                transformOrigin: "top left",
+              }}
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.85 }}
+              transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.9 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Sem modo de seleção ainda -- desabilitado, nunca clicável
+                  abrindo um aviso (esse era o defeito que a Frente 3
+                  corrigiu). Volta a ficar ativo quando o modo existir. */}
+              <button
+                role="menuitem"
+                aria-disabled="true"
+                disabled
+                className="flex w-full items-center gap-3 px-5 py-4 text-left text-[17px] text-white/40 opacity-40 cursor-not-allowed"
+              >
+                <CircleCheck size={22} className="flex-shrink-0" />
+                Selecionar conversas
+              </button>
+              <button
+                role="menuitem"
+                onClick={handleMarkAllAsRead}
+                className="flex w-full items-center gap-3 px-5 py-4 text-left text-[17px] text-white hover:bg-white/10 transition-colors"
+              >
+                <CheckCheck size={22} className="flex-shrink-0 text-white/70" />
+                Marcar tudo como lido
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Modal de "Novo profissional" - multi-step */}
       <AnimatePresence>

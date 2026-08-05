@@ -98,7 +98,22 @@ export default function PresencialFAB({
           className={
             variant === 'desktop'
               ? 'flex flex-col items-end gap-2'
-              : 'absolute bottom-[78px] right-0 flex max-h-[min(56vh,calc(100vh-144px))] flex-col items-end gap-2 overflow-y-auto pr-1 custom-scrollbar'
+              /* Sem `overflow-y-auto` e sem `max-h`. Os dois juntos davam a
+                 barra de rolagem que aparecia toda vez que o menu abria, e
+                 NÃO por falta de espaço: pela regra do CSS Overflow, quando
+                 um eixo deixa de ser `visible` o outro vira `auto` junto --
+                 então o menu virava caixa de rolagem nos DOIS eixos, e o
+                 `y: 12` da animação de entrada/saída de cada botão estende a
+                 região rolável por 12px durante os 0,2s do voo. Barra visível
+                 em toda abertura, com dois barbeiros ou com dez.
+                 Pior: a `.custom-scrollbar` é feita pra ser VISTA (trilho de
+                 6px, polegar #4b4b4b), ao contrário das outras listas do app,
+                 que escondem. `w-max` porque o contêiner âncora tem a largura
+                 do botão (46px) e o menu, sendo `absolute`, herdava isso como
+                 base e quebrava nome com espaço em duas linhas.
+                 Se um dia a pilha precisar de teto, é `max-h-[60vh]` COM
+                 `[scrollbar-width:none]` -- nunca a custom-scrollbar. */
+              : 'absolute bottom-[78px] right-0 w-max flex flex-col items-end gap-2.5'
           }
         >
           {professionals.map((prof, i) => {
@@ -111,14 +126,34 @@ export default function PresencialFAB({
                 exit={{ opacity: 0, y: 12, scale: 0.92 }}
                 transition={{ delay: (professionals.length - 1 - i) * 0.06, duration: 0.2, ease: 'easeOut' }}
                 onClick={() => handleProfessionalClick(prof)}
-                className="flex items-center gap-2.5 rounded-2xl border px-4 py-2.5 text-sm font-semibold
-                           shadow-lg backdrop-blur-sm transition-all hover:scale-[1.03] active:scale-[0.97]
+                /* `shadow-lg` saiu porque era código morto: o `boxShadow`
+                   inline logo abaixo é estilo de elemento e vencia sempre.
+                   `backdrop-blur-sm` saiu porque era inerte -- o fundo do
+                   botão é opaco (#262626), não há o que desfocar atrás -- e
+                   ainda promovia cada botão a camada composta própria.
+                   `hover:scale` saiu: não existe hover em tela de toque. */
+                className="flex min-h-[44px] items-center gap-2.5 rounded-2xl border px-4 py-2.5 text-[15px] font-semibold
+                           transition-transform active:scale-[0.97]
                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
                 style={{
-                  backgroundColor: isActive ? `${prof.color}22` : '#1f1f1f',
-                  borderColor: isActive ? prof.color : '#2f2f2f',
+                  /* A sombra era `0 4px 16px rgba(0,0,0,0.4)`, e é ela a
+                     "sombra funda atrás dos botões". Preto a 40% com 16px de
+                     borrão não flutua sobre um fundo que já está a ~6% de
+                     luminância: não há pra onde escurecer, então o que sai é
+                     uma mancha cinza. E com `gap-2` (8px) entre peças, um
+                     borrão de 16px invadia o vão do vizinho e as sombras se
+                     somavam num bloco escuro contínuo atrás da pilha.
+                     Em tema escuro, elevação é SUPERFÍCIE MAIS CLARA + fio
+                     branco de 1px no topo -- o mesmo idioma que o dock e o
+                     botão da gaveta já usam. A sombra que sobra é curta (3px)
+                     só pra descolar da tela, e o `gap` subiu pra 10px pra ela
+                     nunca encostar na peça de cima. */
+                  backgroundColor: isActive ? `${prof.color}22` : '#262626',
+                  borderColor: isActive ? prof.color : '#3a3a3a',
                   color: isActive ? prof.color : '#e5e5e5',
-                  boxShadow: isActive ? `0 4px 20px ${prof.color}30` : '0 4px 16px rgba(0,0,0,0.4)',
+                  boxShadow: isActive
+                    ? `0 1px 3px rgba(0,0,0,0.5), 0 0 0 1px ${prof.color}40, inset 0 1px 0 rgba(255,255,255,0.08)`
+                    : '0 1px 3px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
                 }}
                 aria-label={isActive ? `Cancelar presencial de ${prof.name}` : `Registrar presencial de ${prof.name}`}
               >
@@ -143,9 +178,13 @@ export default function PresencialFAB({
         aria-label={open ? 'Fechar menu presencial' : 'Registrar atendimento presencial'}
         aria-expanded={open}
         className={[
-          'relative flex items-center justify-center rounded-full shadow-xl',
+          /* `shadow-xl` saiu daqui também: o botão é `backgroundColor:
+             transparent`, então a sombra pintava um halo escuro em volta de
+             um círculo vazio -- a mesma mancha dos botões do menu, na peça
+             principal. Quem dá volume aqui é o anel de luz do próprio blob. */
+          'relative flex items-center justify-center rounded-full',
           'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30',
-          isDesktop ? 'h-[65px] w-[65px]' : 'h-[52px] w-[52px]',
+          isDesktop ? 'h-[65px] w-[65px]' : 'h-[46px] w-[46px]',
         ].join(' ')}
         style={{ backgroundColor: 'transparent' }}
       >
@@ -153,15 +192,15 @@ export default function PresencialFAB({
           <div
             className="absolute pointer-events-none animate-blob-cw"
             style={{
-              inset: isDesktop ? '-16px' : '-11px',
-              width: isDesktop ? 97 : 74,
-              height: isDesktop ? 97 : 74,
+              inset: isDesktop ? '-16px' : '-10px',
+              width: isDesktop ? 97 : 66,
+              height: isDesktop ? 97 : 66,
               display: 'grid',
               gridTemplateAreas: "'stack'",
             }}
           >
             {activeBlobs.map((blob, i) => (
-              <span key={i} style={{ ...BLOB_STYLE, ...blob, height: isDesktop ? 97 : 74 }} />
+              <span key={i} style={{ ...BLOB_STYLE, ...blob, height: isDesktop ? 97 : 66 }} />
             ))}
           </div>
         )}
@@ -191,8 +230,8 @@ export default function PresencialFAB({
             >
               <img
                 src={tesouraUrl}
-                width={isDesktop ? 37 : 30}
-                height={isDesktop ? 37 : 30}
+                width={isDesktop ? 37 : 27}
+                height={isDesktop ? 37 : 27}
                 alt="tesoura"
                 style={{ mixBlendMode: 'screen', filter: 'invert(1) drop-shadow(0 0 6px rgba(255,255,255,0.8))', transform: 'rotate(40deg)' }}
               />
@@ -217,7 +256,7 @@ export default function PresencialFAB({
 
       <motion.div
         ref={mobileRef}
-        className="fixed bottom-[128px] right-8 z-50 flex flex-col items-end gap-3 md:hidden"
+        className="fixed bottom-[102px] right-10 z-50 flex flex-col items-end gap-3 md:hidden"
         animate={{ opacity: visible ? 1 : 0, pointerEvents: visible ? 'auto' : 'none' }}
         transition={{ duration: 0.25, ease: 'easeInOut' }}
       >

@@ -236,3 +236,119 @@ Formato de cada entrada:
   mudança tocou o componente que o usuário está olhando. Essa prova só vem de ver o
   resultado (aqui, só ele via, por print do celular) ou de confirmar antes qual
   componente está de fato no caminho de render.
+
+## [2026-08-04] Recalcular geometria em vez de abrir o arquivo que eu já conhecia
+
+- O que aconteceu: pedido pra reposicionar o FAB de tesoura num canto arredondado
+  do card do dia. Em vez de abrir direto `PresencialFAB.tsx` — que eu tinha lido
+  minutos antes, na mesma sessão — e ajustar `right`/`bottom` na direção que ele
+  apontou, fui atrás de grep no `DayKanban.tsx` e tentei deduzir a posição "certa"
+  por conta de margem e raio de borda. A conta nem bateu com o que a imagem
+  mostrava, e o usuário cortou: "você está demorando muito para achar esse
+  componente, veja o que está fazendo".
+- Correção: em rodada de ajuste visual rápido, ir direto ao arquivo já conhecido e
+  testar um palpite na direção apontada vale mais que calcular a posição
+  "perfeita" por dedução — principalmente porque não há como eu conferir o
+  render, só ele. Calcular geometria só compensa quando não sei ONDE mexer;
+  quando já sei, é só mexer e deixar o próximo print corrigir a distância.
+- Como saber que estou errando: se estou lendo um segundo ou terceiro arquivo pra
+  entender um ajuste que já dava pra tentar direto no componente que eu tinha
+  acabado de abrir, é sinal de estar complicando uma coisa simples.
+
+## [2026-08-04] Sintoma de tamanho que era z-index
+
+- O que aconteceu: o dono disse que o modal "Criar Evento" estava "batendo lá
+  embaixo, difícil até de clicar nos botões", e eu comecei a atacar altura —
+  compactar respiro, encolher campos, pôr rolagem. A causa real era outra: o
+  backdrop do modal estava em `z-50` e o dock em `z-index: 100`, então **o dock
+  era desenhado por cima do rodapé do modal** e cobria "Cancelar" e metade do
+  "Salvar". O modal cabia na tela; ele só estava atrás de outra coisa.
+- Correção: quando o relato for "não consigo clicar" / "está por baixo" /
+  "batendo embaixo", **conferir a ordem de empilhamento antes de mexer em
+  medida**. `grep` de `z-\[` e `z-index` nas duas peças custa 10 segundos e
+  descarta a hipótese cara. Medida é a segunda hipótese, não a primeira.
+- Como saber que estou errando: se estou reduzindo padding de uma peça que
+  visualmente cabe na tela, provavelmente o problema não é ela.
+
+## [2026-08-04] `overflow-y: auto` liga a rolagem nos DOIS eixos
+
+- O que aconteceu: o menu do FAB mostrava barra de rolagem toda vez que abria,
+  com só dois barbeiros na lista — espaço de sobra. Eu poderia ter concluído
+  "conteúdo grande demais" e mexido no `max-h`, que não era o problema. Pela
+  especificação de CSS Overflow, **quando um eixo deixa de ser `visible`, o
+  outro é computado para `auto` junto**. O `overflow-y-auto` sozinho tornava o
+  menu uma caixa de rolagem em X e Y, e o `y: 12` da animação de entrada dos
+  botões (framer-motion) estendia a região rolável por 12px durante o voo. Barra
+  visível em toda abertura, independentemente da quantidade de itens.
+- Correção: barra de rolagem que aparece **sem conteúdo excedente** é quase
+  sempre transbordo do outro eixo ou descendente transformado, não falta de
+  espaço. E ao pôr `overflow` num eixo, decidir o outro de propósito.
+- Nota junto: a `.custom-scrollbar` deste projeto é feita para **ser vista**
+  (trilho 6px, polegar `#4b4b4b`); as outras listas escondem com
+  `scrollbar-width: none`. Não usar a `.custom-scrollbar` em peça flutuante.
+
+## [2026-08-04] Sombra preta não é elevação em tema escuro
+
+- O que aconteceu: os botões do FAB tinham `0 4px 16px rgba(0,0,0,0.4)` e o dono
+  descreveu como "sombra funda atrás dos botões", dizendo que eles deveriam
+  flutuar. Sobre um fundo que já está a ~6% de luminância não há para onde
+  escurecer: o borrão preto vira mancha cinza sem gradiente. Pior, com `gap-2`
+  (8px) entre peças e 16px de raio, as sombras invadiam o vão do vizinho e **se
+  somavam** num bloco escuro contínuo atrás da pilha.
+- Correção: em tema escuro, elevação é **superfície mais clara + fio branco de
+  1px no topo**, com sombra curta (~3px) só para descolar da tela. É o idioma
+  que o dock (`.mb-dock__highlight-skin`) e o botão da gaveta já usavam — a
+  peça nova copia deles em vez de inventar. E o vão entre peças empilhadas
+  precisa ser maior que o raio do borrão.
+
+## [2026-08-04] Comentário JSX como primeiro filho dentro de `.map()` quebra o build
+
+- O que aconteceu: pus um comentário `{/* ... */}` logo acima do `<li>` dentro de
+  `professionals.map((prof) => ( ... ))`. O retorno da arrow function passou a ter
+  dois elementos-raiz e o build quebrou com `JSX expressions must have one parent
+  element` — e o Vite ficou repetindo `Failed to reload` no console mesmo depois,
+  porque a mensagem antiga fica no histórico.
+- Correção: comentário que explica a linha do `.map()` vai **acima do `.map()`**,
+  nunca dentro do retorno. E erro de console do Vite depois de um conserto pode
+  ser eco: confirmar buscando o módulo no dev server
+  (`http://localhost:3002/components/X.tsx` → 200) em vez de confiar no log.
+
+## [2026-08-04] Gate de feature flag apagando dado que a UI só parou de mostrar
+
+- O que aconteceu: ao ocultar o campo Serviço do `EventModal` atrás de
+  `SERVICO_HABILITADO = false` (Frente 4.2 do ANEXO-PLANO-LAPIDACAO), escrevi
+  `composeDescription()` gateando a emissão da linha `Serviço:` pela mesma
+  constante: `SERVICO_HABILITADO && service.trim() ? ... : null`. Parecia
+  certo — o campo está oculto, não deveria escrever a linha. Só que
+  `service` continua sendo populado pelo **parse** de agendamentos antigos
+  que já têm `Serviço: ...` gravado (`getLineValue` no load). Com o gate,
+  reabrir e salvar QUALQUER evento antigo com serviço apagaria o dado do
+  cliente na primeira gravação — exatamente o "nunca apagar" que a própria
+  regra da frente proibia. Peguei sozinho, relendo o texto do plano antes de
+  rodar `tsc`, sem o dono ter visto o bug.
+- Correção: **ocultar um campo é decisão de render; preservar o dado que ele
+  já gravou é decisão de escrita — as duas não usam o mesmo gate.**
+  `composeDescription()` ficou sem condicional nenhuma: evento novo nunca
+  preenche `service` (não há UI pra isso), então a linha nasce vazia
+  sozinha; evento antigo que já tinha a linha continua reescrevendo-a
+  igual, porque `service` chegou populado do parse. O gate
+  (`SERVICO_HABILITADO`) governa só a JSX (renderiza o campo?) e o efeito
+  que busca opções (`getConfiguredServices`) — nunca a montagem do texto
+  que vai pro banco.
+- Como saber que estou errando: se um campo "oculto, nunca apagado" tem o
+  mesmo flag controlando o que aparece na tela E o que sai na escrita, a
+  escrita provavelmente vai apagar o que a tela só parou de mostrar.
+
+## [2026-08-04] Avisar o custo antes de disparar avaliação em paralelo
+
+- O que aconteceu: o dono pediu a skill `impeccable critique`, que exige duas
+  avaliações independentes em subagentes. Disparei as duas e fiquei ~13 minutos
+  sem produzir nada visível. Ele cobrou duas vezes ("tem 13 minutos que você tá
+  pensando", "é hora de executar, meu filho"), e com razão: da cadeira dele eu
+  tinha sumido.
+- Correção: quando a tarefa envolve subagente, análise longa ou qualquer coisa
+  que passe de ~2 minutos sem saída, **dizer antes quanto vai demorar e o que vai
+  sair no fim**. E quando o pedido tem análise E execução na mesma frase, executar
+  o que já é óbvio primeiro e deixar a análise render por baixo — não serializar.
+- Como saber que estou errando: se ele mandar mensagem no meio do turno
+  perguntando o que está acontecendo, o aviso faltou.

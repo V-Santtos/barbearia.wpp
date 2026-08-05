@@ -12,7 +12,7 @@ import { KpiCard, Panel, PeriodChips, StatusPill, type FiltroProf } from "./prim
 import { DispoList } from "./Disponibilidade";
 import { RelogioDoDia } from "./RelogioDoDia";
 import { montarKpis, OPCOES_PERIODO } from "./kpis";
-import { hhmm, proximosLivres, type DashboardVm } from "./modelo";
+import { proximosLivres, statusDoDia, type DashboardVm } from "./modelo";
 
 const ATIVOS = ["agendado", "confirmado", "reagendado", "em-atendimento"];
 
@@ -219,7 +219,7 @@ export const DashboardDesktop: React.FC<Props> = ({
               />
             </Panel>
 
-            <Panel title="O dia" meta={`agora ${hhmm(vm.agora)}`} padding="p-4">
+            <Panel title="O dia" meta={statusDoDia(vm)} padding="p-4">
               <RelogioDoDia vm={vm} profs={profs} />
             </Panel>
           </div>

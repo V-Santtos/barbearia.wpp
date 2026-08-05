@@ -101,8 +101,10 @@
    alcance dele comeca e onde termina. */
 .mb-period { padding: 0 16px 8px; }
 .mb-period .chips { display: flex; width: 100%; }
-/* Empilhado: lado a lado, "15 dias" e "30 dias" quebravam em duas linhas. */
-.mb-period .chip { flex: 1; padding: 7px 0; text-align: center; white-space: nowrap; }
+/* Empilhado: lado a lado, "15 dias" e "30 dias" quebravam em duas linhas.
+   `padding: 7px 0` sobre 12px de fonte dava ~31px de altura num controle que
+   ele toca de pe, com uma mao. 11px + 14px de fonte leva a 44. */
+.mb-period .chip { flex: 1; padding: 11px 0; font-size: 14px; text-align: center; white-space: nowrap; }
 .mb-filterbtn {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; font-family: inherit;
@@ -135,15 +137,20 @@
 .mb-now__pulse { width: 8px; height: 8px; background: var(--primary-soft); border-radius: 50%; box-shadow: 0 0 8px var(--primary-soft); animation: pulse 1.4s ease-in-out infinite; }
 .mb-now__time { margin-left: auto; color: var(--text-muted); font-variant-numeric: tabular-nums; font-weight: 500; text-transform: none; }
 .mb-now__rows { display: flex; flex-direction: column; gap: 6px; }
-.mb-now__row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.mb-now__bar { width: 3px; height: 16px; border-radius: 2px; }
-.mb-now__cli { flex: 1; color: var(--text-strong); font-weight: 500; }
-.mb-now__prof { font-size: 11px; font-weight: 500; }
+/* 13px -> 16px: e o nome do cliente que esta na cadeira agora. Estava menor
+   que o nome de um contato na tela de Conversas. */
+.mb-now__row { display: flex; align-items: center; gap: 8px; font-size: 16px; }
+.mb-now__bar { width: 3px; height: 18px; border-radius: 2px; }
+.mb-now__cli { flex: 1; color: var(--text-strong); font-weight: 600; }
+.mb-now__prof { font-size: 12px; font-weight: 500; }
 
 .mb-shell .db-panel { margin: 0 16px 14px; border-radius: 14px; }
 .mb-shell .db-panel__head { padding: 12px 14px; }
-.mb-shell .db-panel__title { font-size: 12px; }
-.mb-shell .db-panel__sub { font-size: 10px; }
+/* O titulo da secao era 12px e o subtitulo 10px -- o titulo do painel era
+   MENOR que quase tudo que mora dentro dele, o que invertia a hierarquia em
+   todos os seis paineis do dashboard mobile de uma vez. */
+.mb-shell .db-panel__title { font-size: 16px; font-weight: 600; }
+.mb-shell .db-panel__sub { font-size: 12px; }
 .mb-shell .agenda__row { grid-template-columns: 3px 56px 1fr; padding: 8px 14px 8px 0; gap: 10px; }
 .mb-shell .walist__row { padding: 10px 14px; }
 .mb-shell .ocup-list { padding: 14px; }
@@ -184,48 +191,171 @@
   margin: 0 auto;
   /* Larga o bastante para nao parecer perdida no meio da tela, e proporcional
      para nao encolher de novo em aparelho maior. Com tres abas, `max-content`
-     sozinho dava uma pilula pequena demais para o espaco que tem embaixo. */
+     sozinho dava uma pilula pequena demais para o espaco que tem embaixo.
+     O piso caiu de 62% para 50% em 2026-08-04, a pedido do dono: com 62% a
+     pilula lia como barra, nao como dock. */
   width: max-content;
-  min-width: 62%;
-  display: flex; align-items: center; justify-content: space-around;
-  gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
+  min-width: 50%;
+  /* `center` e nao `space-around`: era o `space-around` quem espalhava os tres
+     botoes: ele reparte a sobra ENTRE os itens, entao qualquer largura a mais
+     virava vao. Com `center` a sobra vai toda para as pontas e os tres andam
+     juntos, que e o que o `gap` sozinho nunca ia conseguir. */
+  display: flex; align-items: center; justify-content: center;
+  gap: 4px;
+  padding: 9px 10px;
   border-radius: 26px;
-  /* Vidro, mas nao vitrine: por cima de painel cheio, transparencia demais faz
-     o texto de tras competir com o icone. */
-  background: rgba(20,19,21,0.86);
-  backdrop-filter: blur(26px) saturate(1.2);
-  -webkit-backdrop-filter: blur(26px) saturate(1.2);
-  box-shadow: var(--shadow-panel), var(--inset-top);
-  z-index: 5;
+  /* Vidro de verdade, nao vidro fumado: o alfa caiu de 0.86 -> 0.4 -> 0.22 ->
+     0.12 -> 0.08, em rodadas conferidas no celular. O alfa sozinho nao
+     resolvia: blur(30px) e forte a ponto de qualquer coisa atras virar mancha
+     lisa, opaca de fato mesmo com pouco alfa -- comparado ao print da barra
+     do proprio WhatsApp, que deixa dar pra reconhecer o que esta atras, so
+     desfocado. O blur caiu junto, de 30px para 14px.
+     `brightness` entrou depois: o vidro da Apple nao so desfoca, ele DEVOLVE
+     luz -- o que passa por baixo sai um tico mais claro do que entrou. Sem
+     isso o dock lia como buraco escuro, nao como material. */
+  background: rgba(20,19,21,0.08);
+  backdrop-filter: blur(14px) saturate(1.5) brightness(1.08);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5) brightness(1.08);
+  box-shadow:
+    var(--shadow-panel),
+    /* Aberracao cromatica: a borda vertical separada em um fio vermelho de um
+       lado e azul do outro, como a refracao de uma lente/vidro de verdade
+       desviaria cada comprimento de onda por um angulo levemente diferente.
+       Alfa baixo e deslocamento sub-pixel de proposito -- passar disso vira
+       oculos 3D anaglifo em vez de vidro. */
+    inset 0.5px 0 0 rgba(255,64,64,0.10),
+    inset -0.5px 0 0 rgba(64,160,255,0.10);
+  /* 100, nao 5 -- ver `20-modal.css` (a regra que realmente vale, por vir
+     depois na cascata): o dock e navegacao do app inteiro e nao pode ficar
+     atras de painel nenhum. Repetido aqui so pra nao divergir do valor real
+     se algum dia esta regra passar a vencer. */
+  z-index: 100;
+}
+
+/* Fio especular da borda -- substituiu o `border: 1px solid` chapado que
+   existia aqui.
+   Vidro real nao tem contorno de espessura unica: a luz vem de cima, entao a
+   quina superior acende forte, as laterais quase somem e a inferior volta a
+   acender fraquinho (a luz que bate no que esta atras e sobe de volta). Um
+   `border` de cor unica nao sabe fazer isso; um gradiente recortado em anel,
+   sim -- e e a diferenca entre "retangulo com contorno" e "peca de vidro".
+   Tecnica do anel: pinta o gradiente na caixa inteira e recorta o miolo com
+   duas mascaras que se subtraem, sobrando so a moldura de 1px. */
+.mb-dock::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    155deg,
+    rgba(255,255,255,0.50) 0%,
+    rgba(255,255,255,0.14) 22%,
+    rgba(255,255,255,0.05) 48%,
+    rgba(255,255,255,0.12) 74%,
+    rgba(255,255,255,0.34) 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 .mb-dock__item {
   position: relative;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3px;
+  display: flex; align-items: center; justify-content: center;
   width: 50px; height: 50px;
   padding: 0;
   border: 0; border-radius: 18px;
   background: transparent;
-  color: var(--text-muted);
+  /* Nao e `var(--text-muted)` (0.55 de alfa) -- na referencia do WhatsApp o
+     icone inativo tambem e quase branco puro, so a pilula atras e que marca
+     qual esta ativo. Com 0.55 os icones liam como apagados. */
+  color: rgba(255,255,255,0.8);
   font-family: inherit;
   cursor: pointer;
-  transition: color .18s ease, background .18s ease, transform .12s ease;
+  /* Sem `transform` aqui: quem manda no toque agora e o `whileTap` do
+     framer-motion (ver MobileBottomNav.tsx). Deixar os dois cuidando da mesma
+     propriedade faz o CSS atropelar a mola no meio do movimento. */
+  transition: color .18s ease;
+  -webkit-tap-highlight-color: transparent;
 }
-/* Toque nao tem hover: o retorno de que o dedo pegou e o recuo. */
-.mb-dock__item:active { transform: scale(.9); }
-.mb-dock__item.is-active { color: var(--primary-soft); background: rgba(107,62,255,.16); }
 
-/* Sem rotulo, o ponto e a cor sao tudo que diz onde voce esta. */
-.mb-dock__dot {
-  width: 4px; height: 4px; border-radius: 50%;
-  background: currentColor;
+/* Clarao do toque -- o vidro acendendo por baixo do dedo.
+   Antes daqui o retorno era `transform: scale(.9)`, encolher. Encolher e o
+   idioma do Material/Android; vidro nao encolhe quando voce encosta, ele
+   ACENDE e incha (o inchar mora no `whileTap`). Vale pras tres abas, nao so
+   pra ativa: no iOS qualquer controle de vidro responde ao dedo, mesmo o que
+   nao esta selecionado. */
+.mb-dock__item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255,255,255,0.30) 0%,
+    rgba(255,255,255,0.08) 55%,
+    rgba(255,255,255,0) 78%
+  );
   opacity: 0;
-  transition: opacity .18s ease;
+  transition: opacity .32s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
 }
-.mb-dock__item.is-active .mb-dock__dot { opacity: 1; }
+/* Acende na hora, apaga devagar: o dedo chegando e um fato, o dedo saindo e
+   um rastro. Simetrico dos dois lados soa mecanico. */
+.mb-dock__item:active::after { opacity: 1; transition-duration: .06s; }
+
+/* Branco puro no ativo -- pedido do dono em 2026-08-04, nunca mais a cor roxa
+   que existia aqui antes. A pilula (`.mb-dock__highlight`) trouxe de volta um
+   fundo atras do icone ativo, mas cinza/vidro, nunca colorido. */
+.mb-dock__item.is-active { color: var(--fg); }
+
+/* Pilula que marca a aba ativa, animada por `layoutId` do framer-motion: ao
+   trocar de aba ela desliza da posicao antiga pra nova em vez de sumir e
+   reaparecer. Cinza/vidro, igual a referencia do WhatsApp (que tambem nao
+   colore a pilula) -- so o brilho do icone por cima muda de tom. Sem
+   aberracao cromatica aqui: nesse tamanho (18px de raio) o fiapo de cor some
+   no ruido, o efeito so lê em bordas mais longas como a do dock inteiro. */
+/* A pilula e uma casca vazia: so posicao e tamanho, nada de cor. Quem pinta e
+   a `__highlight-skin` la dentro.
+   O motivo e mecanico, nao estetico: o framer-motion corrige a escala da caixa
+   que carrega o `layoutId` durante o voo, pra borda nao esticar junto. Se a
+   deformacao liquida (o esticao no eixo da viagem) fosse aplicada nessa mesma
+   caixa, as duas contas brigariam. Separando, a casca voa e a pele deforma. */
+.mb-dock__highlight {
+  position: absolute;
+  inset: 0;
+}
+.mb-dock__highlight-skin {
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.12);
+  /* Mesmo fio especular do dock, na escala da pilula: acende em cima, some no
+     meio, volta fraco embaixo. */
+  border: 1px solid transparent;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.12), rgba(255,255,255,0.12)),
+    linear-gradient(
+      150deg,
+      rgba(255,255,255,0.42) 0%,
+      rgba(255,255,255,0.10) 45%,
+      rgba(255,255,255,0.26) 100%
+    );
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.14);
+}
+
+/* Wrapper do conteudo do botao -- ver comentario no MobileBottomNav.tsx sobre
+   por que o z-index aqui e obrigatorio, nao cosmetico. */
+.mb-dock__item-content {
+  position: relative;
+  z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+}
 
 /* Nao lidas: o unico numero vivo da barra. Verde do WhatsApp, como no app. */
 .mb-dock__badge {

@@ -43,11 +43,15 @@ export default function MonthPillsStrip({ currentDate, onNavigate }: Props) {
             key={i}
             data-active={isActive}
             onClick={() => onNavigate(new Date(d))}
+            /* Mês ativo era roxo SÓLIDO -- o único roxo chapado que sobrava
+               numa fileira de pílulas, e a mesma peça que Manhã/Tarde/Noite
+               é logo abaixo. Mesmo idioma de vidro do dock, pelas mesmas
+               razões (2026-08-04). */
             className={[
-              'flex-shrink-0 rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-200',
+              'flex-shrink-0 rounded-full px-4 py-2.5 min-h-[44px] text-[14px] font-semibold transition-all duration-200',
               isActive
-                ? 'bg-[#6B3EFF] text-white shadow-lg'
-                : 'bg-white/[0.07] text-white/45 hover:bg-white/[0.12] hover:text-white/70',
+                ? 'bg-white/[0.12] text-white border border-white/[0.18] shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]'
+                : 'bg-white/[0.07] text-white/45 border border-transparent',
             ].join(' ')}
           >
             {label}

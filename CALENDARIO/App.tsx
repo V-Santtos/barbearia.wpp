@@ -854,13 +854,14 @@ function App() {
             />
 
             <main
-              /* pb-28 e não pb-20: o dock flutua POR CIMA da rolagem desde
-                 2026-08-04, então o conteúdo precisa de chão para não morrer
-                 embaixo dele. Mês e semana são exceção, desde 2026-08-04: viram
-                 tela cheia (estilo Google Calendar) e o dock flutua por cima
-                 da própria grade, não de um respiro reservado para ele. */
+              /* pb-16 e não pb-28: o card do dia (`DayKanban`) esticou
+                 verticalmente a pedido do dono em 2026-08-04, e o dock passou
+                 a flutuar levemente POR CIMA da borda inferior do card, não
+                 mais só sobre o respiro vazio depois dele. Mês e semana
+                 continuam sem nenhum respiro (viram tela cheia desde
+                 2026-08-04) — só o dia guarda uma folga, agora menor. */
               className={`flex-1 flex flex-col min-h-0 md:p-6 lg:p-8 md:pb-6 lg:pb-8 ${
-                view === "month" || view === "week" ? "" : "pb-28"
+                view === "month" || view === "week" ? "" : "pb-16"
               }`}
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
@@ -956,7 +957,20 @@ function App() {
             />
           </LimiteDeErro>
 
-          <MobileBottomNav tab={mobileTab} onChange={setMobileTab} />
+          {/* Trocar de aba fecha a gaveta. O dock vive em z-index 100 e o
+              backdrop da gaveta em z-60, então o dedo SEMPRE alcançou os
+              ícones com o menu aberto -- só que ninguém avisava o painel, e a
+              tela nova nascia escondida atrás dele. O único jeito de sair era
+              o X. Fecha inclusive ao tocar na aba em que já se está: com a
+              gaveta por cima, tocar o ícone da aba atual é pedido de voltar
+              pra ela. */}
+          <MobileBottomNav
+            tab={mobileTab}
+            onChange={(nova) => {
+              setHamburgerOpen(false);
+              setMobileTab(nova);
+            }}
+          />
 
           <HamburgerPanel
             open={hamburgerOpen}

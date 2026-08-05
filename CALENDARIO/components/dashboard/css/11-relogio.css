@@ -31,17 +31,31 @@
 .relo__livre { stroke: var(--warning); }
 
 .relo__tick  { stroke: rgba(255,255,255,0.20); stroke-width: 1; }
-.relo__hora  { fill: var(--text-muted); font-size: 10.5px; font-weight: 500; text-anchor: middle; }
+.relo__hora  { fill: var(--text-muted); font-size: 11px; font-weight: 500; text-anchor: middle; }
 
-/* O ponteiro do agora: a unica linha branca cheia do desenho. */
+/* Ancoras -- abertura e fechamento. Mais grossas e mais claras que os ticks
+   mudos, e a palavra "abre"/"fecha" ao lado da hora em fonte menor: e o que
+   ensina o olho que aquele ponto e a ponta do dia, nao uma hora qualquer. */
+.relo__tick--ancora { stroke: rgba(255,255,255,0.45); stroke-width: 1.5; }
+.relo__hora--ancora { fill: var(--text-strong); font-weight: 650; }
+.relo__hora-palavra { fill: var(--text-faint); font-size: 9px; font-weight: 500; }
+
+/* A costura: traco mais forte exatamente no meio do vao entre fechamento e
+   abertura -- e o corte que diz "aqui a volta emenda", nao meio-dia. */
+.relo__costura { stroke: rgba(255,255,255,0.55); stroke-width: 2; stroke-linecap: round; }
+
+/* O ponteiro do agora: a unica linha branca cheia do desenho. Fora do
+   expediente ele nao some mais -- fica encostado na ponta correspondente,
+   esmaecido, porque o dia continua existindo, so nao esta em andamento. */
 .relo__agora      { stroke: rgba(255,255,255,0.85); stroke-width: 1.5; stroke-linecap: round; }
 .relo__agora-bola { fill: rgba(255,255,255,0.9); }
+.relo__agora--fora { opacity: 0.4; }
 
 .relo__quem  { fill: var(--text-muted);  font-size: 15px;  font-weight: 500; text-anchor: middle; }
-.relo__total { fill: var(--text-strong); font-size: 44px;  font-weight: 650; text-anchor: middle;
+.relo__total { fill: var(--text-strong); font-size: 40px;  font-weight: 650; text-anchor: middle;
                font-variant-numeric: tabular-nums; }
-.relo__unid  { fill: var(--text-muted);  font-size: 11.5px; text-anchor: middle; }
-.relo__vaga-hora { fill: var(--warning); font-size: 11.5px; font-weight: 650; text-anchor: middle; }
+.relo__unid  { fill: var(--text-muted);  font-size: 12px; text-anchor: middle; }
+.relo__vaga-hora { fill: var(--warning); font-size: 12px; font-weight: 650; text-anchor: middle; }
 
 /* Duas linhas que respondem perguntas diferentes: quem tem vaga, e como ler.
    Centralizadas -- com o card estreito, alinhar a esquerda deixava a segunda
@@ -49,12 +63,12 @@
 .relo__rodape { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 
 .relo__ident { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px;
-               font-size: 11.5px; color: var(--text-muted); }
+               font-size: 12px; color: var(--text-muted); }
 .relo__ident b { color: var(--text-strong); font-weight: 600; }
 .relo__dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 
 .relo__chave { display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
-               gap: 5px 12px; margin-top: 8px; font-size: 10.5px; color: var(--text-muted); }
+               gap: 5px 12px; margin-top: 8px; font-size: 11px; color: var(--text-muted); }
 .relo__chave span { display: inline-flex; align-items: center; gap: 5px; }
 
 /* Os quadradinhos sao o proprio tratamento do anel em miniatura, nao um quadrado
@@ -74,4 +88,3 @@
   height: 2px; transform: translateY(-50%);
   background: repeating-linear-gradient(90deg, var(--text-faint) 0 2px, transparent 2px 6px);
 }
-.relo__sw--fora { background: rgba(255,255,255,0.045); }
