@@ -436,7 +436,7 @@ function LoginCard({ onLogin }: LoginScreenProps) {
 
   return (
     <div
-      className="relative z-10 flex min-h-screen flex-col items-center justify-center pb-12 text-white"
+      className="relative z-10 flex min-h-dvh flex-col items-center justify-center pb-12 text-white"
     >
       <div className="flex w-full max-w-[330px] flex-col items-center gap-5 px-6">
         <div className={`text-center ${enterClassName}`} style={enterStyle(0)}>
@@ -598,7 +598,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
   }, [isMobile, showCard]);
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#0e0e10] font-sans">
+    <div className="h-dvh w-screen overflow-hidden bg-[#0e0e10] font-sans">
       <BackgroundCanvas />
 
       {!isMobile && !showCard && <MorphingText onFinished={() => setShowCard(true)} />}

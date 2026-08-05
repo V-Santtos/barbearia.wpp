@@ -77,6 +77,21 @@ function App() {
   const [viewMode, setViewMode] = useState<"timeline" | "kanban">("timeline");
   const [appReady, setAppReady] = useState(false);
 
+  // A faixa embaixo do indicador de home nao e pintada pelo iOS: em PWA
+  // standalone quem pinta a tela inteira e a pagina. O que aparecia ali era o
+  // `body` (#1c1c1c) por baixo de telas que pintam #0e0e10 — duas cores, emenda
+  // visivel. Nao da pra resolver com uma cor fixa no CSS porque as telas
+  // discordam: entrada e carregamento sao #0e0e10, o app e #1c1c1c.
+  //
+  // Entao o fundo da pagina segue a tela ativa. Casado com `h-dvh` (que alcanca
+  // a borda de verdade, diferente de `h-screen`/100vh no iOS), nao sobra faixa
+  // de cor nenhuma pra emendar.
+  useEffect(() => {
+    const corDaTela = ownerSession && appReady ? "#1c1c1c" : "#0e0e10";
+    document.documentElement.style.backgroundColor = corDaTela;
+    document.body.style.backgroundColor = corDaTela;
+  }, [ownerSession, appReady]);
+
   // O dashboard é camada, não visualização: `view` não é tocado, então voltar
   // devolve a agenda exatamente como estava — mesma data, mesma visualização,
   // mesmo filtro. No celular quem manda é o dock, e `mobileTab` já é o estado
@@ -779,7 +794,7 @@ function App() {
       {!ownerSession && (
         <motion.div
           key="login"
-          className="h-screen w-screen"
+          className="h-dvh w-screen"
           exit={{ opacity: 0, filter: "blur(10px)", scale: 1.02 }}
           transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
         >
@@ -790,7 +805,7 @@ function App() {
       {ownerSession && !appReady && (
         <motion.div
           key="loading"
-          className="h-screen w-screen bg-[#0e0e10] flex flex-col items-center justify-center gap-3"
+          className="h-dvh w-screen bg-[#0e0e10] flex flex-col items-center justify-center gap-3"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, filter: "blur(8px)" }}
@@ -804,7 +819,7 @@ function App() {
       {ownerSession && appReady && (
         <motion.div
           key="app"
-          className="flex h-screen overflow-hidden bg-background font-sans text-foreground"
+          className="flex h-dvh overflow-hidden bg-background font-sans text-foreground"
           initial={{ opacity: 0, filter: "blur(8px)", y: 6 }}
           animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
           transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}

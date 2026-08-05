@@ -28,7 +28,19 @@
         width: 100%;
         height: 100%;
         margin: 0;
-        background: #1c1c1c;
+      }
+
+      /* Quem pinta a tela inteira num PWA standalone e a pagina, nao o iOS —
+         inclusive a faixa embaixo do indicador de home. Entao a cor mora aqui,
+         no `html`/`body`, e o App.tsx a mantem igual a da tela ativa.
+
+         `#root` fica SEM cor de proposito: com fundo proprio ele cobriria o
+         `body` e a faixa de baixo voltava a divergir. O valor inicial e o
+         #0e0e10 da tela de entrada, que e sempre a primeira a aparecer (mesmo
+         com sessao lembrada, o carregamento usa a mesma cor). */
+      html,
+      body {
+        background: #0e0e10;
       }
     </style>
   </head>
