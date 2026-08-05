@@ -4,5 +4,5 @@
   "installCommand": "npm install --prefix CALENDARIO",
   "buildCommand": "npm run build --prefix CALENDARIO",
   "outputDirectory": "CALENDARIO/dist",
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
+  "rewrites": [{ "source": "/((?!api(?:/|$)).*)", "destination": "/index.html" }]
 }
