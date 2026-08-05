@@ -1,8 +1,12 @@
 import type { Professional, Event, CreateEventRequest } from "../types";
 
-const API_BASE = (
-  import.meta.env.VITE_CALENDAR_API_URL ?? "/api-proxy"
-).replace(/\/+$/, "");
+// Sem `VITE_CALENDAR_API_URL` (o caso do deploy), a API e a funcao servida pelo
+// mesmo dominio, em `/api` — mesma origem, sem CORS no meio. No local a variavel
+// esta no `.env` apontando pro IP da maquina, e continua mandando.
+const API_BASE = (import.meta.env.VITE_CALENDAR_API_URL ?? "/api").replace(
+  /\/+$/,
+  "",
+);
 const ADMIN_API_TOKEN = (import.meta.env.VITE_ADMIN_API_TOKEN ?? "").trim();
 
 // ─── Tipos novos ──────────────────────────────────────────────────────────────

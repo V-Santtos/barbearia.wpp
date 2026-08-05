@@ -33,11 +33,18 @@ const { Pool } = pkg;
 //
 // `max_connections` do Supabase e 60 e `idle_session_timeout` e 0 (ele nunca
 // derruba sessao parada), entao manter estas dez de pe nao aperta nada.
+//
+// Nada disso vale em serverless: la nao existe UM processo de pe, existem N
+// instancias que a plataforma cria e mata sozinha. Dez conexoes eternas vezes N
+// estoura o teto de 60 do Supabase, e quem cai junto e o bot, que bebe do mesmo
+// banco. Por isso, sob VERCEL, o pool encolhe e volta a soltar conexao ociosa.
+const EM_SERVERLESS = Boolean(process.env.VERCEL);
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  max: 10,
-  idleTimeoutMillis: 0,
+  max: EM_SERVERLESS ? 2 : 10,
+  idleTimeoutMillis: EM_SERVERLESS ? 10_000 : 0,
   keepAlive: true,
 });
 
@@ -2469,9 +2476,10 @@ function buildServer() {
   return fastify;
 }
 
-const fastify = buildServer();
+export { buildServer };
 
 function start() {
+  const fastify = buildServer();
   fastify
     .listen({ port: PORT, host: "0.0.0.0" })
     .then(async () => {
@@ -2485,4 +2493,9 @@ function start() {
     });
 }
 
-start();
+// Em serverless nao ha porta pra escutar: quem chama e o handler de
+// `api/[...caminho].mjs`, que importa `buildServer`. Escutar aqui faria a funcao
+// subir um servidor que ninguem alcanca e travar a resposta.
+if (!EM_SERVERLESS) {
+  start();
+}
