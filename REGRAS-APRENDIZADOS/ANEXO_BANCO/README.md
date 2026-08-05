@@ -143,6 +143,31 @@ parada) e `max_connections` é **60** — o calendário segura no máximo 10 e o
 faz ~6 consultas em sequência, e o webhook inteiro fica em 5-8s (a Meta desiste por volta de
 15-20s e reentrega — o dedupe absorve). Não é handshake; é ida e volta.
 
+## Ao ligar o banco de fora da sua máquina (Vercel e qualquer serverless)
+
+**O host direto `db.sppexvjvnoganlduyjvs.supabase.co` só tem registro AAAA — é IPv6 puro,
+sem IPv4 nenhum** (verificado em 2026-08-05). A máquina do dono alcança; função do Vercel
+não, ela só fala IPv4. O sintoma engana feio: a mesmíssima `DATABASE_URL` que funciona no
+`npm run db` falha no deploy, e o erro não menciona IPv6 — fala de host que não resolve.
+
+De plataforma serverless o endereço é o **pooler** (Supavisor), que tem IPv4:
+
+```
+postgresql://postgres.sppexvjvnoganlduyjvs:<senha>@aws-1-us-west-2.pooler.supabase.com:6543/postgres
+```
+
+Três diferenças que mordem quem copia por cima da string direta: o usuário vira
+**`postgres.<ref>`** (não `postgres` sozinho), a porta é **6543** (modo transação, o certo
+para serverless — 5432 no pooler é modo sessão, que segura conexão por cliente) e o prefixo
+é **`aws-1`**, não `aws-0`. A senha é a mesma da conexão direta.
+
+A região (`us-west-2`) foi descoberta por sondagem, não pelo painel: o pooler responde
+`Tenant or user not found` em toda região que **não** é a do projeto, então dá para varrer
+a lista de regiões tentando conectar até uma aceitar. Vale repetir isso se o projeto mudar
+de região.
+
+Local continua na conexão direta de propósito — é mais rápida e não gasta slot do pooler.
+
 ## Coisas que enganam
 
 - `configuracao['servicos']` e `['categorias']` **duplicam em jsonb** o conteúdo das tabelas

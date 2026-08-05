@@ -352,3 +352,32 @@ Formato de cada entrada:
   o que já é óbvio primeiro e deixar a análise render por baixo — não serializar.
 - Como saber que estou errando: se ele mandar mensagem no meio do turno
   perguntando o que está acontecendo, o aviso faltou.
+
+## [2026-08-05] `ENOTFOUND base`: caractere invisível, e eu reproduzi o bug do dono duas vezes
+
+- O que aconteceu: `/api/*` no Vercel dava 500 com `getaddrinfo ENOTFOUND base`. `base`
+  não é host de ninguém — é o host de mentira que `pg-connection-string` usa em
+  `new URL(str, 'postgres://base')`. Quando a string não tem `esquema://`, ela vira URL
+  relativa e sobra `base` como host. Ou seja, o erro não diz "variável faltando", diz
+  **"variável presente e malformada"**: valor vazio ou ausente daria `localhost`, que é
+  outro erro. Ler o erro com precisão já apontava para onde olhar.
+- O que me custou três rodadas de deploy: gravei o valor certo pelo pipe do PowerShell
+  (`Get-Content -Raw | vercel env add`) e **o PowerShell prefixou um BOM (U+FEFF)** no
+  valor. Caractere invisível na frente do `postgresql://` = sem esquema = `base` de novo.
+  Reproduzi exatamente o defeito do dono, sem enxergar, duas vezes. `$OutputEncoding` não
+  resolveu; o que resolveu foi mandar os bytes por Node (`spawnSync` com `input: Buffer`).
+- Por que demorei a ver: `vercel env pull` devolve **vazio** para variável de Production
+  (elas nascem *sensitive*, ilegíveis depois de gravadas). Eu li "vazio" e acreditei, mesmo
+  com o erro provando que havia valor lá. Só enxerguei ao regravar com `--no-sensitive` e
+  imprimir **os códigos dos caracteres um a um**.
+- E inventei explicação no meio: afirmei ao dono, como fato, que `vercel redeploy`
+  reaproveitava as variáveis do deploy original. Não reaproveita. Era só uma história
+  plausível para justificar um sintoma que não cedia — e ele levou isso como verdade até
+  eu corrigir.
+- Correção: em bug de configuração, **ler os bytes do que está gravado antes de gastar um
+  deploy**. Deploy é ciclo de ~40s mais propagação; imprimir `charCodeAt` é instantâneo. E
+  quando a ferramenta de leitura devolve vazio, isso é um dado sobre a ferramenta, não
+  sobre o valor.
+- Como saber que estou errando: se o mesmo erro sobrevive a uma correção que eu apliquei,
+  a suspeita número um é **que a correção não chegou** — não que a causa era outra, e
+  muito menos um mecanismo novo que eu ainda não verifiquei.

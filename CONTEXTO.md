@@ -259,15 +259,23 @@ anunciar "zerado" sem olhar (aconteceu errado duas vezes, ver
   frente.
 - **Teto de 2 barbeiros do plano** não está travado em código — hoje é regra
   comercial; o lugar dela é a futura tabela de barbearias/plano.
-- **Hospedagem definitiva** — em andamento (2026-08-05). Repositório em
-  `github.com/V-Santtos/barbearia.wpp` (branch `main`), Vercel em
-  `barbearia-wpp.vercel.app`. **No ar:** painel + PWA (HTTPS, que era o que
-  faltava pro Android instalar) e a API do calendário como função em `/api`.
-  **Falta:** `DATABASE_URL`, `ADMIN_API_TOKEN` e `VITE_ADMIN_API_TOKEN` nas
-  variáveis do projeto — sem elas `/api/*` responde 500/503. **O bot ainda não
-  subiu** (segue em ngrok). A entrada do painel passa direto quando o build não
-  tem credencial, porque `VITE_*` viaja no bundle e nunca foi barreira —
-  fechar isso de verdade é etapa combinada, não esquecimento.
+- **Hospedagem definitiva** — painel, PWA e API **no ar e lendo o banco de verdade**
+  (2026-08-05). `github.com/V-Santtos/barbearia.wpp` (branch `main`) →
+  `barbearia-wpp.vercel.app`. Conferido no ar: `/api/profissionais` e
+  `/api/agendamentos` respondendo 200 com dado real do Supabase.
+  As três variáveis estão gravadas; o que quebrava era **caractere invisível no valor**
+  e o **host direto do Supabase ser IPv6 puro** — os dois registrados em
+  `REGRAS-APRENDIZADOS/ANEXO_DEPLOY.md` e `ANEXO_BANCO/README.md`. Ler os dois antes de
+  mexer em variável de ambiente ou de subir a próxima peça.
+  **Duas coisas em aberto, decisão do dono:** (a) o `DATABASE_URL` ficou gravado como
+  `--no-sensitive`, ou seja, legível pelo painel/CLI — foi assim que o defeito apareceu;
+  voltar pra sensitive fecha a porta mas cega o próximo diagnóstico. (b) a senha do banco
+  vazou numa linha de saída durante o diagnóstico desta sessão — se a conversa for parar
+  em lugar compartilhado, trocar a senha no Supabase.
+  **O bot ainda não subiu** (segue em ngrok) — e quando subir precisa do pooler, não do
+  host direto do `.env` local. A entrada do painel passa direto quando o build não tem
+  credencial, porque `VITE_*` viaja no bundle e nunca foi barreira — fechar isso de
+  verdade é etapa combinada, não esquecimento.
 - **Trocar o token de envio antes da produção** — ver `ANEXO_WHATSAPP_META/`.
 - **Coexistência** — parada por decisão, caminho em aberto. Ver
   `ANEXO_WHATSAPP_META/COEXISTENCIA.md`.
