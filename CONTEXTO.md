@@ -259,9 +259,15 @@ anunciar "zerado" sem olhar (aconteceu errado duas vezes, ver
   frente.
 - **Teto de 2 barbeiros do plano** não está travado em código — hoje é regra
   comercial; o lugar dela é a futura tabela de barbearias/plano.
-- **Hospedagem definitiva** — hoje é túnel ngrok. Migrar pra Vercel quando o
-  fluxo estabilizar. Repositório já está no GitHub
-  (`github.com/V-Santtos/barbearia.wpp`, branch `main`) — falta o deploy em si.
+- **Hospedagem definitiva** — em andamento (2026-08-05). Repositório em
+  `github.com/V-Santtos/barbearia.wpp` (branch `main`), Vercel em
+  `barbearia-wpp.vercel.app`. **No ar:** painel + PWA (HTTPS, que era o que
+  faltava pro Android instalar) e a API do calendário como função em `/api`.
+  **Falta:** `DATABASE_URL`, `ADMIN_API_TOKEN` e `VITE_ADMIN_API_TOKEN` nas
+  variáveis do projeto — sem elas `/api/*` responde 500/503. **O bot ainda não
+  subiu** (segue em ngrok). A entrada do painel passa direto quando o build não
+  tem credencial, porque `VITE_*` viaja no bundle e nunca foi barreira —
+  fechar isso de verdade é etapa combinada, não esquecimento.
 - **Trocar o token de envio antes da produção** — ver `ANEXO_WHATSAPP_META/`.
 - **Coexistência** — parada por decisão, caminho em aberto. Ver
   `ANEXO_WHATSAPP_META/COEXISTENCIA.md`.
