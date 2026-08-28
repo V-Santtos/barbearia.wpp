@@ -5,6 +5,10 @@ descobrir lendo o código — porque, por enquanto, não há código pra ler.
 
 ## Leia nesta ordem, toda sessão nova
 
+0. **`AUDITORIA/README.md`** — varredura de ponta a ponta feita em 2026-08-28,
+   quando o projeto trocou de mão. Mapa do sistema, rotas, riscos, peso morto e
+   como levantar tudo. **`AUDITORIA/02-BANCO.md` é o schema reconstruído a partir
+   do código** — o banco não existe mais, e o repositório não sabia recriá-lo.
 1. **`CONTEXTO.md`** (raiz) — memória de curto prazo: o que estamos fazendo agora,
    o que já foi validado, qual o próximo passo. É o primeiro arquivo a checar
    quando a sessão for resetada, para retomar de onde parou.

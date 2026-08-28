@@ -21,6 +21,65 @@ Duas pastas de código:
 Os dois falam com o **mesmo banco**: Supabase `sppexvjvnoganlduyjvs`. Acesso e
 armadilhas em `REGRAS-APRENDIZADOS/ANEXO_BANCO/`.
 
+## Auditoria de entrada (2026-08-28) — `AUDITORIA/`
+
+O projeto trocou de mão. A varredura de ponta a ponta feita na entrada está em
+**`AUDITORIA/`**, e é o ponto de partida de quem chega agora: mapa do sistema,
+inventário de rotas, riscos ranqueados, o que é peso morto e como levantar tudo.
+
+**O arquivo que mais importa é `AUDITORIA/02-BANCO.md`:** o banco não existe mais,
+e o repositório nunca soube recriá-lo — sete das dez tabelas não têm DDL em lugar
+nenhum. Ele traz o schema reconstruído a partir de cada query do código, com as
+incertezas declaradas. Recriar o banco é o primeiro trabalho; quase tudo depende disso.
+
+## O deploy está quebrado (conferido no ar em 2026-08-28)
+
+Duas falhas independentes, as duas achadas batendo HTTP no domínio de produção. **O
+código não é o problema:** typecheck limpo nas duas pastas, 195 testes do bot
+passando, `vite build` fechando.
+
+**1. Toda rota de API com mais de um segmento dá 404 do Vercel.** Só o primeiro nível
+chega no Fastify:
+
+```
+/api/profissionais              500  (chegou no Fastify)
+/api/agendamentos               401  (chegou no Fastify — correto, é protegida)
+/api/rota-inexistente           404 do Fastify   ← a função responde
+/api/dashboard/resumo           404 do VERCEL    ← nem chega
+/api/profissionais/1/agenda     404 do VERCEL
+/api/agendamentos/dias-disponiveis  404 do VERCEL
+/api/whatsapp/conversations     404 do VERCEL
+```
+
+Some assim, no ar: Dashboard, config de agenda, dias/horários disponíveis e o painel
+de Conversas — **e o caminho inteiro que o bot vai usar quando subir.**
+
+A pista está na querystring que o Fastify recebe: `?...caminho=rota-inexistente`, com
+os três pontos **dentro do nome do parâmetro**. Num catch-all de verdade o Vercel
+passaria `?caminho=...`. O que ele gerou foi rota de segmento único chamada
+`...caminho` — ou seja, ele leu `[...caminho].mjs` como `[X]` com `X` = `...caminho`,
+e não como catch-all. O nome do arquivo está correto e sem caractere invisível
+(conferido byte a byte — não é o defeito de 05/08 se repetindo).
+
+Conserto proposto, **não aplicado**: parar de depender da inferência do nome de
+arquivo. Renomear para um nome estático (`api/servidor.mjs`) e declarar a rota no
+`vercel.json` (`/api/(.*)` → `/api/servidor`). O `req.url.replace(/^\/api(?=\/|$)/, '')`
+do handler já funciona nos dois casos, então ele não muda. **Só dá pra confirmar
+deployando** — a tabela de rotas que o Vercel gera não é visível daqui.
+
+**2. O banco não responde à função.** `/api/profissionais` e `/api/servicos` devolvem
+500, que é o `catch` do `pool.query`. Hipótese principal: **o projeto free do Supabase
+pausou sozinho** (~7 dias de inatividade; passaram 23 desde 05/08). Segunda hipótese:
+`DATABASE_URL`/pooler. Conferir no painel do Supabase é passo do dono.
+
+**3. O `ADMIN_API_TOKEN` está público, e com ele o guard não é guard.** O
+`VITE_ADMIN_API_TOKEN` está assado no bundle como literal de 27 caracteres —
+qualquer visitante lê abrindo o `.js`. Com ele abrem `GET /api/agendamentos` (nome e
+telefone de todo cliente) e as rotas de escrita e exclusão. Isso já estava anotado
+como etapa combinada, mas na versão fraca ("a entrada do painel passa direto"); a
+versão forte é esta. Hoje não está exposto só porque o banco caiu (defeito 2) — o
+banco voltar reabre a porta.
+
 ## Onde estamos (2026-08-04)
 
 **O agendamento fecha ponta a ponta pelo WhatsApp**, validado no celular de
@@ -30,15 +89,14 @@ vista disparar de verdade). O dono responde pelo painel e o bot cala enquanto
 ele atende. Decisões e bugs dessa etapa estão travados em
 `REGRAS-APRENDIZADOS/REGRAS.md` (entradas de 2026-08-01) — não repetir aqui.
 
-**Ainda não commitado:** o pool de conexão aquecido na subida (bot e API do
-calendário — `BARBEARIA/src/index.ts`, `src/calendario/http.ts`,
-`src/db/cliente.ts`, `CALENDARIO/server.js`), conserto de uma latência que
-chegou a 8,7s contra o banco real (detalhe em `ANEXO_BANCO/README.md`).
+O pool de conexão aquecido na subida (bot e API do calendário —
+`BARBEARIA/src/index.ts`, `src/calendario/http.ts`, `src/db/cliente.ts`,
+`CALENDARIO/server.js`) consertou uma latência que chegou a 8,7s contra o banco
+real (detalhe em `ANEXO_BANCO/README.md`).
 
 **O dashboard saiu do protótipo e está dentro do app**, em
 `CALENDARIO/components/dashboard/`, lendo dado real de `GET /dashboard/resumo`
 (não mock). Testado no PC e no celular real (LAN), conferido contra o banco.
-**Ainda não commitado.**
 
 A pasta `Dashboard/` (protótipo antigo) foi **apagada** em 2026-08-04 — todo o
 código útil já tinha migrado para `CALENDARIO/`, confirmado por grep (nenhum
@@ -198,7 +256,20 @@ esvaziado/removido — o que sobrar de aprendizado já está em `REGRAS-APRENDIZ
 backlog não pedido no fim do anexo é o único conteúdo que ainda precisa de um lugar (ficar no
 anexo, ou migrar, é decisão de quando isso for revisitado).
 
+**Esse próximo passo é da frente de lapidação, e ela não é mais a única fila.** Desde
+28/08 concorre com o deploy quebrado (seção no topo), que é a fila mais urgente — a
+lapidação melhora o que o dono vê no celular, o deploy é o que decide se existe
+alguma coisa no ar pra ver. Ordem é decisão dele.
+
 ## Ambiente de desenvolvimento
+
+⚠️ **A máquina mudou (constatado em 2026-08-28).** O projeto está agora numa máquina
+**Linux** (`~/Desktop/projetos/barbearia.wpp`); a tabela abaixo e o `ngrok.cmd` são do
+Windows de antes. Nesta máquina, em 28/08, **não havia `node_modules` nem `.env` em
+nenhuma das duas pastas** — as dependências foram instaladas nesta sessão (`npm
+install` nas duas), mas **os dois `.env` continuam faltando**, e sem eles não se roda
+o bot, nem a API, nem `npm run db`. Recriar a partir dos `.env.example` é passo do
+dono (arquivo de segredo é dele).
 
 Três processos + um túnel, todos em **background** — nunca no terminal do
 usuário (processo iniciado lá morre quando ele fecha a janela).
@@ -259,10 +330,13 @@ anunciar "zerado" sem olhar (aconteceu errado duas vezes, ver
   frente.
 - **Teto de 2 barbeiros do plano** não está travado em código — hoje é regra
   comercial; o lugar dela é a futura tabela de barbearias/plano.
-- **Hospedagem definitiva** — painel, PWA e API **no ar e lendo o banco de verdade**
-  (2026-08-05). `github.com/V-Santtos/barbearia.wpp` (branch `main`) →
-  `barbearia-wpp.vercel.app`. Conferido no ar: `/api/profissionais` e
-  `/api/agendamentos` respondendo 200 com dado real do Supabase.
+- **Hospedagem definitiva** — painel, PWA e API no ar (2026-08-05).
+  `github.com/V-Santtos/barbearia.wpp` (branch `main`) → `barbearia-wpp.vercel.app`.
+  **Reconferido em 2026-08-28 e o que está no ar não serve** — dois defeitos, na
+  seção "O deploy está quebrado" acima. A frase antiga daqui (`/api/profissionais` e
+  `/api/agendamentos` respondendo 200 com dado real) não se sustenta: hoje a primeira
+  dá 500 e a segunda dá 401, que é o comportamento **certo** dela (é protegida por
+  `ADMIN_API_TOKEN`) — ou seja, ela nunca foi prova de banco no ar.
   As três variáveis estão gravadas; o que quebrava era **caractere invisível no valor**
   e o **host direto do Supabase ser IPv6 puro** — os dois registrados em
   `REGRAS-APRENDIZADOS/ANEXO_DEPLOY.md` e `ANEXO_BANCO/README.md`. Ler os dois antes de
