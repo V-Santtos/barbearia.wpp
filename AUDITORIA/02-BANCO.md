@@ -3,6 +3,12 @@
 > **Este é o arquivo mais importante do diretório.** O banco não existe mais, e o
 > repositório nunca soube recriá-lo. O que está aqui foi derivado lendo cada query
 > do código. É o que destrava o resto.
+>
+> **RESOLVIDO em 28/08.** O DDL abaixo virou migração versionada:
+> `BARBEARIA/db/migracoes/20260730120000_base_do_esquema_herdado.sql`. A cadeia de
+> 7 migrações foi validada contra um Postgres 17 limpo — 10 tabelas, 24 índices, 10
+> com RLS — e as 21 consultas reais da aplicação rodaram em cima dela. Este arquivo
+> continua sendo o **porquê** de cada coluna; a migração é o executável.
 
 ## O tamanho do buraco
 
@@ -265,16 +271,26 @@ Duas consequências para agora:
   trigger **não existe**, então nenhuma tabela terá RLS. Não é problema — só não
   se pode confiar em RLS como camada de proteção, e hoje o sistema não confia.
 
-## Recomendação
+## Recomendação — estado em 28/08
 
-O primeiro trabalho do projeto:
+1. ~~Procurar um dump ou backup~~ — **não existe.** Seguimos por reconstrução.
+2. ~~Transformar o DDL em migração `000_base`~~ — **feito**, e validado do zero
+   contra Postgres 17 limpo. Detalhes em `BARBEARIA/db/migracoes/README.md`.
+3. **Seed com as patologias reais — ainda não feito.** É o próximo passo natural, e
+   a recomendação continua de pé: reproduzir cliente com telefone em formato antigo,
+   agendamento cujo `profissional` não bate com nenhum `profissionais.nome` (o órfão
+   que a falta de FK permite) e dia com os três períodos bloqueados. Seed limpo dá
+   confiança falsa.
+4. Decidir onde o banco vai morar — Supabase novo, ou Postgres gerenciado. A
+   migração roda igual nos dois; o que muda é o `ensure_rls` (ver acima) e o SSL.
 
-1. **Procurar um dump ou backup** antes de aceitar esta reconstrução.
-2. Transformar o DDL acima na migração `000_base` em `BARBEARIA/db/migracoes/`,
-   para que o repositório passe a reconstruir o ambiente do zero — dívida que o
-   próprio método de trabalho do projeto já previa.
-3. Escrever um **seed** que reproduza as patologias reais, não um mundo
-   bem-comportado: cliente com telefone em formato antigo, agendamento cujo
-   `profissional` não bate com nenhum `profissionais.nome` (o órfão que a falta de
-   FK permite), dia com os três períodos bloqueados. Seed limpo dá confiança falsa.
-4. Só então decidir onde o banco vai morar.
+## O que a validação de 28/08 provou, e o que não provou
+
+**Provou:** as 7 migrações aplicam em ordem num banco vazio; o resultado tem as 10
+tabelas, 24 índices e RLS em todas; as 21 consultas mais complexas da aplicação
+(CTEs do bot, `LATERAL` do CRM, upserts com `GREATEST`, joins por nome) rodam sem
+erro contra ele; e aplicar por `psql` ou pelo runner dá schema idêntico.
+
+**Não provou:** que os tipos batem com os do banco perdido. `preco numeric(10,2)`
+continua sendo palpite — nenhuma consulta revela a escala real. Se o sistema voltar
+a receber dado de verdade e algum valor parecer errado, é o primeiro lugar a olhar.

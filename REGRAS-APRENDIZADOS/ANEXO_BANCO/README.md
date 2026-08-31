@@ -1,4 +1,9 @@
-# Banco (Supabase `sppexvjvnoganlduyjvs`, PostgreSQL 17.6)
+# Banco (Supabase `bbcuudayemhjanklfgtr`, PostgreSQL 17.6)
+
+> **O banco mudou em 2026-08-28.** O projeto antigo (`sppexvjvnoganlduyjvs`) foi perdido, e
+> este é um projeto NOVO, reconstruído pelas migrações de `BARBEARIA/db/migracoes/` — que
+> agora recriam o esquema inteiro do zero. As armadilhas abaixo continuam valendo, com uma
+> correção importante marcada como **[CORRIGIDO 28/08]**.
 
 **Não existe cópia do schema neste repositório, de propósito.** Estrutura, tipos, contagem
 de linhas e conteúdo de tabela se pergunta ao banco — cópia em markdown envelhece calada e
@@ -39,8 +44,19 @@ contagens podem ter mudado; o comportamento, não.
 
 ## Ao criar qualquer tabela
 
-**Um event trigger (`ensure_rls`) liga RLS sozinho em toda tabela nova de `public`.** Não é
-configuração nossa, é hardening padrão. Tabela criada sem política **nega tudo pela API
+**[CORRIGIDO 28/08] O event trigger `ensure_rls` NÃO é hardening padrão do Supabase — era
+daquele projeto.** Medido no projeto novo: `select count(*) from pg_event_trigger where
+evtname='ensure_rls'` devolve **zero**. Ou seja, a frase antiga ("não é configuração nossa,
+é hardening padrão") estava errada, e confiar nela custaria caro: as 10 tabelas teriam
+nascido **sem RLS**, incluindo `webhook_eventos`, que guarda o payload cru de cada mensagem
+— telefone e texto do cliente — exposto à API pública.
+
+Por isso as migrações agora ligam RLS **explicitamente**, tabela por tabela
+(`20260730120000` para as nove herdadas, `20260828120000` para `webhook_eventos`). O que era
+acidente virou decisão, e o comportamento passa a ser o mesmo em qualquer host: Supabase,
+container, Neon, RDS.
+
+A regra prática não muda: Tabela criada sem política **nega tudo pela API
 pública em silêncio** — 0 linhas, sem erro, sem log. Política entra na mesma migração que
 cria a tabela, sempre.
 
@@ -145,7 +161,7 @@ faz ~6 consultas em sequência, e o webhook inteiro fica em 5-8s (a Meta desiste
 
 ## Ao ligar o banco de fora da sua máquina (Vercel e qualquer serverless)
 
-**O host direto `db.sppexvjvnoganlduyjvs.supabase.co` só tem registro AAAA — é IPv6 puro,
+**O host direto `db.bbcuudayemhjanklfgtr.supabase.co` só tem registro AAAA — é IPv6 puro,
 sem IPv4 nenhum** (verificado em 2026-08-05). A máquina do dono alcança; função do Vercel
 não, ela só fala IPv4. O sintoma engana feio: a mesmíssima `DATABASE_URL` que funciona no
 `npm run db` falha no deploy, e o erro não menciona IPv6 — fala de host que não resolve.
@@ -153,7 +169,7 @@ não, ela só fala IPv4. O sintoma engana feio: a mesmíssima `DATABASE_URL` que
 De plataforma serverless o endereço é o **pooler** (Supavisor), que tem IPv4:
 
 ```
-postgresql://postgres.sppexvjvnoganlduyjvs:<senha>@aws-1-us-west-2.pooler.supabase.com:6543/postgres
+postgresql://postgres.bbcuudayemhjanklfgtr:<senha>@aws-1-<regiao>.pooler.supabase.com:6543/postgres
 ```
 
 Três diferenças que mordem quem copia por cima da string direta: o usuário vira

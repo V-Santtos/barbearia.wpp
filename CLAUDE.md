@@ -41,8 +41,9 @@ Ver `REGRAS-APRENDIZADOS/APRENDIZADOS.md` (entrada de 2026-07-30).
 
 ## Acesso ao banco (não descoberto pelo código)
 
-O banco do case atual é o Supabase ref `sppexvjvnoganlduyjvs` (PostgreSQL 17.6),
-o mesmo que o fluxo n8n usava. Acesso por **conexão direta Postgres**:
+O banco do case atual é o Supabase ref `bbcuudayemhjanklfgtr` (PostgreSQL 17.6),
+projeto NOVO criado em 2026-08-28 — o antigo (`sppexvjvnoganlduyjvs`, o do fluxo
+n8n) foi perdido, e este foi reconstruído pelas migrações do repositório. Acesso por **conexão direta Postgres**:
 `DATABASE_URL` no `BARBEARIA/.env` (coberto pelo `.gitignore`), usuário
 `postgres`, com **leitura e escrita**.
 
