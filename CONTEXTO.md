@@ -18,8 +18,9 @@ Duas pastas de código:
 | `BARBEARIA/` | o bot (Hono + TypeScript + `pg`) | 3333 |
 | `CALENDARIO/` | API de agenda (Fastify) + painel do dono (React) | 3334 + 3002 |
 
-Os dois falam com o **mesmo banco**: Supabase `sppexvjvnoganlduyjvs`. Acesso e
-armadilhas em `REGRAS-APRENDIZADOS/ANEXO_BANCO/`.
+Os dois falam com o **mesmo banco**: Supabase `bbcuudayemhjanklfgtr` (projeto novo,
+01/09 — ver a seção abaixo). Acesso e armadilhas em
+`REGRAS-APRENDIZADOS/ANEXO_BANCO/`.
 
 ## Auditoria de entrada (2026-08-28) — `AUDITORIA/`
 
@@ -27,58 +28,93 @@ O projeto trocou de mão. A varredura de ponta a ponta feita na entrada está em
 **`AUDITORIA/`**, e é o ponto de partida de quem chega agora: mapa do sistema,
 inventário de rotas, riscos ranqueados, o que é peso morto e como levantar tudo.
 
-**O arquivo que mais importa é `AUDITORIA/02-BANCO.md`:** o banco não existe mais,
-e o repositório nunca soube recriá-lo — sete das dez tabelas não têm DDL em lugar
-nenhum. Ele traz o schema reconstruído a partir de cada query do código, com as
-incertezas declaradas. Recriar o banco é o primeiro trabalho; quase tudo depende disso.
+**`AUDITORIA/02-BANCO.md`** foi o que destravou tudo: das dez tabelas que o código
+usa, sete não tinham DDL em lugar nenhum. Ele traz o schema reconstruído a partir de
+cada query, com as incertezas declaradas — e virou migração versionada em 01/09. O
+banco já foi recriado; o arquivo agora vale como **o porquê de cada coluna**, e
+porque as incertezas de tipo continuam de pé (`preco` é a maior).
 
-## O deploy está quebrado (conferido no ar em 2026-08-28)
+Os riscos de `04-RISCOS.md` continuam válidos, **menos os de deploy**, resolvidos em
+01/09. Os de autenticação e falta de teste seguem intocados.
 
-Duas falhas independentes, as duas achadas batendo HTTP no domínio de produção. **O
-código não é o problema:** typecheck limpo nas duas pastas, 195 testes do bot
-passando, `vite build` fechando.
+## O sistema está NO AR e funcionando (2026-09-01)
 
-**1. Toda rota de API com mais de um segmento dá 404 do Vercel.** Só o primeiro nível
-chega no Fastify:
+**`https://barbearia-wpp-two.vercel.app`** — painel, API e bot, os três de pé,
+lendo um banco reconstruído. Primeira conversa real atravessou o sistema inteiro
+neste dia. Substitui a seção "o deploy está quebrado", que era o estado de 28/08.
 
+| Peça | Estado |
+|---|---|
+| Painel (React/PWA) | ✅ no ar |
+| API do calendário | ✅ lendo o Supabase |
+| Bot de WhatsApp | ✅ atendendo, **URL de webhook fixa** |
+| Banco | ✅ 10 tabelas, RLS em todas, recriável do zero |
+
+**O banco é um projeto NOVO:** `bbcuudayemhjanklfgtr`. O antigo
+(`sppexvjvnoganlduyjvs`) foi perdido, e este foi reconstruído pelas migrações
+deste repositório — que agora sabem recriá-lo do zero. Detalhes e as incertezas
+da reconstrução em `AUDITORIA/02-BANCO.md`.
+
+**Vercel: conta pessoal, deploy MANUAL pelo CLI**, sem conexão com o Git (decisão
+do dono). Push no GitHub **não publica nada** — são dois gestos separados:
+
+```bash
+npx vercel deploy --prod --yes --scope inadequado-3455s-projects
 ```
-/api/profissionais              500  (chegou no Fastify)
-/api/agendamentos               401  (chegou no Fastify — correto, é protegida)
-/api/rota-inexistente           404 do Fastify   ← a função responde
-/api/dashboard/resumo           404 do VERCEL    ← nem chega
-/api/profissionais/1/agenda     404 do VERCEL
-/api/agendamentos/dias-disponiveis  404 do VERCEL
-/api/whatsapp/conversations     404 do VERCEL
-```
 
-Some assim, no ar: Dashboard, config de agenda, dias/horários disponíveis e o painel
-de Conversas — **e o caminho inteiro que o bot vai usar quando subir.**
+O deploy antigo (`barbearia-wpp.vercel.app`) **continua no ar, numa conta que não é
+nossa** — provavelmente do desenvolvedor anterior. Está quebrado e ninguém aqui
+consegue desligá-lo.
 
-A pista está na querystring que o Fastify recebe: `?...caminho=rota-inexistente`, com
-os três pontos **dentro do nome do parâmetro**. Num catch-all de verdade o Vercel
-passaria `?caminho=...`. O que ele gerou foi rota de segmento único chamada
-`...caminho` — ou seja, ele leu `[...caminho].mjs` como `[X]` com `X` = `...caminho`,
-e não como catch-all. O nome do arquivo está correto e sem caractere invisível
-(conferido byte a byte — não é o defeito de 05/08 se repetindo).
+### Os quatro defeitos consertados hoje, e o que cada um ensina
 
-Conserto proposto, **não aplicado**: parar de depender da inferência do nome de
-arquivo. Renomear para um nome estático (`api/servidor.mjs`) e declarar a rota no
-`vercel.json` (`/api/(.*)` → `/api/servidor`). O `req.url.replace(/^\/api(?=\/|$)/, '')`
-do handler já funciona nos dois casos, então ele não muda. **Só dá pra confirmar
-deployando** — a tabela de rotas que o Vercel gera não é visível daqui.
+1. **404 em rota aninhada.** `api/[...caminho].mjs` não era lido como catch-all
+   pela Vercel — virava rota de UM segmento chamada `...caminho`. Sumiam Dashboard,
+   Conversas e o webhook inteiro. Agora o roteamento é declarado no `vercel.json`;
+   **não voltar a depender de inferência por nome de arquivo.**
+2. **POST do webhook pendurava 30s.** A Vercel entrega o corpo já parseado e com o
+   stream esgotado; o `getRequestListener` do @hono/node-server esperava bytes que
+   nunca vinham. Conserto: handler no estilo Web, o que exige **métodos HTTP
+   nomeados** (`export const POST`) em `api/bot.mjs`, e não `export default`.
+   Remontar o corpo não era opção — a assinatura HMAC precisa dos bytes exatos.
+3. **Fuso três horas errado.** `process.env.TZ = process.env.TZ || "..."` — a
+   Vercel define `TZ=UTC`, que é truthy, e o fallback nunca aplicava. A barbearia
+   perdia as três últimas horas de agenda todo dia, **sem erro e sem log**. `TZ` é
+   nome reservado na Vercel; o fuso agora é cravado no código.
+4. **Migrações não rodavam em banco novo.** O runner consultava
+   `supabase_migrations.schema_migrations` antes de existir, e o modo ensaio
+   revertia cada migração antes da seguinte, acusando erro falso numa cadeia.
 
-**2. O banco não responde à função.** `/api/profissionais` e `/api/servicos` devolvem
-500, que é o `catch` do `pool.query`. Hipótese principal: **o projeto free do Supabase
-pausou sozinho** (~7 dias de inatividade; passaram 23 desde 05/08). Segunda hipótese:
-`DATABASE_URL`/pooler. Conferir no painel do Supabase é passo do dono.
+**A lição que atravessa os quatro:** todos passaram no teste local e só apareceram
+em produção. Nenhum dava erro — davam resposta errada em silêncio.
 
-**3. O `ADMIN_API_TOKEN` está público, e com ele o guard não é guard.** O
-`VITE_ADMIN_API_TOKEN` está assado no bundle como literal de 27 caracteres —
-qualquer visitante lê abrindo o `.js`. Com ele abrem `GET /api/agendamentos` (nome e
-telefone de todo cliente) e as rotas de escrita e exclusão. Isso já estava anotado
-como etapa combinada, mas na versão fraca ("a entrada do painel passa direto"); a
-versão forte é esta. Hoje não está exposto só porque o banco caiu (defeito 2) — o
-banco voltar reabre a porta.
+### Seed de teste
+
+`BARBEARIA/db/seed/teste.sql`, aplicado. Idempotente; todo agendamento nasce com
+`source = 'seed-teste'`, que é o discriminador para separar sintético de real e
+limpar depois. 2 barbeiros com agendas **diferentes** de propósito, 4 serviços, 1
+bloqueio parcial, 8 agendamentos.
+
+Foi ele que tornou o bug de fuso visível — com o banco vazio não havia horário
+para faltar.
+
+**O que ele NÃO faz:** reproduzir as patologias do banco real (telefone em formato
+antigo, agendamento órfão de profissional, cliente duplicado). Seed limpo só testa
+o caso feliz. É o próximo passo natural.
+
+### O que continua em aberto
+
+- **Não há autenticação real.** O login do painel é decorativo e o
+  `ADMIN_API_TOKEN` viaja no bundle — a própria CLI da Vercel exigiu marcá-lo como
+  público para aceitar. Riscos 1 e 2 de `AUDITORIA/04-RISCOS.md`, intocados. Agora
+  que o banco tem dado, a porta está de fato aberta.
+- **A API do calendário não tem um único teste** — 2.501 linhas, e é onde moram os
+  três dos quatro bugs de hoje.
+- **Rotacionar antes de produção:** senha do banco, os três tokens de integração e
+  a senha do painel (hoje `123`) apareceram no chat, por decisão consciente de
+  ambiente de teste.
+- O ponytail de `src/db/eventos.ts` **venceu**: a chamada HTTP ao calendário
+  acontece dentro da transação, e a API deixou de estar em localhost.
 
 ## Onde estamos (2026-08-04)
 
@@ -107,8 +143,8 @@ import apontava pra lá).
 velho: ícone da tesoura gerado por `npm run icones`, `maskable` com arquivo
 próprio, `apple-touch-icon` 180 opaco, `lang: pt-BR`, cor de tema igualada ao
 fundo do app e bloco `preview` alcançável na LAN. Decisões em `REGRAS.md`
-(2026-08-04). **Falta só HTTPS**, que não se resolve em código — vem com o
-deploy; hoje o iPhone instala pela "Tela de Início" e o Android não.
+(2026-08-04). O HTTPS que faltava **chegou com o deploy de 01/09**, então o PWA é
+instalável de verdade agora — ainda não conferido no aparelho.
 
 **Três levas de ajuste visual no mobile** rodaram a partir de prints reais do
 usuário — ele manda print, eu ajusto, ele confere de novo, é assim que essa
