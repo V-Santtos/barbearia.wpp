@@ -15,9 +15,30 @@ dotenv.config();
 // oferecendo ou recusando horario errado.
 //
 // Corrigir aqui em vez de nas quatro funcoes de data: elas ja estao certas desde
-// que o relogio esteja. `TZ` do ambiente, quando existir, continua mandando — e
-// a barbearia em outro fuso, um dia, se resolve por ali.
-process.env.TZ = process.env.TZ || "America/Sao_Paulo";
+// que o relogio esteja.
+//
+// ATENCAO AO QUE ESTA LINHA JA FOI. Ela era:
+//
+//     process.env.TZ = process.env.TZ || "America/Sao_Paulo";
+//
+// A intencao era "respeitar o fuso do ambiente quando houver". Em serverless isso
+// se vira contra: a Vercel define `TZ=UTC` sozinha, "UTC" e truthy, e o fallback
+// NUNCA aplicava. O servico rodou tres horas adiantado em producao (01/09/2026).
+//
+// O sintoma nao parecia de fuso: `horarios-disponiveis` devolvia lista VAZIA para
+// hoje e cheia para amanha. As 16h58 de Brasilia o servidor achava que eram 19h58,
+// entao todo horario do dia caia atras da antecedencia minima de 15 min — sem erro,
+// sem log, so a barbearia perdendo as tres ultimas horas de agenda todo dia.
+//
+// `TZ` e nome RESERVADO na Vercel e nao pode ser definido por variavel de ambiente
+// (a API recusa). Entao o fuso e cravado aqui, e a porta para uma barbearia em
+// outro fuso fica num nome proprio, que a plataforma nao toca.
+//
+// Nota: o bot (BARBEARIA/) nunca teve esse problema. Ele nao pergunta a hora ao
+// processo — passa o fuso explicito no SQL (`now() at time zone $2`). Quando as
+// duas metades do sistema discordam de metodo, a que confia no relogio do processo
+// e a que quebra ao mudar de host.
+process.env.TZ = process.env.FUSO_BARBEARIA || "America/Sao_Paulo";
 
 const { Pool } = pkg;
 
