@@ -1,0 +1,23 @@
+{
+  "//": [
+    "Build de producao: e o que a funcao do Vercel importa.",
+    "",
+    "O tsconfig.json principal tem `noEmit: true` porque, ate 08/2026, o bot so",
+    "rodava por `tsx` (dev) e `vitest` (teste) — nenhum dos dois precisa de saida",
+    "compilada. Publicar precisa, e por isso este arquivo existe em vez de mudar",
+    "aquele: `npm run typecheck` continua sendo checagem pura, sem escrever nada.",
+    "",
+    "Os testes ficam de fora do `dist`: eles nao vao pra producao, e incluir-los",
+    "arrastaria o vitest pra dentro do bundle da funcao."
+  ],
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": false,
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

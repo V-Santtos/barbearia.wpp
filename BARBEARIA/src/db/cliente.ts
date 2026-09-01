@@ -4,12 +4,27 @@ import pg from 'pg';
  * Pool unico do processo. Nao e o pooler transacional do Supabase (porta 6543) —
  * e a conexao direta, a mesma que as ferramentas de `ferramentas/` usam.
  *
- * ponytail: conexao direta com pool pequeno. Teto: um processo local ou uma
- * funcao serverless de baixa concorrencia. Gatilho de upgrade: quando subir na
- * Vercel de verdade, trocar pelo pooler transacional (6543) — conexao direta nao
- * aguenta uma funcao por requisicao.
+ * GATILHO DISPARADO em 2026-08-28: o bot subiu na Vercel. O que este comentario
+ * pedia — trocar pelo pooler transacional (6543) — passa a ser CONFIGURACAO, nao
+ * codigo: e a `DATABASE_URL` do painel do Vercel que tem que apontar pro pooler.
+ * Nao e preferencia: `db.<ref>.supabase.co` so tem registro AAAA (IPv6 puro), e
+ * funcao serverless nao alcanca. Foi esse o defeito de 05/08.
+ *
+ * O que muda no codigo e o TAMANHO do pool — ver `EM_SERVERLESS` abaixo.
  */
 let pool: pg.Pool | undefined;
+
+/**
+ * Fora de serverless existe UM processo, e manter conexao de pe e o certo (ver
+ * abaixo). Em serverless nao existe "o processo": existem N instancias que a
+ * plataforma cria e mata sozinha, e cinco conexoes eternas vezes N estoura o teto
+ * de 60 do Supabase. Quem cai junto e o painel, que bebe do mesmo banco — o bot
+ * derrubaria o dono junto com ele.
+ *
+ * Mesmo raciocinio, e mesma solucao, que `CALENDARIO/server.js` ja aplicava: sob
+ * VERCEL o pool encolhe e volta a soltar conexao ociosa.
+ */
+const EM_SERVERLESS = Boolean(process.env.VERCEL);
 
 /**
  * `idleTimeoutMillis: 0` — conexao aberta NUNCA e fechada por ociosidade.
@@ -29,8 +44,8 @@ export function obterPool(url: string): pg.Pool {
     connectionString: url,
     // O certificado do Supabase vem de uma CA que o Node nao carrega por padrao.
     ssl: { rejectUnauthorized: false },
-    max: 5,
-    idleTimeoutMillis: 0,
+    max: EM_SERVERLESS ? 2 : 5,
+    idleTimeoutMillis: EM_SERVERLESS ? 10_000 : 0,
     keepAlive: true,
   });
 

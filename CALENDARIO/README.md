@@ -17,9 +17,20 @@ Ela servia a três consumidores; sobrou um. Isso explica quase toda decisão aqu
   `GET/PUT /categorias-servicos` e `PUT /servicos`.
 - **Não há n8n.** Era o webhook de WhatsApp do sistema antigo, aposentado. Saíram
   a notificação a cada agendamento e o transporte de envio de mensagem.
-- **Não há integração com o bot ainda.** As rotas `/whatsapp/*` estão de pé como
-  a costura pronta, mas ninguém escreve nelas hoje — o painel de conversas
-  aparece vazio, e isso é o esperado, não defeito.
+- ~~**Não há integração com o bot ainda.**~~ **[DESATUALIZADO — corrigido em
+  2026-08-28.]** Era verdade quando esta pasta chegou; deixou de ser em agosto. O
+  bot espelha os **dois lados** da conversa em `POST /whatsapp/events`
+  (`BARBEARIA/src/calendario/crm.ts`): a mensagem do cliente e cada resposta que
+  realmente saiu, com o `wamid` que a Meta devolveu — é ele que impede mensagem
+  duplicada no painel. O caminho de volta também existe: o dono responde pelo
+  painel, a API chama `POST /mensagens` no bot, e o bot fala com a Meta. Validado
+  no celular de verdade, registrado em `REGRAS.md` (2026-08-01).
+
+  O espelho **falha em silêncio de propósito**: painel fora do ar não pode
+  atrasar nem derrubar a resposta ao cliente.
+
+  O painel de conversas ainda aparece vazio, mas hoje por outro motivo — o banco
+  foi reconstruído do zero em 28/08 e ainda não houve conversa nenhuma.
 
 ## Como rodar
 

@@ -1,8 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "npm install --prefix CALENDARIO",
-  "buildCommand": "npm run build --prefix CALENDARIO",
+  "installCommand": "npm install --prefix CALENDARIO && npm install --prefix BARBEARIA",
+  "buildCommand": "npm run build --prefix CALENDARIO && npm run build --prefix BARBEARIA",
   "outputDirectory": "CALENDARIO/dist",
-  "rewrites": [{ "source": "/((?!api(?:/|$)).*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/api/bot/(.*)", "destination": "/api/bot" },
+    { "source": "/api/(.*)", "destination": "/api/servidor" },
+    { "source": "/((?!api(?:/|$)).*)", "destination": "/index.html" }
+  ]
 }

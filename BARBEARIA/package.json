@@ -13,6 +13,7 @@
     "db:schema": "node --env-file=.env ferramentas/ler-schema.mjs",
     "db:dados": "node --env-file=.env ferramentas/ler-dados.mjs",
     "funil": "node --env-file=.env ferramentas/funil.mjs",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
