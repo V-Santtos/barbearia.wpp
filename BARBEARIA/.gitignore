@@ -10,3 +10,7 @@ dist/
 schema-atual.md
 dados-atual.md
 *.saida.md
+
+# Numeros de teste reais (pessoas de verdade). O repositorio e PUBLICO —
+# ver REGRAS-APRENDIZADOS/ANEXO_WHATSAPP_META/NUMEROS_DE_TESTE.md.
+.testes.local.md

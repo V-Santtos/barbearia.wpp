@@ -1,5 +1,8 @@
 # WhatsApp / Meta Cloud API
 
+> **Números usados para testar** (nossos e de pessoas próximas): `NUMEROS_DE_TESTE.md`,
+> ao lado deste arquivo. Inclui como limpar o rastro de um teste e repetir do zero.
+
 O que o painel da Meta e a plataforma impõem ao nosso bot. Saiu do `CONTEXTO.md`
 em 2026-07-30, quando aquele arquivo passou de 400 linhas: isto aqui é
 conhecimento durável, não "onde estamos agora".
