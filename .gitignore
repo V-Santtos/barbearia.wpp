@@ -9,3 +9,11 @@
 .claude/skills/impeccable/
 
 .vercel
+
+# O `vercel link` escreve `.env*` aqui sozinho. Mantido, mas com a excecao: o
+# padrao casa em qualquer nivel, entao sem o `!` um `.env.example` NOVO entraria
+# ignorado e calado — e ele e documentacao, tem que ser commitavel. Os dois que
+# existem hoje sobrevivem so por ja estarem rastreados.
+.env*
+!.env.example
+!**/.env.example
