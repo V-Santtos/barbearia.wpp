@@ -29,9 +29,18 @@ primeiros ficam aplicados e a execução para ali — não pula por cima de migr
 
 ## Ao escrever uma migração
 
-- **RLS:** um event trigger (`ensure_rls`) liga RLS em toda tabela nova de `public`. Tabela
-  criada sem política **nega tudo pela API pública, em silêncio** — 0 linhas, sem erro. Se a
-  tabela vai ser lida pela API, a política entra na mesma migração.
+- **RLS: ligue explicitamente, sempre.** Havia um event trigger (`ensure_rls`) fazendo isso
+  sozinho — mas ele era hardening do projeto Supabase **antigo** e não existe no atual
+  (medido: `pg_event_trigger` volta vazio). Confiar nele deixou `webhook_eventos` aberta sem
+  ninguém notar, justo a tabela com o payload cru de toda mensagem. Toda tabela nova leva
+  `alter table ... enable row level security` na própria migração. Tabela com RLS e sem
+  política **nega tudo pela API pública, em silêncio** — 0 linhas, sem erro; se ela vai ser
+  lida por lá, a política entra junto.
+- **`not null` em coluna nova quebra o código que está no ar.** Migração e deploy não são
+  atômicos entre si, e no intervalo o insert do código antigo falha. Ou a coluna nasce com
+  `default`/gatilho de transição, ou o `not null` espera o deploy. Ver
+  `20260904120100` e `20260904120200`, que fazem os dois e declaram a data de morte de cada
+  dispositivo.
 - **Idempotência ajuda, mas não é obrigatória** (`if not exists`, `create or replace`): o
   registro em `schema_migrations` já impede reaplicação.
 - **`rollback` não é automático.** A coluna existe na tabela de histórico e está vazia. Se a
@@ -54,6 +63,11 @@ todas as outras, então num banco vazio a cadeia roda inteira e na ordem:
 20260730180000  dados_cliente   -> renomeia nomewpp -> nome
 20260730180100  webhook_eventos -> acao text -> text[]
 20260730190000  agenda_prof.    -> janela 7..15 -> 4..10
+20260828120000  webhook_eventos -> RLS explícito (o event trigger não existe mais)
+20260904120000  barbearias      -> a tabela de tenant, e a loja atual
+20260904120100  8 tabelas       -> barbearia_id + uniques de telefone por loja
+20260904120200  agendamentos    -> profissional_id com FK (era só o nome)
+20260904120300  agendamentos    -> a trava de double-booking que faltava
 ```
 
 **A base reproduz o estado PRÉ-migrações de propósito** (`nomewpp` com esse nome, sem

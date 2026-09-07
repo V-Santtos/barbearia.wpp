@@ -92,29 +92,95 @@ em produção. Nenhum dava erro — davam resposta errada em silêncio.
 
 `BARBEARIA/db/seed/teste.sql`, aplicado. Idempotente; todo agendamento nasce com
 `source = 'seed-teste'`, que é o discriminador para separar sintético de real e
-limpar depois. 2 barbeiros com agendas **diferentes** de propósito, 4 serviços, 1
-bloqueio parcial, 8 agendamentos.
+limpar depois.
 
 Foi ele que tornou o bug de fuso visível — com o banco vazio não havia horário
 para faltar.
 
+**Desde 04/09 ele tem DUAS barbearias**, e essa é a parte que importa: com uma loja
+só, o isolamento entre barbearias é intestável — toda consulta acerta por acidente,
+porque não existe dado errado para devolver. A loja B ('central-teste') é o
+instrumento de medida. O serviço dela chama-se literalmente "SÓ DA LOJA B — se
+aparecer na A, vazou", e ele **aparece** hoje no `GET /api/servicos`: o vazamento é
+real e agora é visível, que era o objetivo.
+
 **O que ele NÃO faz:** reproduzir as patologias do banco real (telefone em formato
-antigo, agendamento órfão de profissional, cliente duplicado). Seed limpo só testa
-o caso feliz. É o próximo passo natural.
+antigo, cliente duplicado). Seed limpo só testa o caso feliz. (Agendamento órfão de
+profissional deixou de ser possível — `profissional_id` tem FK desde 04/09.)
+
+## Multi-tenant — Fase 1 aplicada (2026-09-04)
+
+Plano completo em `~/.claude/plans/unified-greeting-russell.md`. Decisões travadas
+com o usuário antes de codar:
+
+1. **Tenant = barbearia** (não profissional). O painel continua sendo a visão do dono
+   sobre a loja toda — é o que ele já é: gerencia equipe, alterna barbeiros, define cor.
+2. **RLS de verdade via troca de role na API**, preservando as 2.501 linhas de regra
+   de agenda do `server.js`.
+3. **Um número de WhatsApp por barbearia.** O bot continua perguntando "com qual
+   barbeiro?" — nenhuma mudança de fluxo.
+4. **Login com e-mail e senha, não magic link.** A versão final é auto-serviço com
+   pagamento; magic link põe uma ida à caixa de e-mail no meio do funil de pagamento,
+   faz a entrega de e-mail virar caminho crítico da receita, e briga com o painel ser
+   PWA `standalone` + app Android (Capacitor). Os dois convivem no mesmo `auth.users`,
+   então `signInWithOtp` pode entrar depois como recuperação, sem migração.
+
+### O que a Fase 1 fez (4 migrações, aplicadas e verificadas)
+
+- `barbearias` criada; a loja atual cadastrada pelo `phone_number_id` que **já
+  chegava** no webhook desde o primeiro dia e nunca era lido.
+- `barbearia_id` em 8 tabelas. `agenda_profissional` e `dias_bloqueados` ficam de
+  fora de propósito — penduram em `profissionais` por FK, e a política de RLS delas
+  resolve por join; denormalizar criaria uma segunda fonte da mesma verdade.
+- Os uniques globais de telefone viraram por-barbearia. Eram o vazamento mais
+  concreto: um cliente falando com duas lojas virava uma linha só.
+- `agendamentos.profissional_id` com FK — antes era só o **nome** copiado, sem FK.
+- A trava de double-booking `agendamentos_slot_ativo_unique`, que **o `server.js`
+  já tratava no `catch` e não existia no banco**. Código morto esperando um erro que
+  nunca chegava; o que protegia o slot era só "consulta, depois insere", que perde a
+  corrida.
+
+### Os dois dispositivos de transição — têm data para morrer
+
+**Migração e deploy não são atômicos entre si.** O banco muda por um comando, o
+código por outro, e existe um intervalo. Ignorar isso teria derrubado o sistema no
+ar: `not null` sem default quebra todo insert do código em produção, que não sabe
+que barbearias existem.
+
+- **Gatilho** `agendamentos_resolver_profissional` — deriva `profissional_id` do
+  nome quando o insert não traz o id.
+- **Default** `barbearia_em_transicao()` — aponta `barbearia_id` para a loja atual.
+
+Os dois foram **verificados através do deploy real**, não só em ensaio: um `POST
+/api/agendamentos` pelo código que está no ar gravou `profissional_id=1` e
+`barbearia_id=1` sozinho.
+
+**Risco conhecido enquanto existirem:** um INSERT novo que esqueça `barbearia_id`
+não dá erro — cai na loja A em silêncio. É o preço de não ter janela de
+indisponibilidade, e por isso não podem virar moradia. Saem no fim da Fase 4, junto
+com a coluna `agendamentos.profissional` (texto).
+
+### Próximo passo
+
+Fase 2 — as políticas de RLS. Hoje a RLS está **ligada nas 10 tabelas com zero
+políticas, e é inerte**: as duas metades conectam como `postgres`, que tem
+`rolbypassrls = true`. Escrever política nenhuma muda isso. O que falta é o role
+`app_api` sem bypass + `set local role authenticated` por requisição no `server.js`.
 
 ### O que continua em aberto
 
 - **Não há autenticação real.** O login do painel é decorativo e o
   `ADMIN_API_TOKEN` viaja no bundle — a própria CLI da Vercel exigiu marcá-lo como
-  público para aceitar. Riscos 1 e 2 de `AUDITORIA/04-RISCOS.md`, intocados. Agora
-  que o banco tem dado, a porta está de fato aberta.
+  público para aceitar. Riscos 1 e 2 de `AUDITORIA/04-RISCOS.md`. É a Fase 3.
 - **A API do calendário não tem um único teste** — 2.501 linhas, e é onde moram os
-  três dos quatro bugs de hoje.
+  três dos quatro bugs de 01/09.
 - **Rotacionar antes de produção:** senha do banco, os três tokens de integração e
   a senha do painel (hoje `123`) apareceram no chat, por decisão consciente de
   ambiente de teste.
 - O ponytail de `src/db/eventos.ts` **venceu**: a chamada HTTP ao calendário
   acontece dentro da transação, e a API deixou de estar em localhost.
+- **O site de agendamento existe fora deste repositório** e será adaptado a este
+  modelo no futuro — não é código a escrever do zero.
 
 ## Onde estamos (2026-08-04)
 
