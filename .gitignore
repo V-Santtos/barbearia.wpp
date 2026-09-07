@@ -17,3 +17,5 @@
 .env*
 !.env.example
 !**/.env.example
+
+PROMPT-AUTH.md
