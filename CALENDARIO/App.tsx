@@ -31,6 +31,10 @@ import { toast, Toaster } from "./components/Toast";
 import MobileBottomNav, { type MobileTab } from "./components/MobileBottomNav";
 import HamburgerPanel from "./components/HamburgerPanel";
 import DashboardScreen from "./components/dashboard/DashboardScreen";
+import ColunaDeSecoes from "./components/shell/ColunaDeSecoes";
+import GavetaDeSecao from "./components/shell/GavetaDeSecao";
+import SecaoVazia from "./components/shell/SecaoVazia";
+import { abreGaveta, secaoPorId, type IdSecao } from "./components/shell/secoes";
 import LimiteDeErro from "./components/dashboard/LimiteDeErro";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { usePolling } from "./hooks/usePolling";
@@ -105,6 +109,30 @@ function App() {
     setDashboardAberto(false);
     setMobileTab((atual) => (atual === "dashboard" ? "calendar" : atual));
   }, []);
+
+  /* Rail de seções — só desktop. No celular quem governa é o dock (`mobileTab`)
+     e este estado fica parado, sem efeito nenhum sobre o que ele já validou. */
+  const [secaoAtiva, setSecaoAtiva] = useState<IdSecao>("agenda");
+  const [gavetaAberta, setGavetaAberta] = useState(true);
+  const [colunaExpandida, setColunaExpandida] = useState(true);
+
+  const selecionarSecao = useCallback(
+    (id: IdSecao) => {
+      /* Clicar na seção em que já se está alterna a gaveta; clicar em outra
+         troca e abre (se ela já tiver painel). É o comportamento do VS Code —
+         aprende-se em um clique acidental. */
+      if (id === secaoAtiva) {
+        setGavetaAberta((v) => (abreGaveta(id) ? !v : false));
+      } else {
+        setSecaoAtiva(id);
+        setGavetaAberta(abreGaveta(id));
+      }
+    },
+    [secaoAtiva],
+  );
+
+  /* No celular a agenda é sempre o conteúdo; o rail nem existe lá. */
+  const agendaVisivel = isMobile || secaoAtiva === "agenda";
 
   const {
     currentDate,
@@ -824,10 +852,22 @@ function App() {
           animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
           transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
         >
-          <Sidebar
-            onAddEvent={() =>
+          <ColunaDeSecoes
+            ativa={secaoAtiva}
+            onSelecionar={selecionarSecao}
+            expandida={colunaExpandida}
+            onAlternar={() => setColunaExpandida((v) => !v)}
+            onCriar={() =>
               openModalWithDate(new Date().toLocaleDateString("en-CA"))
             }
+          />
+
+          <GavetaDeSecao
+            aberta={gavetaAberta && abreGaveta(secaoAtiva)}
+            isMobile={isMobile}
+          >
+            {agendaVisivel ? (
+          <Sidebar
             professionals={professionals}
             selectedProfessionals={selectedProfessionals}
             onProfessionalToggle={handleProfessionalToggle}
@@ -844,8 +884,18 @@ function App() {
             externalShowAddModal={showAddProfModal}
             onExternalAddModalClose={() => setShowAddProfModal(false)}
           />
+            ) : null}
+          </GavetaDeSecao>
 
-          <div className="flex flex-col flex-1 min-h-0 min-w-0">
+          {/* A agenda fica MONTADA quando outra seção está aberta, só escondida.
+              É assim que a promessa antiga sobrevive: voltar devolve a mesma
+              data, a mesma visualização e a mesma rolagem, sem refazer busca.
+              `!hidden` porque a classe `flex` abaixo venceria um `hidden` seco. */}
+          <div
+            className={`flex flex-col flex-1 min-h-0 min-w-0 ${
+              agendaVisivel ? "" : "!hidden"
+            }`}
+          >
             <CalendarHeader
               currentDate={currentDate}
               onPrev={goToPrev}
@@ -893,6 +943,15 @@ function App() {
             </main>
           </div>
 
+          {!agendaVisivel && (
+            <div className="flex flex-1 flex-col min-h-0 min-w-0">
+              <SecaoVazia
+                rotulo={secaoPorId(secaoAtiva).rotulo}
+                Icone={secaoPorId(secaoAtiva).Icone}
+              />
+            </div>
+          )}
+
           {popoverEvent && popoverAnchor && (
             <EventPopover
               event={popoverEvent}
@@ -925,6 +984,7 @@ function App() {
               !hamburgerOpen &&
               settingsProfessional === null &&
               !dashboardVisivel &&
+              agendaVisivel &&
               (!isMobile || (mobileTab === "calendar" && view === "day"))
             }
           />

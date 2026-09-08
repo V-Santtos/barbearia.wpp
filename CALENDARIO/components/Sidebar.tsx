@@ -28,7 +28,6 @@ import { JANELA_MIN_DIAS, JANELA_MAX_DIAS } from "../lib/utils";
 import { usePolling } from "../hooks/usePolling";
 
 interface SidebarProps {
-  onAddEvent: () => void;
   professionals: Professional[];
   selectedProfessionals: Set<number>;
   onProfessionalToggle: (id: number) => void;
@@ -46,24 +45,6 @@ interface SidebarProps {
   externalShowAddModal?: boolean;
   onExternalAddModalClose?: () => void;
 }
-
-// ✅ Ícone "+" fixo roxo
-const PlusIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="#6B3EFF"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <line x1="12" y1="5" x2="12" y2="19"></line>
-    <line x1="5" y1="12" x2="19" y2="12"></line>
-  </svg>
-);
 
 // ✅ agora são HEX, compatíveis com o restante do app
 const COLORS = [
@@ -177,7 +158,6 @@ const toConversation = (
 };
 
 const Sidebar: React.FC<SidebarProps> = ({
-  onAddEvent,
   professionals,
   selectedProfessionals,
   onProfessionalToggle,
@@ -404,7 +384,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                aparecer atrás do painel de Conversas, na faixa que sobra
                entre os dois valores. */
             "fixed inset-x-0 top-0 bottom-16 z-50 bg-[#1c1c1c] flex flex-col"
-          : "hidden md:flex w-72 pt-8 pb-4 px-4 bg-[#1c1c1c] flex-col gap-6 min-h-0"
+          : "hidden md:flex w-72 flex-1 pt-8 pb-4 px-4 bg-[#1c1c1c] flex-col gap-6 min-h-0"
       }
     >
       {/* Header do painel "Equipe" -- layout original, não tocado. */}
@@ -507,17 +487,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             />
           </div>
         </div>
-      )}
-
-      {/* Botão "Create" - apenas no desktop */}
-      {!mobilePanel && (
-        <button
-          onClick={onAddEvent}
-          className="mt-2 flex w-full items-center justify-center rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-black shadow-[0_4px_14px_rgba(0,0,0,0.30)] transition hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-        >
-          <PlusIcon />
-          <span className="ml-2">Criar</span>
-        </button>
       )}
 
       {/* Mini Calendar - apenas no desktop */}
