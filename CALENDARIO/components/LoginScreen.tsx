@@ -4,6 +4,7 @@ import { KeyRound, Lock, Mail, Shield } from 'lucide-react';
 import { StardustButton } from './ui/StardustButton';
 import ownerLogoUrl from '../assets/lucas-costa-logo-transparent.png';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { MODO_JWT, entrar } from '../lib/sessao';
 
 export interface OwnerSession {
   name: string;
@@ -15,9 +16,15 @@ interface LoginScreenProps {
   onLogin: (session: OwnerSession) => void;
 }
 
-const OWNER_EMAIL = ((import.meta as any).env.VITE_OWNER_EMAIL as string | undefined)?.trim().toLowerCase();
-const OWNER_PASSWORD = ((import.meta as any).env.VITE_OWNER_PASSWORD as string | undefined)?.trim();
-const CREDENCIAL_NO_BUILD = Boolean(OWNER_EMAIL && OWNER_PASSWORD);
+/* Até 09/2026 esta tela comparava o e-mail e a senha com duas variáveis `VITE_*`,
+   que o Vite embute no bundle que qualquer visitante baixa. Não era uma barreira
+   fraca: não era barreira nenhuma — o segredo estava do lado de quem se queria
+   barrar. Agora quem valida é o Supabase Auth, e o que sai daqui é um JWT assinado
+   que a API usa para o Postgres cobrar a barbearia via RLS.
+
+   `MODO_JWT` falso = ainda sem `VITE_SUPABASE_URL`. Nesse estado a tela volta a ser
+   passagem, como antes, para o painel não ficar fora do ar entre o deploy e a
+   configuração. Sai junto com o resto do modo legado. */
 const MOBILE_QUERY = '(max-width: 767px)';
 
 const isInitiallyMobile = () =>
@@ -392,7 +399,9 @@ function LoginCard({ onLogin }: LoginScreenProps) {
   }`;
   const enterStyle = (delay: number) => ({ transitionDelay: show ? `${delay}ms` : '0ms' });
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  const [entrando, setEntrando] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const email = String(form.get('email') || '').trim().toLowerCase();
@@ -402,11 +411,7 @@ function LoginCard({ onLogin }: LoginScreenProps) {
 
     setError('');
 
-    // Build sem credencial embutida (o caso do deploy): a tela e passagem, nao
-    // barreira. `VITE_*` vai dentro do bundle que qualquer um baixa, entao
-    // conferir aqui nunca protegeu nada — exigir o segredo so travava a porta
-    // pra quem tem a chave. Quem protege dado e o token do lado da API.
-    if (!CREDENCIAL_NO_BUILD) {
+    if (!MODO_JWT) {
       onLogin({ name: 'Proprietário', email: email || 'proprietario', remember });
       return;
     }
@@ -421,17 +426,31 @@ function LoginCard({ onLogin }: LoginScreenProps) {
       return;
     }
 
-    if (email !== OWNER_EMAIL || password !== OWNER_PASSWORD) {
-      setError('E-mail ou senha incorretos.');
-      return;
-    }
-
     if (!isLogin && confirmPassword && confirmPassword !== password) {
       setError('As senhas não conferem.');
       return;
     }
 
-    onLogin({ name: 'Proprietário', email, remember });
+    setEntrando(true);
+    try {
+      await entrar(email, password);
+      /* `onLogin` não recebe mais a sessão: quem manda nela agora é o
+         `onAuthStateChange` do App, que é a única fonte. Passar o usuário daqui
+         criaria uma segunda, e as duas discordariam no dia em que o token
+         expirasse com a tela aberta. */
+      onLogin({ name: 'Proprietário', email, remember });
+    } catch (erro) {
+      /* Mensagem única para credencial errada, e-mail inexistente e conta não
+         confirmada: distinguir os casos diria a um estranho quais e-mails existem. */
+      const detalhe = erro instanceof Error ? erro.message : '';
+      setError(
+        /confirm/i.test(detalhe)
+          ? 'Confirme seu e-mail antes de entrar.'
+          : 'E-mail ou senha incorretos.',
+      );
+    } finally {
+      setEntrando(false);
+    }
   }
 
   return (
@@ -508,7 +527,6 @@ function LoginCard({ onLogin }: LoginScreenProps) {
                 name="email"
                 placeholder="E-mail"
                 autoComplete="email"
-                defaultValue={OWNER_EMAIL ?? ''}
               />
             </div>
 
@@ -522,7 +540,6 @@ function LoginCard({ onLogin }: LoginScreenProps) {
                 name="password"
                 placeholder="Senha de acesso"
                 autoComplete="current-password"
-                defaultValue={OWNER_PASSWORD ?? ''}
               />
             </div>
 
@@ -537,7 +554,9 @@ function LoginCard({ onLogin }: LoginScreenProps) {
             </div>
 
             <div className={`flex justify-center pt-4 ${enterClassName}`} style={enterStyle(500)}>
-              <StardustButton type="submit">Entrar</StardustButton>
+              <StardustButton type="submit" disabled={entrando}>
+                {entrando ? 'Entrando…' : 'Entrar'}
+              </StardustButton>
             </div>
           </form>
         ) : (

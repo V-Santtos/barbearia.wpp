@@ -3,6 +3,12 @@ import cors from "@fastify/cors";
 import dotenv from "dotenv";
 import { timingSafeEqual } from "crypto";
 import pkg from "pg";
+import {
+  MODO_JWT,
+  avisarModo,
+  comUsuario,
+  criarGuardaDoPainel,
+} from "./lib/autenticacao.js";
 
 dotenv.config();
 
@@ -61,12 +67,34 @@ const { Pool } = pkg;
 // banco. Por isso, sob VERCEL, o pool encolhe e volta a soltar conexao ociosa.
 const EM_SERVERLESS = Boolean(process.env.VERCEL);
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+const opcoesDePool = {
   ssl: { rejectUnauthorized: false },
   max: EM_SERVERLESS ? 2 : 10,
   idleTimeoutMillis: EM_SERVERLESS ? 10_000 : 0,
   keepAlive: true,
+};
+
+// O pool de SERVICO: conecta como `postgres`, que tem `rolbypassrls`. E dele que saem
+// as rotas publicas (site e bot), que sao anonimas por natureza — nao ha identidade em
+// que ancorar politica de RLS, entao o recorte por barbearia e explicito no codigo.
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ...opcoesDePool,
+});
+
+// O pool do PAINEL: conecta como `app_api`, que NAO tem bypass de RLS. Toda rota do
+// dono passa por aqui, dentro de `comUsuario`, e o Postgres cobra a barbearia.
+//
+// A diferenca entre os dois pools e o que faz o esquecimento falhar FECHADO. Se uma
+// rota nova do painel usar o pool errado ou esquecer o `set local role`, ela devolve
+// zero linhas em vez de devolver o banco inteiro calada.
+//
+// Sem `DATABASE_URL_APP` ele cai no mesmo destino do outro. Isso mantem o servidor de
+// pe antes da variavel existir — mas nesse estado a RLS nao protege nada, e e por isso
+// que `avisarModo` grita na subida.
+const poolUsuario = new Pool({
+  connectionString: process.env.DATABASE_URL_APP || process.env.DATABASE_URL,
+  ...opcoesDePool,
 });
 
 /**
@@ -463,6 +491,10 @@ function mapProfessional(row) {
   };
 }
 
+// Le a agenda de UM profissional pelo pool de servico, sem RLS. Mesma invariante do
+// `registrarMensagem`: o unico chamador do painel (`/dashboard/resumo`) so passa ids
+// que ele acabou de ler por `db.query`, sob RLS. Chamador novo tem que provar a posse
+// do `profissional_id` antes.
 async function getAgendaConfig(professionalId) {
   let rows;
   try {
@@ -679,7 +711,27 @@ async function getServicesFromTables() {
 
 function buildServer() {
   const fastify = Fastify({ logger: true });
-  const requireAdmin = buildTokenGuard("ADMIN_API_TOKEN", "ADMIN_API_TOKEN");
+  const requireAdmin = criarGuardaDoPainel();
+
+  /**
+   * Envolve um handler do painel para ele rodar com a RLS valendo.
+   *
+   * O handler recebe um terceiro argumento, `db`, e TODA consulta dele tem que sair
+   * dali — nunca do `pool` direto, que ignora RLS. Em modo legado `db` E o pool de
+   * servico, entao o comportamento fica identico ao de antes e a troca nao tem dia-D.
+   *
+   * ponytail: o `commit` acontece depois que o handler chamou `reply.send()`, entao um
+   * commit que falhasse responderia sucesso a uma escrita perdida. Teto: hoje nao ha
+   * transacao NENHUMA nestas rotas (cada query commita sozinha), entao isto ja e
+   * estritamente melhor. Gatilho de upgrade: a primeira rota do painel que escreva em
+   * mais de uma tabela e precise de tudo-ou-nada visivel pro dono.
+   */
+  const noPainel =
+    (handler) =>
+    async (request, reply) =>
+      MODO_JWT
+        ? comUsuario(poolUsuario, request, (db) => handler(request, reply, db))
+        : handler(request, reply, pool);
   const requireWebhookToken = buildTokenGuard(
     "WHATSAPP_WEBHOOK_TOKEN",
     "WHATSAPP_WEBHOOK_TOKEN",
@@ -697,6 +749,10 @@ function buildServer() {
     ],
   });
   fastify.addHook("onRequest", applyBasicRateLimit);
+
+  // Dito na subida, e nao so na doc: em modo legado a RLS nao protege nada, e isso
+  // precisa aparecer em todo boot ate ser resolvido.
+  avisarModo(fastify.log);
 
   // ─── HEALTH CHECK ──────────────────────────────────────────────────────────
   fastify.get("/", async () => ({
@@ -860,7 +916,7 @@ function buildServer() {
   fastify.put(
     "/profissionais/:id/agenda-config",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const { id } = request.params;
       const {
         dias_semana,
@@ -921,7 +977,7 @@ function buildServer() {
       }
 
       try {
-        const { rows } = await pool.query(
+        const { rows } = await db.query(
           `INSERT INTO public.agenda_profissional
            (profissional_id, dias_semana, hora_inicio, hora_fim, duracao_min,
             intervalo_inicio, intervalo_duracao_min, janela_agendamento_dias, atualizado_em)
@@ -968,7 +1024,7 @@ function buildServer() {
       } catch (err) {
         if (isUndefinedColumnError(err)) {
           try {
-            const { rows } = await pool.query(
+            const { rows } = await db.query(
               `INSERT INTO public.agenda_profissional
                (profissional_id, dias_semana, hora_inicio, hora_fim, duracao_min,
                 intervalo_inicio, intervalo_duracao_min, atualizado_em)
@@ -1016,7 +1072,7 @@ function buildServer() {
           .status(500)
           .send({ error: "Erro ao salvar configuração de agenda." });
       }
-    },
+    }),
   );
 
   // GET /profissionais/:id/dias-bloqueados — lista datas bloqueadas manualmente
@@ -1051,7 +1107,7 @@ function buildServer() {
   fastify.post(
     "/profissionais/:id/dias-bloqueados",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const { id } = request.params;
       const { data, motivo = null, periodos } = request.body ?? {};
 
@@ -1070,7 +1126,7 @@ function buildServer() {
           Array.isArray(normalizedPeriods) &&
           normalizedPeriods.length === 0
         ) {
-          const { rowCount } = await pool.query(
+          const { rowCount } = await db.query(
             `DELETE FROM public.dias_bloqueados WHERE profissional_id = $1 AND data = $2`,
             [id, data],
           );
@@ -1088,7 +1144,7 @@ function buildServer() {
             ? null
             : normalizedPeriods;
 
-        const { rows } = await pool.query(
+        const { rows } = await db.query(
           `INSERT INTO public.dias_bloqueados (profissional_id, data, motivo, periodos)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (profissional_id, data) DO UPDATE
@@ -1108,17 +1164,17 @@ function buildServer() {
         fastify.log.error(err);
         return reply.status(500).send({ error: "Erro ao bloquear dia." });
       }
-    },
+    }),
   );
 
   // DELETE /profissionais/:id/dias-bloqueados/:data — desbloqueia uma data
   fastify.delete(
     "/profissionais/:id/dias-bloqueados/:data",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const { id, data } = request.params;
       try {
-        const { rowCount } = await pool.query(
+        const { rowCount } = await db.query(
           `DELETE FROM public.dias_bloqueados WHERE profissional_id = $1 AND data = $2`,
           [id, data],
         );
@@ -1131,14 +1187,14 @@ function buildServer() {
         fastify.log.error(err);
         return reply.status(500).send({ error: "Erro ao desbloquear dia." });
       }
-    },
+    }),
   );
 
   // POST /profissionais — cria
   fastify.post(
     "/profissionais",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const { nome, cor } = request.body ?? {};
       if (!nome || !cor)
         return reply
@@ -1146,7 +1202,7 @@ function buildServer() {
           .send({ error: "nome e cor são obrigatórios." });
 
       try {
-        const { rows } = await pool.query(
+        const { rows } = await db.query(
           `INSERT INTO public.profissionais (nome, cor, ativo)
          VALUES ($1, $2, TRUE)
          RETURNING id, nome, cor, ativo, created_at`,
@@ -1157,14 +1213,14 @@ function buildServer() {
         fastify.log.error(err);
         return reply.status(500).send({ error: "Erro ao criar profissional." });
       }
-    },
+    }),
   );
 
   // PATCH /profissionais/:id — atualiza campos
   fastify.patch(
     "/profissionais/:id",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const { id } = request.params;
       const { nome, cor, ativo } = request.body ?? {};
 
@@ -1190,7 +1246,7 @@ function buildServer() {
 
       params.push(id);
       try {
-        const { rows } = await pool.query(
+        const { rows } = await db.query(
           `UPDATE public.profissionais
          SET ${fields.join(", ")}
          WHERE id = $${params.length}
@@ -1208,17 +1264,17 @@ function buildServer() {
           .status(500)
           .send({ error: "Erro ao atualizar profissional." });
       }
-    },
+    }),
   );
 
   // DELETE /profissionais/:id — soft delete
   fastify.delete(
     "/profissionais/:id",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const { id } = request.params;
       try {
-        const { rows } = await pool.query(
+        const { rows } = await db.query(
           `UPDATE public.profissionais SET ativo = FALSE WHERE id = $1 RETURNING id`,
           [id],
         );
@@ -1233,7 +1289,7 @@ function buildServer() {
           .status(500)
           .send({ error: "Erro ao remover profissional." });
       }
-    },
+    }),
   );
 
   // ─── AGENDAMENTOS ──────────────────────────────────────────────────────────
@@ -1481,7 +1537,7 @@ function buildServer() {
   fastify.get(
     "/agendamentos",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const { professionalId, date } = request.query;
       try {
         const conditions = [];
@@ -1514,7 +1570,7 @@ function buildServer() {
         if (conditions.length) query += ` WHERE ${conditions.join(" AND ")}`;
         query += ` ORDER BY a.dia_marcado ASC, a.hora_marcada ASC`;
 
-        const { rows } = await pool.query(query, params);
+        const { rows } = await db.query(query, params);
         return rows.map((r) => mapEvent(r, r.duracao_min ?? 60));
       } catch (err) {
         fastify.log.error(err);
@@ -1522,7 +1578,7 @@ function buildServer() {
           .status(500)
           .send({ error: "Erro ao buscar agendamentos." });
       }
-    },
+    }),
   );
 
   // POST /agendamentos — cria agendamento
@@ -1654,7 +1710,7 @@ function buildServer() {
   fastify.put(
     "/agendamentos/:id",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const { id } = request.params;
       const {
         telefone,
@@ -1688,7 +1744,7 @@ function buildServer() {
 
       params.push(id);
       try {
-        const { rows } = await pool.query(
+        const { rows } = await db.query(
           `UPDATE public.agendamentos
          SET ${fields.join(", ")}, updated_at = NOW()
          WHERE id = $${params.length}
@@ -1708,14 +1764,14 @@ function buildServer() {
           .status(500)
           .send({ error: "Erro ao atualizar agendamento." });
       }
-    },
+    }),
   );
 
   // PATCH /agendamentos/:id/status — atualiza só o status
   fastify.patch(
     "/agendamentos/:id/status",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const { id } = request.params;
       const { status } = request.body ?? {};
       const valid = [
@@ -1733,7 +1789,7 @@ function buildServer() {
       }
 
       try {
-        const { rows } = await pool.query(
+        const { rows } = await db.query(
           `UPDATE public.agendamentos
          SET status = $1, updated_at = NOW()
          WHERE id = $2
@@ -1749,17 +1805,17 @@ function buildServer() {
         fastify.log.error(err);
         return reply.status(500).send({ error: "Erro ao atualizar status." });
       }
-    },
+    }),
   );
 
   // DELETE /agendamentos/:id — remove agendamento
   fastify.delete(
     "/agendamentos/:id",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const { id } = request.params;
       try {
-        const { rowCount } = await pool.query(
+        const { rowCount } = await db.query(
           `DELETE FROM public.agendamentos WHERE id = $1`,
           [id],
         );
@@ -1774,7 +1830,7 @@ function buildServer() {
           .status(500)
           .send({ error: "Erro ao remover agendamento." });
       }
-    },
+    }),
   );
 
   // ─── CONFIGURAÇÃO ──────────────────────────────────────────────────────────
@@ -1800,6 +1856,18 @@ function buildServer() {
   /**
    * Grava uma mensagem no CRM: upsert do contato, agrupamento na conversa certa e
    * insert da mensagem, tudo numa transacao.
+   *
+   * USA O POOL DE SERVICO, ou seja, IGNORA RLS — e isso e deliberado, com uma
+   * invariante a proteger:
+   *
+   *   quem chama daqui do painel (`/conversations/:id/send`) JA carregou a conversa
+   *   por `db.query`, sob RLS, e devolveu 404 quando ela nao era da barbearia dele.
+   *   A posse esta provada antes desta funcao rodar.
+   *
+   * O outro chamador e o webhook do bot, que e servico e nao tem usuario.
+   *
+   * SE ALGUEM CHAMAR ISTO DE UM CAMINHO NOVO, tem que repetir essa checagem antes —
+   * senao o painel de uma barbearia escreve no CRM de outra, sem erro.
    *
    * Extraida da rota em 2026-07-31 porque o `/send` do painel precisa exatamente
    * disto ao registrar a fala do dono. Uma segunda copia deste upsert seria a
@@ -1968,10 +2036,10 @@ function buildServer() {
   fastify.get(
     "/whatsapp/conversations",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const limit = Math.min(Number(request.query.limit ?? 50) || 50, 100);
       try {
-        const { rows } = await pool.query(
+        const { rows } = await db.query(
           `SELECT c.id, c.status, c.assigned_to, c.last_message_at,
           ct.id AS contact_id, ct.phone, ct.wa_id, ct.name, ct.service_window_until,
           lm.direction AS last_direction,
@@ -2013,17 +2081,17 @@ function buildServer() {
         fastify.log.error(err);
         return reply.status(500).send({ error: "Erro ao buscar conversas." });
       }
-    },
+    }),
   );
 
   // GET /whatsapp/conversations/:id/messages - mensagens de uma conversa
   fastify.get(
     "/whatsapp/conversations/:id/messages",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const { id } = request.params;
       try {
-        const { rows } = await pool.query(
+        const { rows } = await db.query(
           `SELECT id, conversation_id, contact_id, direction, sender_type,
                 whatsapp_message_id, message_type, body, media_id, status,
                 created_at, received_at
@@ -2037,17 +2105,17 @@ function buildServer() {
         fastify.log.error(err);
         return reply.status(500).send({ error: "Erro ao buscar mensagens." });
       }
-    },
+    }),
   );
 
   // POST /whatsapp/conversations/:id/read - marca todas mensagens inbound como lidas
   fastify.post(
     "/whatsapp/conversations/:id/read",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const { id } = request.params;
       try {
-        const { rows } = await pool.query(
+        const { rows } = await db.query(
           `UPDATE public.whatsapp_messages
           SET read_at = NOW()
         WHERE conversation_id = $1
@@ -2063,7 +2131,7 @@ function buildServer() {
           .status(500)
           .send({ error: "Erro ao marcar conversa como lida." });
       }
-    },
+    }),
   );
 
   /**
@@ -2080,7 +2148,7 @@ function buildServer() {
   fastify.post(
     "/whatsapp/conversations/:id/send",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       const { id } = request.params;
       const text = String(request.body?.body ?? "").trim();
 
@@ -2094,7 +2162,7 @@ function buildServer() {
       }
 
       try {
-        const { rows } = await pool.query(
+        const { rows } = await db.query(
           `SELECT ct.wa_id, ct.phone, ct.service_window_until,
                   (ct.service_window_until > NOW()) AS janela_aberta
              FROM public.whatsapp_conversations c
@@ -2164,7 +2232,7 @@ function buildServer() {
           .status(500)
           .send({ error: "Erro ao enviar mensagem pelo WhatsApp." });
       }
-    },
+    }),
   );
 
   // GET /dashboard/resumo — tudo que a tela do Dashboard desenha, numa chamada.
@@ -2181,7 +2249,7 @@ function buildServer() {
   fastify.get(
     "/dashboard/resumo",
     { preHandler: requireAdmin },
-    async (request, reply) => {
+    noPainel(async (request, reply, db) => {
       // Quem manda a data e o cliente, porque o fuso que importa e o do barbeiro
       // olhando a tela, nao o do processo. Sem parametro, vale o do servidor.
       const pedida = request.query?.date;
@@ -2197,7 +2265,7 @@ function buildServer() {
         // `bigint` chega como string do Postgres. Convertido aqui, na entrada,
         // porque id numero e id texto se misturam calados: `[1].includes("1")`
         // e falso e nao levanta erro nenhum.
-        const { rows: profRowsRaw } = await pool.query(
+        const { rows: profRowsRaw } = await db.query(
           `SELECT id, nome, cor FROM public.profissionais
            WHERE ativo = TRUE ORDER BY id`,
         );
@@ -2227,7 +2295,7 @@ function buildServer() {
         const fimFrente = somarDias(hoje, Math.max(janelaMax, MAIOR_PERIODO) - 1);
 
         const [agRes, blockRes, criadosRes] = await Promise.all([
-          pool.query(
+          db.query(
             `SELECT a.id, a.cliente, a.telefone, a.status, a.source,
                     a.dia_marcado::text  AS dia_marcado,
                     a.hora_marcada::text AS hora_marcada,
@@ -2237,7 +2305,7 @@ function buildServer() {
              WHERE a.dia_marcado >= $1 AND a.dia_marcado <= $2`,
             [inicioRetro, fimFrente],
           ),
-          pool.query(
+          db.query(
             `SELECT profissional_id, data::text AS data, periodos
              FROM public.dias_bloqueados
              WHERE data >= $1 AND data <= $2`,
@@ -2247,7 +2315,7 @@ function buildServer() {
           // atendimento acontece. E o unico numero da tela que cai na hora se o
           // bot parar de pe. Agrupado em JS para o balde do dia respeitar o mesmo
           // fuso do resto — `date_trunc` no banco usaria o fuso do Postgres.
-          pool.query(
+          db.query(
             `SELECT a.created_at, p.id AS professional_id
              FROM public.agendamentos a
              LEFT JOIN public.profissionais p ON a.profissional = p.nome
@@ -2476,7 +2544,7 @@ function buildServer() {
           .status(500)
           .send({ error: "Erro ao montar o resumo do dashboard." });
       }
-    },
+    }),
   );
 
   // GET /servicos - catalogo de servicos, so leitura.

@@ -7,7 +7,7 @@ const API_BASE = (import.meta.env.VITE_CALENDAR_API_URL ?? "/api").replace(
   /\/+$/,
   "",
 );
-const ADMIN_API_TOKEN = (import.meta.env.VITE_ADMIN_API_TOKEN ?? "").trim();
+import { credencial } from "../lib/sessao";
 
 // ─── Tipos novos ──────────────────────────────────────────────────────────────
 
@@ -93,29 +93,6 @@ export interface ConfiguredService {
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
-function withAdminAuth(init: RequestInit = {}): RequestInit {
-  return {
-    ...init,
-    headers: {
-      ...(ADMIN_API_TOKEN
-        ? { Authorization: `Bearer ${ADMIN_API_TOKEN}` }
-        : {}),
-      ...(init.headers ?? {}),
-    },
-  };
-}
-
-function shouldAttachAdminToken(path: string, init: RequestInit) {
-  const method = String(init.method ?? "GET").toUpperCase();
-  if (method !== "GET" && path !== "agendamentos") return true;
-  return (
-    path === "agendamentos" ||
-    path.startsWith("agendamentos?") ||
-    path.startsWith("whatsapp/") ||
-    path.startsWith("dashboard/")
-  );
-}
-
 export class ApiError extends Error {
   status: number;
   retryAfterMs: number;
@@ -128,17 +105,18 @@ export class ApiError extends Error {
 }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const attachAdminToken =
-    ADMIN_API_TOKEN && shouldAttachAdminToken(path, init);
   const hasBody = init.body !== undefined && init.body !== null;
   const res = await fetch(`${API_BASE}/${path.replace(/^\//, "")}`, {
     ...init,
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       Accept: "application/json",
-      ...(attachAdminToken
-        ? { Authorization: `Bearer ${ADMIN_API_TOKEN}` }
-        : {}),
+      // A credencial vai em TODA chamada, e não mais numa lista de caminhos que
+      // precisavam dela (`shouldAttachAdminToken`). Aquela lista era uma segunda cópia
+      // do que o servidor já decide no `preHandler`, e duas listas do mesmo assunto
+      // divergem: a rota nova que esquecesse de entrar ali tomaria 401 sem motivo
+      // aparente. Nas rotas públicas o cabeçalho é simplesmente ignorado.
+      ...(await credencial()),
       ...(init.headers ?? {}),
     },
   });
@@ -215,10 +193,10 @@ export async function createProfessional(
 ): Promise<Professional> {
   const data = await api<any>(
     "profissionais",
-    withAdminAuth({
+    {
       method: "POST",
       body: JSON.stringify({ nome: name, cor: color }),
-    }),
+    },
   );
   return toProf(data);
 }
@@ -232,16 +210,16 @@ export async function updateProfessional(
   if (payload.color !== undefined) body.cor = payload.color;
   const data = await api<any>(
     `profissionais/${id}`,
-    withAdminAuth({
+    {
       method: "PATCH",
       body: JSON.stringify(body),
-    }),
+    },
   );
   return toProf(data);
 }
 
 export async function deleteProfessional(id: number): Promise<void> {
-  await api(`profissionais/${id}`, withAdminAuth({ method: "DELETE" }));
+  await api(`profissionais/${id}`, { method: "DELETE" });
 }
 
 // ─── AGENDA CONFIG POR PROFISSIONAL ──────────────────────────────────────────
@@ -258,10 +236,10 @@ export async function updateAgendaConfig(
 ): Promise<AgendaConfig> {
   return api<AgendaConfig>(
     `profissionais/${professionalId}/agenda-config`,
-    withAdminAuth({
+    {
       method: "PUT",
       body: JSON.stringify(config),
-    }),
+    },
   );
 }
 
@@ -285,10 +263,10 @@ export async function addBlockedDay(
 ): Promise<DiaBloqueado> {
   return api<DiaBloqueado>(
     `profissionais/${professionalId}/dias-bloqueados`,
-    withAdminAuth({
+    {
       method: "POST",
       body: JSON.stringify({ data, motivo, periodos }),
-    }),
+    },
   );
 }
 

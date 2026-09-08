@@ -34,10 +34,17 @@ import DashboardScreen from "./components/dashboard/DashboardScreen";
 import LimiteDeErro from "./components/dashboard/LimiteDeErro";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { usePolling } from "./hooks/usePolling";
+import { MODO_JWT, donoDaSessao, sair, supabase } from "./lib/sessao";
 
 const OWNER_SESSION_KEY = "barbearia-calendar-owner-session";
 
+/* Em MODO_JWT quem manda na sessão é o Supabase, e não este `localStorage`.
+   Começar como `null` e deixar o `onAuthStateChange` decidir evita a pior versão
+   deste bug: o painel abrir "logado" por causa de uma chave antiga do navegador
+   enquanto a API responde 401 em tudo — o dono veria a tela montada e vazia, sem
+   nada dizendo que ele precisa entrar de novo. */
 const readSession = (): OwnerSession | null => {
+  if (MODO_JWT) return null;
   try {
     const raw = window.localStorage.getItem(OWNER_SESSION_KEY);
     if (!raw) return null;
@@ -72,6 +79,28 @@ function App() {
     readSession,
   );
   const [view, setView] = useState<CalendarView>("month");
+
+  /* A sessão do Supabase é a fonte única enquanto MODO_JWT valer: `getSession()`
+     restaura a de antes ao abrir o app, e `onAuthStateChange` cobre login, logout e
+     a renovação automática do token — inclusive quando ela falha e a sessão morre
+     com o painel aberto. */
+  useEffect(() => {
+    if (!MODO_JWT || !supabase) return;
+
+    let vivo = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (vivo) setOwnerSession(donoDaSessao(data.session));
+    });
+
+    const { data: assinatura } = supabase.auth.onAuthStateChange((_evento, sessao) => {
+      setOwnerSession(donoDaSessao(sessao));
+    });
+
+    return () => {
+      vivo = false;
+      assinatura.subscription.unsubscribe();
+    };
+  }, []);
   const isMobile = useMediaQuery("(max-width: 767px)");
   const [mobileTab, setMobileTab] = useState<MobileTab>("calendar");
   const [viewMode, setViewMode] = useState<"timeline" | "kanban">("timeline");
@@ -709,7 +738,11 @@ function App() {
   };
 
   const handleLogin = (session: OwnerSession) => {
+    /* Em MODO_JWT o `onAuthStateChange` já cuidou disto; chamar aqui só antecipa a
+       troca de tela em alguns milissegundos. O `localStorage` fica de fora: guardar
+       a sessão em dois lugares é como eles começam a discordar. */
     setOwnerSession(session);
+    if (MODO_JWT) return;
     if (session.remember) {
       window.localStorage.setItem(OWNER_SESSION_KEY, JSON.stringify(session));
     } else {
@@ -718,6 +751,7 @@ function App() {
   };
 
   const handleLogout = () => {
+    void sair();
     setOwnerSession(null);
     setAppReady(false);
     window.localStorage.removeItem(OWNER_SESSION_KEY);
