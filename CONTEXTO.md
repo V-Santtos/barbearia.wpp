@@ -160,12 +160,194 @@ não dá erro — cai na loja A em silêncio. É o preço de não ter janela de
 indisponibilidade, e por isso não podem virar moradia. Saem no fim da Fase 4, junto
 com a coluna `agendamentos.profissional` (texto).
 
-### Próximo passo
+### Fase 2 — políticas de RLS escritas e provadas (2026-09-07)
 
-Fase 2 — as políticas de RLS. Hoje a RLS está **ligada nas 10 tabelas com zero
-políticas, e é inerte**: as duas metades conectam como `postgres`, que tem
-`rolbypassrls = true`. Escrever política nenhuma muda isso. O que falta é o role
-`app_api` sem bypass + `set local role authenticated` por requisição no `server.js`.
+Migração `20260907120000_rls_por_barbearia.sql`. O que entrou:
+
+- **11 políticas**, uma por tabela, `for all to authenticated` com `using` **e**
+  `with check`. Faltar o `with check` é o erro clássico: a leitura fica isolada e a
+  escrita não — o dono da loja A conseguiria inserir linha na loja B.
+- **`barbearia_atual()`**, `security definer` com `search_path` fixo. O definer não é
+  enfeite: a política de `barbearias` chama a função, que lê `barbearias` — sem ele, a
+  leitura dispara a política de novo, em recursão infinita.
+- **Papel `app_api`**, com LOGIN e **sem bypass**. A alternativa (seguir como
+  `postgres` e só fazer `set local role`) falha ABERTO: uma rota que esquecesse a linha
+  devolveria o banco inteiro, sem erro. Com papel sem bypass, a mesma distração
+  devolve zero linhas — quebra na cara, e não vaza.
+- **Sem GRANT nenhum:** medido antes de escrever que `authenticated` já tem
+  SELECT/INSERT/UPDATE/DELETE em tudo (padrão do Supabase). A RLS já era a única coisa
+  entre esse papel e o banco.
+
+**Provado, não presumido.** Teste com dois donos sintéticos, um por loja: A vê 2
+profissionais / 4 serviços / 8 agendamentos, B vê 1 / 1 / 2, nenhum vê o do outro,
+A não consegue inserir na loja B (`42501`) nem editar profissional dela (0 linhas),
+e `anon` vê zero. Tudo em transação com rollback.
+
+### As políticas ainda NÃO estão protegendo nada, e isso é esperado
+
+A RLS continua inerte para o sistema no ar: `server.js` e bot conectam como
+`postgres`, que ignora política. O vazamento da loja B **segue visível** no
+`GET /api/servicos` — conferido depois de aplicar.
+
+O que falta para elas valerem é o item 2.3 do plano: `server.js` conectar como
+`app_api` e fazer, por requisição, dentro de transação:
+
+```sql
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"<uuid>"}', true);
+```
+
+Isso **depende do JWT existir**, ou seja, da Fase 3. Por isso 2.3 muda de fase: sai
+da Fase 2 e entra junto com a autenticação, que é onde o `sub` passa a existir.
+
+### Fase 3 — código pronto, esperando só a configuração (2026-09-07)
+
+Tudo que não dependia do painel do Supabase está feito e verificado.
+
+**Servidor** (`CALENDARIO/lib/autenticacao.js`, novo):
+- verificação de JWT por JWKS (`jose`), com cache — o projeto usa **ES256
+  assimétrico**, e o endpoint de chaves é público e derivável do ref, então não era
+  bloqueio nenhum: `https://<ref>.supabase.co/auth/v1/.well-known/jwks.json`
+- `comUsuario()` — abre transação, `set local role authenticated`, injeta
+  `request.jwt.claims`. É a ponte entre o JWT e a RLS
+- **dois pools**: serviço (`postgres`, para as rotas públicas) e painel (`app_api`,
+  sem bypass). É o que faz o esquecimento falhar FECHADO
+- as **15 rotas do painel** envolvidas em `noPainel()`; 20 consultas passaram do pool
+  de serviço para o cliente da transação
+
+**Painel** (`CALENDARIO/lib/sessao.ts`, novo): `signInWithPassword`, sessão do
+Supabase como fonte única (`onAuthStateChange`), credencial em toda chamada da API.
+`LoginScreen` parou de comparar strings do bundle.
+
+**Verificado, com JWT que eu mesmo assinei** (emissor local no lugar do Supabase; só
+o emissor é falso — verificação, troca de papel e políticas são as reais): dono A vê
+8 agendamentos e 2 profissionais, dono B vê 2 e 1, nenhum vê o do outro. Recusados:
+sem token, `ADMIN_API_TOKEN` antigo, token `role=anon`, assinatura de outra chave,
+token expirado. Rota pública segue aberta. `tsc` limpo, build ok.
+
+**Segredos fora do bundle:** e-mail e senha do dono, confirmado por busca no `dist`.
+O `ADMIN_API_TOKEN` só sai quando a variável deixar de ser fornecida no build —
+conferido que some quando ela não existe.
+
+### Dois helpers que continuam ignorando RLS, de propósito
+
+`registrarMensagem` e `getAgendaConfig` usam o pool de serviço. É seguro por uma
+invariante: os dois só são chamados do painel depois de uma consulta sob RLS que já
+provou a posse (a rota `/send` carrega a conversa e devolve 404; o `/dashboard/resumo`
+lê os profissionais antes). A invariante está escrita nos dois, porque conhecimento
+implícito é como buraco nasce depois.
+
+### Modo legado — o dispositivo que evita dia-D
+
+Sem `SUPABASE_JWKS_URL`, servidor e painel voltam ao comportamento antigo. Existe
+porque deploy e configuração são gestos separados aqui, e um guard que exigisse JWT no
+instante do deploy deixaria o painel fora do ar até a última variável entrar. O
+servidor **avisa no log a cada subida** enquanto estiver nesse modo. Sai quando o JWT
+estiver de pé.
+
+## Mudança de rumo: agendamento sai do WhatsApp (2026-09-08)
+
+Decidido em duas etapas, em dois dias: primeiro o bot passaria a responder com o link
+do site (07/09); no dia seguinte, **nenhuma interação** (08/09). O agendamento é pelo
+site, e o bot fica calado.
+
+**O que "calado" significa aqui:** ele continua recebendo, gravando em
+`webhook_eventos` e espelhando no painel de Conversas. Standby é sobre o bot FALAR,
+não sobre ele ouvir — sem isso, o cliente que escrevesse sumiria sem deixar rastro.
+Quem responde é o dono, à mão, pelo painel.
+
+**Consequência a encarar:** quem escrever no WhatsApp não recebe nada automático. Se
+o dono não olhar o painel, a mensagem fica sem resposta. Antes o bot cobria isso.
+
+**Ligado por `BOT_STANDBY=1`.** Um interruptor, e reversível: nada do fluxo foi
+removido: ele está inteiro atrás de um desvio na primeira linha de `rotear()`.
+
+### O defeito que o standby de 07/09 escondia
+
+`alvoDaAgenda` roda **antes** do roteador, então o silêncio dele não alcançava aquela
+linha. Um cliente tocando num "Confirmar" de uma conversa anterior ao standby cairia
+em `{ tipo: 'marcar' }` e o bot **marcaria um agendamento de verdade** — calado. Um
+horário apareceria na agenda do dono sem que ele nem o cliente tivessem marcado.
+
+A guarda ficou dentro de `alvoDaAgenda`, que é função pura: ali o teste alcança, e um
+chamador futuro não tem como esquecer. De quebra, sumiu a chamada HTTP dentro da
+transação — o ponytail vencido de `registrarEDecidir`.
+
+204 testes passando, `tsc` limpo.
+
+### O que isso destravou
+
+O bot era o único consumidor de `/dias-disponiveis`, `/horarios-disponiveis` e
+`POST /agendamentos` além do site. Calado, ele sai do caminho — então **tornar o slug
+da barbearia obrigatório nas rotas públicas deixou de ter bloqueio**. É o próximo
+passo, e agora tem um consumidor só: o site.
+
+### Plano reordenado (08/09)
+
+| | Antes | Agora |
+|---|---|---|
+| Fase 3 | Autenticação | igual, esperando configuração do Supabase |
+| Fase 4 | Bot multi-número | **Rotas públicas por barbearia** |
+| Fase 5 | Painel | igual |
+| Fase 6 | — | Bot multi-número, quando ele voltar |
+
+O slug será **obrigatório** (400 sem ele), e não opcional com padrão: padrão silencioso
+repete o problema do `barbearia_em_transicao()` no banco — quem esquecer atende a loja
+errada sem erro.
+
+## PENDENTE: o deploy (adiado em 08/09/2026)
+
+Tudo abaixo está **pronto e verificado localmente, e NÃO está no ar**. O banco já
+mudou (Fases 1 e 2 aplicadas); o código que sabe usar essas mudanças, não. O que
+segura o sistema funcionando nesse intervalo são os dois dispositivos de transição
+(gatilho + default `barbearia_em_transicao()`).
+
+### A ordem importa, e errá-la derruba o bot
+
+**`BOT_STANDBY=1` tem que entrar na Vercel ANTES do deploy** que exigir o slug nas
+rotas públicas. Motivo: o bot em produção ainda chama `/dias-disponiveis`,
+`/horarios-disponiveis` e `POST /agendamentos` **sem slug nenhum**. Com o slug
+obrigatório e o bot ativo, ele passa a receber 400 em toda consulta de agenda.
+
+Em standby ele não chama nada disso — mas só entra em standby quando a variável
+existir.
+
+### Variáveis a configurar na Vercel (são suas)
+
+| Variável | Onde | Efeito |
+|---|---|---|
+| `BOT_STANDBY=1` | bot | silencia o bot. **Entra primeiro.** |
+| `DATABASE_URL_APP` | calendário | conexão `app_api`, sem bypass de RLS |
+| `SUPABASE_JWKS_URL` | calendário | **liga o modo JWT.** Sem ela, tudo segue no modo legado |
+| `VITE_SUPABASE_URL` | painel | `https://bbcuudayemhjanklfgtr.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | painel | chave publicável |
+| ~~`VITE_ADMIN_API_TOKEN`~~ | painel | **APAGAR.** Só sai do bundle quando a variável some do build |
+| ~~`VITE_OWNER_EMAIL` / `VITE_OWNER_PASSWORD`~~ | painel | **APAGAR.** Não são mais lidos |
+
+O JWKS não é segredo e já é conhecido:
+`https://bbcuudayemhjanklfgtr.supabase.co/auth/v1/.well-known/jwks.json`
+
+### Antes disso, no painel do Supabase
+
+1. Authentication → Providers → Email: habilitar (e decidir sobre confirmação de
+   e-mail, que exige SMTP próprio).
+2. Criar o usuário do dono, e me passar o e-mail — falta ligar em
+   `barbearias.user_id`, hoje `null` nas duas lojas.
+3. `alter role app_api password '<senha forte>';` — a senha alimenta o `DATABASE_URL_APP`.
+
+### Depois de subir, conferir no ar
+
+- O log da subida diz `"modo":"jwt"` e não `"modo":"legado"`.
+- Login do painel com e-mail e senha funciona; o `ADMIN_API_TOKEN` antigo é recusado.
+- `GET /api/servicos` **não** devolve mais o serviço "SÓ DA LOJA B" — é o
+  discriminador que prova o isolamento em produção.
+- Mensagem real no WhatsApp: o bot não responde, mas a conversa aparece no painel.
+
+### A armadilha para o dia em que o bot voltar
+
+Tirar `BOT_STANDBY` sem antes fazer a Fase 6 (bot resolvendo a barbearia pelo
+`phone_number_id`) devolve o bot ao ar **sem saber mandar o slug** — e ele tomará 400
+em toda consulta de agenda. O bot volta junto com a Fase 6, não antes.
 
 ### O que continua em aberto
 
