@@ -39,6 +39,7 @@ const CONTEXTO: Omit<ContextoFluxo, 'agenda'> = {
   donoAtendendo: false,
   nomePendente: undefined,
   reserva: undefined,
+  standby: false,
 };
 
 const NO_CARTAO: Omit<ContextoFluxo, 'agenda'> = {
@@ -96,6 +97,22 @@ describe('alvoDaAgenda — quando NAO escrever', () => {
 
   it('primeiro nome sozinho nao marca — falta informacao, nao ha o que gravar', () => {
     expect(alvoDaAgenda(texto('Victor'), { ...NO_CARTAO, nomePendente: undefined })).toBeUndefined();
+  });
+
+  it('EM STANDBY nao marca, mesmo com reserva e nome prontos', () => {
+    // O caso perigoso do standby de 08/09/2026. `alvoDaAgenda` roda ANTES do
+    // roteador, entao o silencio dele nao chega aqui: sem esta guarda, um cliente
+    // tocando num Confirmar de uma conversa anterior marcaria um horario de verdade
+    // na agenda do dono, com o bot calado e ninguem sabendo de onde veio.
+    //
+    // O mesmo contexto SEM standby marca — e o que prova que o teste esta medindo a
+    // guarda, e nao um caminho que ja estava bloqueado por outro motivo.
+    expect(alvoDaAgenda(botao(montarId('confirmar')), { ...NO_CARTAO, standby: true })).toBeUndefined();
+    expect(alvoDaAgenda(botao(montarId('confirmar')), NO_CARTAO)).toMatchObject({ tipo: 'marcar' });
+  });
+
+  it('EM STANDBY nao consulta dias nem horarios', () => {
+    expect(alvoDaAgenda(botao(montarId('barbeiro', { b: '1' })), { ...NO_CARTAO, standby: true })).toBeUndefined();
   });
 
   it('Confirmar sem reserva ou sem nome nao grava agendamento pela metade', () => {

@@ -24,6 +24,18 @@ export type Env = {
    */
   PAINEL_TOKEN: string;
   PORT: number;
+  /**
+   * **Bot em STANDBY: recebe e grava, mas nao responde nada** (decisao de 08/09/2026).
+   * O agendamento e pelo site; o dono responde a mao pelo painel de Conversas.
+   *
+   * Falso = fluxo completo, como sempre foi. Voltar do standby e apagar esta variavel
+   * — nada do fluxo foi removido do codigo.
+   *
+   * Um interruptor, e nao um enum de modos: quando isto tinha tres valores possiveis,
+   * disparava o gatilho de upgrade declarado no `ponytail` abaixo (trocar a validacao
+   * a mao por um schema). Um booleano nao dispara, e nao precisamos do schema ainda.
+   */
+  BOT_STANDBY: boolean;
 };
 
 /** O calendario roda ao lado, na 3334 — a 3333 e deste bot. */
@@ -57,6 +69,9 @@ export function carregarEnv(fonte: NodeJS.ProcessEnv = process.env): Env {
     CALENDARIO_WEBHOOK_TOKEN: fonte.CALENDARIO_WEBHOOK_TOKEN?.trim() ?? '',
     PAINEL_TOKEN: fonte.PAINEL_TOKEN?.trim() ?? '',
     PORT: Number(fonte.PORT ?? 3000),
+    // So '1' e 'true' ligam. Qualquer outra coisa (inclusive a string 'false', que e
+    // truthy em JavaScript e ja derrubou gente melhor que nos) deixa o bot atendendo.
+    BOT_STANDBY: ['1', 'true'].includes((fonte.BOT_STANDBY ?? '').trim().toLowerCase()),
   };
 
   if (faltando.length > 0) {

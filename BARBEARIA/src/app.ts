@@ -34,7 +34,7 @@ export function dependenciasReais(env: Env): Dependencias {
   const agenda = consultarAgenda(env.CALENDARIO_URL);
 
   return {
-    registrar: (evento, decidir) => registrarEDecidir(pool, evento, decidir, agenda),
+    registrar: (evento, decidir) => registrarEDecidir(pool, evento, decidir, agenda, env.BOT_STANDBY),
     enviar: criarEmissor(env),
     // Sem token, o espelho simplesmente nao existe e o bot funciona igual — o painel
     // e que fica sem a conversa. Melhor que derrubar o servico na subida por causa de

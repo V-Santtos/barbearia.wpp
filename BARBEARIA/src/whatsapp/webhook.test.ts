@@ -15,6 +15,7 @@ const env: Env = {
   CALENDARIO_WEBHOOK_TOKEN: 'token-de-espelho-de-teste',
   PAINEL_TOKEN: 'token-do-painel-de-teste',
   PORT: 3000,
+  BOT_STANDBY: false,
 };
 
 const ROTA = '/webhook/whatsapp';
@@ -43,6 +44,7 @@ function montar(sobrescreve: Partial<Dependencias> = {}) {
         donoAtendendo: false,
         nomePendente: undefined,
         reserva: undefined,
+  standby: false,
       }),
       clienteNovo: true, nome: undefined,
     }),
@@ -208,6 +210,7 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
           ultimaResposta: undefined,
           degrau: 0,
           donoAtendendo: false,
+          standby: false,
           nomePendente: undefined,
           reserva: undefined,
         }),
@@ -276,6 +279,7 @@ describe('POST /webhook/whatsapp — primeira interacao', () => {
           ultimaResposta: undefined,
           degrau: 0,
           donoAtendendo: false,
+          standby: false,
           nomePendente: undefined,
           reserva: undefined,
         }),

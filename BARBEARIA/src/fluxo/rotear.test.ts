@@ -33,6 +33,7 @@ const SEM_NOME: ContextoFluxo = {
   donoAtendendo: false,
   nomePendente: undefined,
   reserva: undefined,
+  standby: false,
 };
 
 /** Quem ja fechou: o nome foi dito por ele, na etapa de nome do agendamento. */
@@ -720,3 +721,52 @@ describe('rotear — a etapa do nome', () => {
 function acoes(acao: Extract<ReturnType<typeof rotear>[number], { tipo: 'enviar_lista' }>) {
   return acao.opcoes;
 }
+
+describe('standby: o bot nao responde nada (08/09/2026)', () => {
+  const EM_STANDBY: ContextoFluxo = { ...SEM_NOME, standby: true };
+
+  const texto = (t = 'oi'): EventoRecebido => ({ ...BASE, tipo: 'texto', texto: t });
+
+  it('texto nao produz resposta nenhuma', () => {
+    expect(rotear(texto(), EM_STANDBY)).toEqual([]);
+  });
+
+  it('cliente cadastrado tambem nao recebe nada', () => {
+    expect(rotear(texto(), { ...EM_STANDBY, nome: 'Victor Santos' })).toEqual([]);
+  });
+
+  it('botao de conversa antiga nao entra no fluxo', () => {
+    // O que este teste protege e maior do que parece: sem o desvio, um toque em
+    // `agendar` levaria o cliente a um fluxo que ninguem vai concluir.
+    expect(
+      rotear({ ...BASE, tipo: 'botao', botaoId: montarId('agendar', {}), titulo: 'Agendar' }, EM_STANDBY),
+    ).toEqual([]);
+  });
+
+  it('nem o Confirmar de uma reserva pendente', () => {
+    // O caso perigoso de verdade: um cliente com reserva e nome ja no historico,
+    // tocando em Confirmar. O roteador cala aqui; quem impede a MARCACAO e o recorte
+    // em `registrarEDecidir`, que nao consulta a agenda em standby.
+    expect(
+      rotear(
+        { ...BASE, tipo: 'botao', botaoId: montarId('confirmar', {}), titulo: 'Confirmar' },
+        { ...EM_STANDBY, nomePendente: 'Victor Santos', reserva: { barbeiro: DOIS[0]!, data: '2026-07-31', hora: '14:00' } },
+      ),
+    ).toEqual([]);
+  });
+
+  it('formato sem suporte (audio, figurinha) tambem fica sem resposta', () => {
+    expect(rotear({ ...BASE, tipo: 'nao_suportado', formato: 'audio' }, EM_STANDBY)).toEqual([]);
+  });
+
+  it('a escada de feedback nao avanca: nao ha o que reforcar', () => {
+    expect(rotear(texto('oi'), { ...EM_STANDBY, degrau: 1 })).toEqual([]);
+    expect(rotear(texto('oi'), { ...EM_STANDBY, degrau: 2 })).toEqual([]);
+  });
+
+  it('desligando o standby, o fluxo completo volta intacto', () => {
+    // A prova de que isto e reversivel por configuracao: mesmo evento, mesmo
+    // contexto, so com `standby: false` — e o bot volta a abrir o menu.
+    expect(rotear(texto(), SEM_NOME).map((a) => a.resposta)).toEqual(['saudacao', 'menu_principal']);
+  });
+});

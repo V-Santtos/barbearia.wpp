@@ -18,6 +18,17 @@ import { juntarNome, lerNome, palavrasReais, primeiroNome, type MotivoInvalido }
  *    ja tem toda a informacao e repetir vira ruido.
  */
 export function rotear(evento: EventoRecebido, contexto: ContextoFluxo): Acao[] {
+  // STANDBY (08/09/2026): o agendamento mudou para o site e o bot nao fala mais nada.
+  //
+  // O desvio fica AQUI, na primeira linha, e nao espalhado pelos casos: assim o resto
+  // do arquivo continua sendo o fluxo completo, intacto, e voltar do standby e apagar
+  // uma variavel de ambiente — nao remontar o que foi apagado.
+  //
+  // Este e o UNICO silencio do roteador fora do fim da escada, e por isso ele mora na
+  // primeira linha, visivel: silencio escondido no meio de um `switch` seria a coisa
+  // mais dificil de explicar quando alguem perguntasse "por que o bot nao respondeu?".
+  if (contexto.standby) return [];
+
   // O toque em botao vem ANTES da checagem do dono, e nao e detalhe: e ele que
   // devolve a conversa ao atendimento automatico. O cliente que toca no menu esta
   // pedindo o bot com todas as letras, mesmo no meio de uma conversa com o dono.

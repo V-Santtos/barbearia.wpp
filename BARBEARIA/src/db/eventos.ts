@@ -59,6 +59,21 @@ export function alvoDaAgenda(
   evento: EventoRecebido,
   contexto: Omit<ContextoFluxo, 'agenda'>,
 ): AlvoAgenda | undefined {
+  // EM STANDBY A AGENDA NAO E CONSULTADA, e isto nao e otimizacao — e correcao.
+  //
+  // Esta funcao roda ANTES do roteador, entao o silencio dele nao alcanca aqui. Sem
+  // esta linha, um cliente que tocasse num "Confirmar" de uma conversa anterior ao
+  // standby cairia em `{ tipo: 'marcar' }` e o bot MARCARIA um agendamento de verdade
+  // no calendario — calado, sem nada aparecer pra ninguem. O horario apareceria na
+  // agenda do dono sem que ele nem o cliente tivessem marcado.
+  //
+  // A guarda mora AQUI, e nao no chamador, porque aqui ela e alcancavel pelo teste (a
+  // funcao e pura) e porque um chamador futuro nao tem como esquecer dela.
+  //
+  // De quebra, some a chamada HTTP dentro da transacao — o ponytail vencido de
+  // `registrarEDecidir`. Em standby ela simplesmente nao acontece.
+  if (contexto.standby) return undefined;
+
   const { barbeiros } = contexto;
 
   // Texto so pede alguma coisa a agenda num caso: o sobrenome chegando depois do
@@ -168,6 +183,7 @@ export async function registrarEDecidir(
   evento: EventoRecebido,
   decidir: (contexto: ContextoFluxo) => Acao[],
   buscarAgenda: BuscarAgenda,
+  standby: boolean,
   janelaSegundos: number = JANELA_RAJADA_SEGUNDOS,
 ): Promise<Decisao> {
   const cliente = await pool.connect();
@@ -225,6 +241,7 @@ export async function registrarEDecidir(
       hoje: hojeEmSaoPaulo(evento.recebidoEm),
       barbeiros,
       donoAtendendo: await donoAtendendo(cliente, evento.de),
+      standby,
       ...(await lerEtapaDoNome(cliente, evento.de, barbeiros)),
       ...(await lerEscada(cliente, evento.de)),
     };

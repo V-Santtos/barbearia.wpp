@@ -14,6 +14,7 @@ const ENV: Env = {
   CALENDARIO_WEBHOOK_TOKEN: 'token-de-espelho-de-teste',
   PAINEL_TOKEN: 'token-do-painel-de-teste',
   PORT: 3000,
+  BOT_STANDBY: false,
 };
 
 const ROTA = '/mensagens';

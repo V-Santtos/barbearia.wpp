@@ -207,6 +207,21 @@ export type ContextoFluxo = {
    * 0 = ainda nao avisei, 1 = ja avisei uma vez, 2 = ja reforcei o menu (travado).
    */
   degrau: 0 | 1 | 2;
+  /**
+   * O bot esta em STANDBY: nao responde nada, a ninguem.
+   *
+   * Decidido em 08/09/2026. O agendamento passou a ser pelo site, e o bot ficou sem
+   * papel nenhum na conversa — nem o de mandar o link, que era o desenho de 07/09.
+   *
+   * **Continua recebendo, gravando e espelhando no painel.** Standby e sobre o bot
+   * FALAR, nao sobre ele ouvir: as mensagens seguem aparecendo em Conversas, e o dono
+   * responde a mao. Sem isso, o cliente que escrevesse sumiria sem deixar rastro.
+   *
+   * E dado no contexto, e nao um `if` lendo `process.env` no meio do roteador, pelo
+   * mesmo motivo de sempre: `rotear()` e funcao pura, e e isso que mantem o teste em
+   * milissegundos, sem servidor e sem simular a Meta.
+   */
+  standby: boolean;
 };
 
 /** O agendamento montado por botao, esperando so o nome. */
