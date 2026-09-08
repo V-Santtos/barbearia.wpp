@@ -9,6 +9,32 @@ const API_BASE = (import.meta.env.VITE_CALENDAR_API_URL ?? "/api").replace(
 );
 const ADMIN_API_TOKEN = (import.meta.env.VITE_ADMIN_API_TOKEN ?? "").trim();
 
+// ponytail: painel populado com mundo de teste (`VITE_MOCK=1`), para validar
+// layout sem banco de pé.
+// Teto: cobre só as rotas escritas em `mock/rotas.ts`. Rota fora dessa lista cai
+// para a rede normalmente — mock que responde qualquer coisa esconderia
+// endpoint novo em vez de mostrar que ele não foi coberto.
+// Gatilho de remoção: quando o banco voltar e o painel tiver dado real de
+// vitrine próprio. Manter os dois é manter duas fontes de verdade, que é o
+// defeito que o `DashboardScreen` foi escrito para evitar.
+const MOCK = (import.meta.env.VITE_MOCK ?? "").trim() === "1";
+
+// `import()` e não import estático de propósito: `VITE_MOCK` vira literal no
+// build, então com a flag desligada o bundler descarta este ramo inteiro e o
+// mundo de teste não viaja no bundle de produção.
+let mockCarregado: {
+  responder: (caminho: string, init: RequestInit) => unknown;
+  SEM_MOCK: symbol;
+} | null = null;
+
+async function carregarMock() {
+  if (!mockCarregado) {
+    const m = await import("./mock/rotas");
+    mockCarregado = { responder: m.responderMock, SEM_MOCK: m.SEM_MOCK };
+  }
+  return mockCarregado;
+}
+
 // ─── Tipos novos ──────────────────────────────────────────────────────────────
 
 export interface AgendaConfig {
@@ -128,6 +154,17 @@ export class ApiError extends Error {
 }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  // A costura do mundo de teste. Fica aqui, no transporte, para que TODA função
+  // acima continue rodando inteira — `toEvent`, `toProf`, filtros e `catch` —
+  // sobre um corpo com o mesmo formato do Fastify. Nenhuma tela ganha um
+  // `if (mock)`, e por isso o que aparece torto no teste apareceria torto com a
+  // API de pé.
+  if (MOCK) {
+    const { responder, SEM_MOCK } = await carregarMock();
+    const resposta = responder(path, init);
+    if (resposta !== SEM_MOCK) return resposta as T;
+  }
+
   const attachAdminToken =
     ADMIN_API_TOKEN && shouldAttachAdminToken(path, init);
   const hasBody = init.body !== undefined && init.body !== null;
