@@ -21,7 +21,92 @@ Duas pastas de código:
 Os dois falam com o **mesmo banco**: Supabase `sppexvjvnoganlduyjvs`. Acesso e
 armadilhas em `REGRAS-APRENDIZADOS/ANEXO_BANCO/`.
 
-## Onde estamos (2026-08-04)
+## Onde estamos (2026-09-08) — casca de seções no desktop, com o banco fora
+
+### O bloqueio: o projeto Supabase sumiu
+
+`sppexvjvnoganlduyjvs` não responde mais. Verificado nesta sessão, e o quadro é
+maior que o que o `ANEXO_BANCO` registrava:
+
+- `db.<ref>.supabase.co` **e** `<ref>.supabase.co` dão **NXDOMAIN**, no resolver
+  local e no do Google. Não é cache nem IPv6: o nome não existe. (O anexo diz que
+  em 05/08 o host direto era IPv6 puro — tinha AAAA. Hoje não tem A nem AAAA.)
+- O pooler de `us-west-2` responde `tenant/user postgres.<ref> not found` nas
+  duas portas, 6543 e 5432.
+- **Produção está igual:** `barbearia-wpp.vercel.app/api/profissionais` → 500.
+
+Os três juntos são a assinatura de **projeto pausado por inatividade** (free tier
+retira o DNS junto). O último trabalho no repo é de 05/08, mais de um mês antes.
+**Despausar é no painel do Supabase, com o login do dono** — daqui não se alcança.
+
+### O mundo de teste (é isso que está na tela hoje)
+
+`VITE_MOCK=1` no `CALENDARIO/.env` popula o painel **inteiro** sem tocar na API.
+A costura é **uma só**, no transporte (`api()` de `services/calendarApi.ts`), não
+nas telas: toda função pública roda inteira — `toEvent`, `toProf`, filtros,
+`catch` — sobre um corpo com o mesmo formato do Fastify. Nenhum componente tem
+`if (mock)`.
+
+| | |
+|---|---|
+| Onde | `CALENDARIO/services/mock/` — `mundo.ts`, `resumo.ts`, `rotas.ts` |
+| Profissionais | 3, com expedientes **diferentes** de propósito (Bruno é meio-período e não trabalha segunda — é onde disponibilidade e relógio quebram) |
+| Agendamentos | ~1.127, de 35 dias atrás a 21 à frente; 13 a 30 por dia |
+| Conversas | 8, com os quatro estados (`bot`, `human`, `open`, `closed`) |
+| Escrita | funciona (criar/editar/apagar), em memória; **F5 volta à linha de base** |
+
+Duas propriedades pedidas pelo dono e como cada uma é obtida: **atemporal** (tudo
+nasce de `new Date()`, nada cravado) e **estável ao recarregar** (sem
+`Math.random()`; o sorteio tem semente fixa, então F5 reconstrói o mesmo mundo).
+
+O `dashboard/resumo` é **calculado do mesmo mundo** que o calendário desenha —
+conferido: 13 agendamentos hoje nas duas telas. Número que discorda entre elas é
+o defeito que o `DashboardScreen` foi escrito para evitar.
+
+Desligar é zerar a flag no `.env`; o Vite reinicia sozinho.
+
+### A casca de seções (o que está sendo lapidado AGORA)
+
+Spec da parte 1 em
+[`docs/superpowers/specs/2026-09-08-casca-de-secoes-rail-e-gaveta-design.md`](docs/superpowers/specs/2026-09-08-casca-de-secoes-rail-e-gaveta-design.md).
+Decisão travada: **o rail troca de seção**, não abre camadas. Agenda, Conversas,
+Dashboard e Financeiro viram lugares irmãos.
+
+Construído em `CALENDARIO/components/shell/`:
+
+| Arquivo | O quê |
+|---|---|
+| `secoes.ts` | o registro (a coluna não conhece seção por nome; itera esta lista) |
+| `ColunaDeSecoes.tsx` | a coluna da esquerda, que recolhe (56px) e expande (240px) |
+| `GavetaDeSecao.tsx` | a moldura de 288px que desliza com o contexto da seção |
+| `SecaoVazia.tsx` | o lugar honesto de uma seção ainda não migrada |
+
+**Funciona:** recolher/expandir pela linha da marca; trocar de seção; clicar na
+seção ativa alterna a gaveta; a agenda fica **montada e escondida** ao sair, então
+volta com a mesma data, visualização e rolagem.
+
+**O `+ Criar` pertence à coluna da esquerda**, não à gaveta — é a ação primária do
+produto, não acessório do calendário. É **um** botão em **um** lugar, que vira só
+"+" quando a coluna recolhe. Ele já mudou de casa duas vezes nesta sessão
+(`Sidebar` → gaveta → coluna); se aparecer em dois lugares de novo, é regressão.
+
+**Ainda é placeholder:** Conversas, Dashboard e Financeiro caem no `SecaoVazia`.
+O `DashboardScreen` **continua sendo o modal do menu do avatar**, intocado — a
+desmodalização é parte seguinte.
+
+### Nada commitado
+
+Tudo desta sessão está só no disco: o mundo de teste, a casca, a spec, e as
+edições em `App.tsx`, `Sidebar.tsx`, `calendarApi.ts`, `vite-env.d.ts` e `.env`.
+`tsc --noEmit` limpo.
+
+### Como conferir (o dono precisa entrar à mão)
+
+O login vive em memória quando "Lembrar-me" está desmarcado, então **recarregar
+desloga** — e o agente não faz login (não preenche campo de senha). Depois de
+qualquer reinício do Vite, é o dono quem entra.
+
+## Onde estivemos (2026-08-04) — lapidação mobile, ainda sem reconferência no aparelho
 
 **O agendamento fecha ponta a ponta pelo WhatsApp**, validado no celular de
 verdade: `oi` → menu → barbeiro → dia → horário → nome → cartão → Confirmar →
@@ -203,6 +288,11 @@ anexo, ou migrar, é decisão de quando isso for revisitado).
 Três processos + um túnel, todos em **background** — nunca no terminal do
 usuário (processo iniciado lá morre quando ele fecha a janela).
 
+**Com `VITE_MOCK=1` (o estado de hoje), o front não precisa de nada disso.** A
+API do calendário pode até subir, mas vai responder 500 em tudo enquanto o banco
+estiver pausado; o painel na 3002 se vira sozinho com o mundo de teste. O bot e o
+túnel só importam quando o WhatsApp voltar a ser exercitado.
+
 | O quê | Onde | Comando | Porta |
 |---|---|---|---|
 | Bot (Hono) | `BARBEARIA/` | `npm run dev` | 3333 |
@@ -238,6 +328,30 @@ anunciar "zerado" sem olhar (aconteceu errado duas vezes, ver
 `REGRAS-APRENDIZADOS/APRENDIZADOS.md`, 2026-08-01).
 
 ## Pendências em aberto
+
+- **Despausar o Supabase** — bloqueia tudo que é dado real (painel, deploy, bot).
+  Só o dono consegue, no painel do Supabase. Enquanto isso o `VITE_MOCK` segura o
+  trabalho visual.
+- **Relógio "O dia": os rótulos "abre" e "fecha" estão empilhados.** Medido no
+  DOM: "abre" em x 1134→1157, "fecha" em x 1123→1152, mesma altura. É estrutural,
+  não é do mock — o arco dá uma volta de `janelaDia.ini` a `janelaDia.fim`, então
+  abertura e fechamento caem no mesmo ângulo, no topo. Provavelmente nasceu junto
+  com a Frente 2 (deixar os dois rótulos sempre presentes). Não consertado.
+- **Ordem vertical dos ícones na coluna** — nasce igual à do dock, com Financeiro
+  no fim. Única pergunta que a spec da casca deixou em aberto; a resposta depende
+  de o dono sentir qual seção ele mais alcança, o que só dá depois que as quatro
+  existirem.
+- **A gaveta precisa de um lugar definitivo.** Hoje ela é a segunda coluna, com o
+  contexto da Agenda. Quando Conversas e Financeiro tiverem painel próprio, é
+  preciso decidir se cada seção traz o seu ali ou se o desenho muda.
+- **Divergência de ícone assumida, com fim marcado:** a coluna do desktop usa
+  `Gauge` no Dashboard; o dock do celular segue com `BarChart2` até a parte que
+  mexer nele (a da quarta aba). Agenda e Conversas já são iguais nos dois.
+- **Segredos que vazaram na conversa desta sessão** (transcrição, não repositório):
+  `BOT_PAINEL_TOKEN`, `VITE_ADMIN_API_TOKEN`, `VITE_OWNER_PASSWORD` e o e-mail do
+  dono. Os `VITE_*` nunca foram barreira (viajam no bundle, já registrado), mas se
+  a conversa for parar em lugar compartilhado, trocar os quatro — junto com a senha
+  do banco, que já estava nesta lista desde 05/08.
 
 - **Etapa do nome — casos ainda não exercitados no celular:** nome picado
   (primeiro nome numa mensagem, sobrenome na seguinte, deve fechar sozinho sem

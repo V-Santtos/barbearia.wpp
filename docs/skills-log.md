@@ -3,6 +3,38 @@
 Registro de toda skill/repositório/conhecimento avaliado para entrar em `.claude/skills/`.
 Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbearia-design.md`.
 
+## [2026-09-08] arhamkhnz/next-shadcn-admin-dashboard
+- Fonte: https://github.com/arhamkhnz/next-shadcn-admin-dashboard
+- Veredito: ✂️ Adotado parcial — só **vocabulário de ícone** e **gramática de layout**.
+  Zero código, zero dependência, nada instalado.
+- Motivo: trazido pelo dono para adiantar o painel (dashboard/analytics + financeiro).
+  Clonado fora do repo, em `%TEMP%/claude/eval/shadcn-admin` (caminho curto de
+  propósito: no scratchpad da sessão o checkout falhou com `Filename too long`).
+  Next 16 + Turbopack + React 19 + Tailwind v4 + shadcn; `npm ci` em 35s, sobe em
+  3,5s, sem `.env` — é template estático com dado mock.
+  - **O que NÃO dá para aproveitar, e é a maior parte:** a stack é incompatível.
+    O `CALENDARIO/` é React DOM + Vite com sistema de tokens CSS próprio (11
+    arquivos numerados); importar página de lá é importar um segundo design system.
+  - **Boa parte do que parece pronto não é.** Verificado clicando: o "Add event"
+    do calendário e o "Quick Create" da sidebar são `<Button>` **sem `onClick`** —
+    decorativos. Não existe `eventClick`, `dateClick`, `eventAdd` nem `selectable`
+    em `src/` inteiro: a página de calendário é casca visual. Confirmado idêntico
+    no demo oficial do autor, então não é defeito do clone. (O template não é
+    inerte por inteiro: há 60 `onClick` no `src/` e a tabela arrastável do
+    dashboard legado usa dnd-kit de verdade.)
+  - **O que foi aproveitado, e por quê:**
+    1. **Nomes de ícone.** Os dois projetos usam `lucide-react`, então o
+       aproveitamento é de vocabulário, não de código. Todos verificados contra a
+       nossa versão (0.552.0) — existem, sem atualizar dependência.
+    2. **A estrutura da coluna da esquerda:** marca no topo, ação primária logo
+       abaixo, seções com rótulo, e a coluna inteira recolhendo para só ícones.
+       Copiada a forma, não o CSS.
+  - **O que foi deliberadamente NÃO copiado:** o conjunto de ícones inteiro. Ele é
+    retilíneo (`MessageSquare`, `LayoutDashboard`, `Banknote`) e este app é
+    pílula/círculo. Ver a regra do conjunto em `REGRAS.md` (2026-09-08).
+- Ação: nada instalado no repo. O clone é descartável — some com o `%TEMP%` e
+  reclonar custa 40s. Se for revisitado, é como referência visual, não como base.
+
 ## [2026-08-04] callstack/liquid-glass
 - Fonte: https://github.com/callstack/liquid-glass
 - Veredito: ❌ Rejeitado — plataforma errada, e sem nada extraível

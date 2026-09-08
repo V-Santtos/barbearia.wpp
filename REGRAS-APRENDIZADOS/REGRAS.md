@@ -4,6 +4,63 @@ Decisões duráveis. Cada regra vale até ser explicitamente revista — se uma 
 informação contradiz uma regra aqui, isso é um conflito a debater (ver README.md desta
 pasta), não uma sobrescrita silenciosa.
 
+## [2026-09-08] O painel navega por SEÇÕES, não por camadas sobre o calendário
+- **Regra:** Agenda, Conversas, Dashboard e Financeiro são lugares irmãos, alcançados
+  pela coluna da esquerda. Trocar de seção troca a área de trabalho inteira.
+- **Por quê importa:** o dashboard ser camada (`App.tsx:95`) é certo para uma espiada e
+  não sustenta um Financeiro, onde o dono senta e trabalha, nem um Chat web. Como
+  camada, o calendário fica montado e pesquisando atrás de toda tela, e a superfície de
+  trabalho herda três saídas fáceis (X, Esc, clique no véu) — hostil para quem está no
+  meio de um filtro. Além disso o app já discordava de si mesmo: no celular o dock trata
+  as três como iguais; no desktop o dashboard morava no menu de **conta**.
+- **Como aplicar:** a promessa de "voltar devolve a agenda como estava" continua valendo,
+  mas cumprida por **preservação de estado** (seção montada e escondida), não por véu.
+  E seção montada e inativa **precisa** passar `enabled: false` ao `usePolling` — quatro
+  pollings simultâneos é o empilhamento que gerou os 8.711ms de 2026-08-01.
+
+## [2026-09-08] Ícones: cobertura do template, forma do app
+- **Regra:** o vocabulário de ícones sai do template shadcn (quais conceitos ganham qual
+  ícone), mas **onde o lucide oferece par redondo/quadrado, escolhe-se o redondo**.
+  Conjunto travado: `CalendarDays`, `MessageCircleMore`, `Gauge`, `Coins`, `Settings`,
+  `CirclePlus`, mais `PanelLeft`/`PanelLeftClose`.
+- **Por quê importa:** o conjunto do template é retilíneo (`MessageSquare`,
+  `LayoutDashboard`, `CheckSquare`, `Banknote`) e este app é o oposto — "Criar" é
+  pílula, FAB e avatar são círculos, painéis têm canto de 28px. Importar a gramática
+  inteira brigaria com a geometria já lapidada. Efeito colateral bom: o
+  `MessageCircleMore` (troca deliberada de 2026-08-04) deixa de ser exceção e vira a
+  regra do conjunto.
+- **Como aplicar:** ícone novo se resolve aplicando a regra, sem reabrir a discussão.
+  `Coins` e não `CircleDollarSign` no Financeiro porque o segundo é cifrão de **dólar**
+  num app que cobra em real. `Gauge` e não `BarChart2` porque o `BarChart2` era o único
+  do conjunto antigo sem forma que o contivesse — ao lado de ícones fechados ele lê mais
+  leve.
+
+## [2026-09-08] O "+ Criar" pertence à coluna da esquerda, em um lugar só
+- **Regra:** marcar horário é a ação primária do produto e mora na coluna de navegação,
+  não na gaveta nem na `Sidebar`. Um botão, um lugar: vira só o "+" quando a coluna
+  recolhe, volta a ser a pílula branca (com o "+" **roxo**, `#6B3EFF`) quando expande.
+- **Por quê importa:** dentro da `Sidebar` ele era acessório do calendário, e o dono
+  precisa dele em qualquer seção. Na primeira tentativa ele acabou em **dois** lugares
+  conforme o estado (no rail com a gaveta fechada, na gaveta com ela aberta) — e o dono
+  leu isso como defeito, corretamente.
+- **Como aplicar:** se o "+" aparecer em dois lugares de novo, é regressão. E no dia em
+  que existir uma segunda coisa criável (lançamento no financeiro), ele vira menu na
+  **mesma posição** — a posição não muda.
+
+## [2026-09-08] Mock do painel se costura no transporte, nunca nas telas
+- **Regra:** o mundo de teste (`VITE_MOCK=1`) entra por um `if` dentro de `api()`, em
+  `services/calendarApi.ts`, devolvendo corpo com o mesmo formato do Fastify. Nenhum
+  componente ganha `if (mock)`. Rota não coberta cai para a rede normalmente.
+- **Por quê importa:** costurado ali, todas as funções públicas continuam rodando
+  inteiras — `toEvent`, `toProf`, filtros, `catch`. O que aparecer torto no teste
+  apareceria torto com a API de pé, e é isso que dá valor ao teste visual. Mock que
+  responde qualquer coisa esconderia endpoint novo em vez de mostrar que não foi coberto.
+- **Como aplicar:** dado derivado (o `dashboard/resumo`) é **calculado do mesmo mundo**
+  que o calendário desenha, nunca escrito à parte — senão as duas telas discordam, que é
+  o defeito que o `DashboardScreen` existe para evitar. E nada de data cravada nem
+  `Math.random()`: relativo a `new Date()` para não envelhecer, com semente fixa para o
+  F5 reconstruir o mesmo mundo.
+
 ## [2026-07-29] Plataforma de deploy alvo: Vercel Pro + Supabase Pro
 - **Regra:** o sistema, quando amadurecer, sobe em Vercel Pro (compute/hosting) e
   Supabase Pro (banco de dados/auth/storage).
