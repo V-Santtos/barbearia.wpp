@@ -697,12 +697,17 @@ function mapServiceRow(row) {
   };
 }
 
-async function getServicesFromTables() {
+// `barbeariaId` e OBRIGATORIO, e nao opcional com um "se vier, filtra". Parametro
+// opcional aqui significaria que um chamador futuro que esquecesse dele receberia o
+// catalogo de todas as barbearias do SaaS — e a lista de servicos e precos de um
+// concorrente e exatamente o tipo de coisa que ninguem descobre ter vazado.
+async function getServicesFromTables(barbeariaId) {
   const { rows } = await pool.query(
     `SELECT id, slug, nome, descricao, preco, categoria_id
      FROM public.servicos
-     WHERE ativo = TRUE
+     WHERE ativo = TRUE AND barbearia_id = $1
      ORDER BY ordem ASC, id ASC`,
+    [barbeariaId],
   );
   return rows.map(mapServiceRow);
 }
@@ -711,7 +716,8 @@ async function getServicesFromTables() {
 
 function buildServer() {
   const fastify = Fastify({ logger: true });
-  const requireAdmin = criarGuardaDoPainel();
+  const guardaDoPainel = criarGuardaDoPainel();
+  const requireAdmin = guardaDoPainel;
 
   /**
    * Envolve um handler do painel para ele rodar com a RLS valendo.
@@ -760,33 +766,185 @@ function buildServer() {
     message: "API da barbearia funcionando!",
   }));
 
+  /**
+   * De qual barbearia esta requisicao publica esta falando.
+   *
+   * As rotas publicas (site e, um dia, o bot) sao anonimas por natureza — nao ha
+   * usuario, logo nao ha `auth.uid()`, logo a RLS nao tem em que se ancorar. O
+   * recorte por barbearia tem que vir explicito, e e este helper que o exige.
+   *
+   * **O slug e OBRIGATORIO, e nao "opcional com padrao".** Um padrao silencioso
+   * repetiria aqui o problema que o `barbearia_em_transicao()` tem no banco: quem
+   * esquecesse o parametro atenderia a loja errada sem nenhum erro. 400 e barulhento,
+   * e barulho e o que se quer quando a alternativa e servir a barbearia errada.
+   *
+   * A ORIGEM do slug e problema do site: subdominio, caminho, o que ele preferir. Aqui
+   * ele chega como parametro, e essa neutralidade e de proposito — a hospedagem do
+   * site ainda nao esta decidida.
+   *
+   * Devolve `null` quando ja respondeu (400/404); o chamador so precisa parar.
+   *
+   * ponytail: uma consulta por requisicao, sem cache. Teto: a tabela tem uma linha por
+   * cliente do SaaS e o `slug` e UNIQUE, entao e uma leitura de indice. Gatilho de
+   * upgrade: quando `barbearias` passar de algumas centenas de linhas, ou quando o
+   * perfil mostrar esta consulta pesando no tempo das rotas publicas.
+   */
+  async function resolverBarbearia(request, reply) {
+    const bruto =
+      request.query?.barbearia ?? request.body?.barbearia ?? "";
+    const slug = String(bruto).trim().toLowerCase();
+
+    if (!slug) {
+      reply.status(400).send({
+        error: "Informe a barbearia: `?barbearia=<slug>` (ou `barbearia` no corpo).",
+        codigo: "barbearia_ausente",
+      });
+      return null;
+    }
+
+    const { rows } = await pool.query(
+      `SELECT id, nome, slug FROM public.barbearias WHERE slug = $1`,
+      [slug],
+    );
+
+    if (!rows.length) {
+      reply.status(404).send({ error: "Barbearia nao encontrada.", codigo: "barbearia_desconhecida" });
+      return null;
+    }
+
+    return rows[0];
+  }
+
+  /**
+   * Envolve uma rota publica: resolve a barbearia e entrega pronta ao handler.
+   *
+   * DUAS FORMAS DE DIZER QUAL BARBEARIA, e nao e indecisao — sao dois chamadores
+   * diferentes, cada um com a informacao que ele naturalmente tem:
+   *
+   *  - **o site** e anonimo e sabe de qual loja e (subdominio, caminho): manda o slug;
+   *  - **o painel** e logado e NAO sabe o proprio slug: quem diz e o JWT.
+   *
+   * Quatro destas rotas sao usadas pelos dois (`/profissionais`, `/servicos`,
+   * `agenda-config`, `dias-bloqueados`). Exigir o slug do painel o obrigaria a
+   * descobrir o proprio slug so pra devolve-lo ao servidor que ja sabe — e a alternativa
+   * (um padrao quando falta) e justamente o silencio que estamos removendo.
+   *
+   * O slug tem precedencia: se veio, e ele que vale, mesmo com sessao aberta.
+   */
+  const noSite =
+    (handler) =>
+    async (request, reply) => {
+      const pedido = String(
+        request.query?.barbearia ?? request.body?.barbearia ?? "",
+      ).trim();
+
+      const barbearia = pedido
+        ? await resolverBarbearia(request, reply)
+        : await barbeariaDoUsuario(request, reply);
+
+      if (!barbearia) return reply;
+      return handler(request, reply, barbearia);
+    };
+
+  /**
+   * A barbearia de quem esta logado — o caminho do painel, quando nao veio slug.
+   *
+   * Em modo LEGADO isto nao tem resposta: nao ha usuario, logo nao ha barbearia, e
+   * responder qualquer uma seria escolher uma loja no escuro. O 400 diz exatamente o
+   * que fazer, porque descobrir isso por tentativa custaria caro.
+   */
+  async function barbeariaDoUsuario(request, reply) {
+    // SEM cabecalho de autorizacao, quem chama e o site — e para ele a resposta certa
+    // e "informe a barbearia", nao "nao autorizado". Deixar o guard responder 401 aqui
+    // mandaria o site tentar fazer login para consertar um erro que se conserta com um
+    // parametro na URL. Mensagem que aponta pro lugar errado custa uma tarde.
+    if (!request.headers.authorization && !request.headers["x-admin-token"]) {
+      reply.status(400).send({
+        error: "Informe a barbearia: `?barbearia=<slug>` (ou `barbearia` no corpo).",
+        codigo: "barbearia_ausente",
+      });
+      return null;
+    }
+
+    if (!MODO_JWT) {
+      reply.status(400).send({
+        error:
+          "Informe a barbearia: `?barbearia=<slug>`. (Sem SUPABASE_JWKS_URL nao ha " +
+          "sessao de onde deduzi-la.)",
+        codigo: "barbearia_ausente",
+      });
+      return null;
+    }
+
+    await guardaDoPainel(request, reply);
+    if (reply.sent || !request.usuario) return null;
+
+    const { rows } = await pool.query(
+      `SELECT id, nome, slug FROM public.barbearias WHERE user_id = $1`,
+      [request.usuario.sub],
+    );
+
+    if (!rows.length) {
+      reply.status(403).send({
+        error: "Sua conta não está ligada a nenhuma barbearia.",
+        codigo: "sem_barbearia",
+      });
+      return null;
+    }
+
+    return rows[0];
+  }
+
+  /**
+   * O profissional, se ele for MESMO daquela barbearia.
+   *
+   * Existe para as rotas que recebem `professionalId` do cliente. Sem esta checagem,
+   * o id seria a porta de entrada para o dado da loja vizinha: pedir a agenda do
+   * profissional 3 informando o slug da loja A devolveria a agenda da loja B, porque
+   * nenhuma das consultas seguintes olha a barbearia — elas olham o `profissional_id`.
+   *
+   * Devolve `null` para quem nao existe, nao esta ativo, ou e de outra loja: os tres
+   * viram o mesmo 404. Distinguir "nao existe" de "e de outra barbearia" entregaria
+   * um mapa de quem tem quem.
+   */
+  async function profissionalDaBarbearia(id, barbeariaId) {
+    const { rows } = await pool.query(
+      `SELECT id, nome FROM public.profissionais
+        WHERE id = $1 AND barbearia_id = $2 AND ativo = TRUE`,
+      [id, barbeariaId],
+    );
+    return rows[0] ?? null;
+  }
+
   // ─── PROFISSIONAIS ─────────────────────────────────────────────────────────
 
   // GET /profissionais — lista ativos
-  fastify.get("/profissionais", async (_req, reply) => {
+  fastify.get(
+    "/profissionais",
+    noSite(async (_req, reply, barbearia) => {
     try {
       const { rows } = await pool.query(
         `SELECT id, nome, cor, ativo, created_at
          FROM public.profissionais
-         WHERE ativo = TRUE
+         WHERE ativo = TRUE AND barbearia_id = $1
          ORDER BY nome ASC`,
+        [barbearia.id],
       );
       return rows.map(mapProfessional);
     } catch (err) {
       fastify.log.error(err);
       return reply.status(500).send({ error: "Erro ao buscar profissionais." });
     }
-  });
+    }),
+  );
 
   // GET /profissionais/:id/agenda — DisableDays reais (fora de dias_semana + bloqueados manualmente)
-  fastify.get("/profissionais/:id/agenda", async (request, reply) => {
+  fastify.get(
+    "/profissionais/:id/agenda",
+    noSite(async (request, reply, barbearia) => {
     const { id } = request.params;
     try {
-      const { rows: proRows } = await pool.query(
-        `SELECT 1 FROM public.profissionais WHERE id = $1 AND ativo = TRUE`,
-        [id],
-      );
-      if (!proRows.length)
+      if (!(await profissionalDaBarbearia(id, barbearia.id)))
         return reply
           .status(404)
           .send({ error: "Profissional não encontrado." });
@@ -823,17 +981,16 @@ function buildServer() {
       fastify.log.error(err);
       return reply.status(500).send({ error: "Erro ao buscar agenda." });
     }
-  });
+    }),
+  );
 
   // GET /profissionais/:id/agenda-config — configuração de dias e horários
-  fastify.get("/profissionais/:id/agenda-config", async (request, reply) => {
+  fastify.get(
+    "/profissionais/:id/agenda-config",
+    noSite(async (request, reply, barbearia) => {
     const { id } = request.params;
     try {
-      const { rows: proRows } = await pool.query(
-        `SELECT 1 FROM public.profissionais WHERE id = $1 AND ativo = TRUE`,
-        [id],
-      );
-      if (!proRows.length)
+      if (!(await profissionalDaBarbearia(id, barbearia.id)))
         return reply
           .status(404)
           .send({ error: "Profissional não encontrado." });
@@ -910,7 +1067,8 @@ function buildServer() {
         .status(500)
         .send({ error: "Erro ao buscar configuração de agenda." });
     }
-  });
+    }),
+  );
 
   // PUT /profissionais/:id/agenda-config — salva config (upsert)
   fastify.put(
@@ -1076,10 +1234,18 @@ function buildServer() {
   );
 
   // GET /profissionais/:id/dias-bloqueados — lista datas bloqueadas manualmente
-  fastify.get("/profissionais/:id/dias-bloqueados", async (request, reply) => {
+  fastify.get(
+    "/profissionais/:id/dias-bloqueados",
+    noSite(async (request, reply, barbearia) => {
     const { id } = request.params;
     const { date } = request.query ?? {};
     try {
+      // Sem esta linha o `profissional_id` seria a porta de entrada para a agenda da
+      // loja vizinha: `dias_bloqueados` nao tem `barbearia_id`, ela pendura em
+      // `profissionais` — entao quem valida a posse e esta checagem, nao a consulta.
+      if (!(await profissionalDaBarbearia(id, barbearia.id)))
+        return reply.status(404).send({ error: "Profissional não encontrado." });
+
       const { rows } = await pool.query(
         `SELECT id, data::text, motivo, periodos, created_at
          FROM public.dias_bloqueados
@@ -1101,7 +1267,8 @@ function buildServer() {
         .status(500)
         .send({ error: "Erro ao buscar dias bloqueados." });
     }
-  });
+    }),
+  );
 
   // POST /profissionais/:id/dias-bloqueados — bloqueia uma data
   fastify.post(
@@ -1203,8 +1370,12 @@ function buildServer() {
 
       try {
         const { rows } = await db.query(
-          `INSERT INTO public.profissionais (nome, cor, ativo)
-         VALUES ($1, $2, TRUE)
+          // `barbearia_atual()` e nao o default de transicao: o default aponta SEMPRE
+          // para a loja A, entao o dono da loja B tomaria 42501 do `with check` da RLS
+          // ao cadastrar um barbeiro — erro correto, causa incompreensivel. A funcao
+          // resolve a barbearia de quem esta logado, que e o que se quer aqui.
+          `INSERT INTO public.profissionais (nome, cor, ativo, barbearia_id)
+         VALUES ($1, $2, TRUE, public.barbearia_atual())
          RETURNING id, nome, cor, ativo, created_at`,
           [nome, cor],
         );
@@ -1295,20 +1466,27 @@ function buildServer() {
   // ─── AGENDAMENTOS ──────────────────────────────────────────────────────────
 
   // GET /agendamentos/verificar-telefone?phone=
-  fastify.get("/agendamentos/verificar-telefone", async (request, reply) => {
+  fastify.get(
+    "/agendamentos/verificar-telefone",
+    noSite(async (request, reply, barbearia) => {
     const { phone } = request.query;
     if (!phone)
       return reply.status(400).send({ error: "phone é obrigatório." });
 
     try {
+      // O recorte por barbearia aqui nao e so higiene de dado: sem ele, esta rota
+      // responde se um telefone tem horario marcado em QUALQUER barbearia do SaaS.
+      // Um concorrente com a lista de clientes descobriria onde cada um corta o
+      // cabelo, uma consulta por vez, sem precisar de login.
       const { rows } = await pool.query(
         `SELECT servico, profissional, dia_marcado::text, hora_marcada::text, source
          FROM public.agendamentos
          WHERE telefone = $1
            AND status = ANY($2)
+           AND barbearia_id = $3
          ORDER BY created_at DESC
          LIMIT 1`,
-        [phone, BOOKED_STATUSES],
+        [phone, BOOKED_STATUSES, barbearia.id],
       );
 
       if (!rows.length) return { exists: false };
@@ -1326,10 +1504,13 @@ function buildServer() {
       fastify.log.error(err);
       return reply.status(500).send({ error: "Erro ao verificar telefone." });
     }
-  });
+    }),
+  );
 
   // GET /agendamentos/horarios-disponiveis?professionalId=&date= — slots dinâmicos por profissional
-  fastify.get("/agendamentos/horarios-disponiveis", async (request, reply) => {
+  fastify.get(
+    "/agendamentos/horarios-disponiveis",
+    noSite(async (request, reply, barbearia) => {
     const { professionalId, date } = request.query;
     if (!professionalId || !date)
       return reply
@@ -1337,6 +1518,9 @@ function buildServer() {
         .send({ error: "professionalId e date são obrigatórios." });
 
     try {
+      if (!(await profissionalDaBarbearia(professionalId, barbearia.id)))
+        return reply.status(404).send({ error: "Profissional não encontrado." });
+
       const [config, blockedResult, bookedResult] = await Promise.all([
         getAgendaConfig(professionalId),
         pool.query(
@@ -1345,11 +1529,15 @@ function buildServer() {
            LIMIT 1`,
           [professionalId, date],
         ),
+        // A juncao era `ON a.profissional = p.nome` — por NOME. Funcionava com uma
+        // barbearia e passa a errar com duas: dois barbeiros homonimos em lojas
+        // diferentes casariam um com o outro, e o horario ocupado numa apareceria
+        // ocupado na outra. Sem erro; so vaga somindo da agenda de quem esta livre.
+        // `profissional_id` existe desde 04/09 e resolve isso sendo id de verdade.
         pool.query(
           `SELECT a.hora_marcada::text
            FROM public.agendamentos a
-           JOIN public.profissionais p ON a.profissional = p.nome
-           WHERE p.id = $1
+           WHERE a.profissional_id = $1
              AND a.dia_marcado = $2
              AND a.status = ANY($3)`,
           [professionalId, date, BOOKED_STATUSES],
@@ -1402,10 +1590,13 @@ function buildServer() {
       fastify.log.error(err);
       return reply.status(500).send({ error: "Erro ao buscar horários." });
     }
-  });
+    }),
+  );
 
   // GET /agendamentos/dias-disponiveis?professionalId=&days=10 — próximos dias com pelo menos um horário livre
-  fastify.get("/agendamentos/dias-disponiveis", async (request, reply) => {
+  fastify.get(
+    "/agendamentos/dias-disponiveis",
+    noSite(async (request, reply, barbearia) => {
     const { professionalId, days } = request.query;
     if (!professionalId)
       return reply.status(400).send({ error: "professionalId é obrigatório." });
@@ -1415,11 +1606,7 @@ function buildServer() {
     const disabledDays = [];
 
     try {
-      const { rows: proRows } = await pool.query(
-        `SELECT 1 FROM public.profissionais WHERE id = $1 AND ativo = TRUE`,
-        [professionalId],
-      );
-      if (!proRows.length) {
+      if (!(await profissionalDaBarbearia(professionalId, barbearia.id))) {
         return reply
           .status(404)
           .send({ error: "Profissional não encontrado." });
@@ -1442,11 +1629,11 @@ function buildServer() {
            WHERE profissional_id = $1 AND data >= $2 AND data <= $3`,
           [professionalId, startDate, endDate],
         ),
+        // Mesma correcao do `horarios-disponiveis`: juncao por id, e nao por nome.
         pool.query(
           `SELECT a.hora_marcada::text, a.dia_marcado::text
            FROM public.agendamentos a
-           JOIN public.profissionais p ON a.profissional = p.nome
-           WHERE p.id = $1
+           WHERE a.profissional_id = $1
              AND a.dia_marcado >= $2
              AND a.dia_marcado <= $3
              AND a.status = ANY($4)`,
@@ -1531,7 +1718,8 @@ function buildServer() {
         .status(500)
         .send({ error: "Erro ao buscar dias disponíveis." });
     }
-  });
+    }),
+  );
 
   // GET /agendamentos — aceita ?professionalId= e/ou ?date=
   fastify.get(
@@ -1582,11 +1770,14 @@ function buildServer() {
   );
 
   // POST /agendamentos — cria agendamento
-  fastify.post("/agendamentos", async (request, reply) => {
+  fastify.post(
+    "/agendamentos",
+    noSite(async (request, reply, barbearia) => {
     const {
       telefone = "",
       cliente,
       profissional,
+      profissional_id: profissionalIdPedido,
       servico = "",
       dia_marcado,
       hora_marcada,
@@ -1594,25 +1785,57 @@ function buildServer() {
       source = "app-etapas",
     } = request.body ?? {};
 
-    if (!cliente || !profissional || !dia_marcado || !hora_marcada) {
+    if (!cliente || !dia_marcado || !hora_marcada) {
       return reply.status(400).send({
-        error:
-          "Campos obrigatórios: cliente, profissional, dia_marcado, hora_marcada.",
+        error: "Campos obrigatórios: cliente, dia_marcado, hora_marcada.",
       });
     }
 
+    if (!profissionalIdPedido && !profissional) {
+      return reply
+        .status(400)
+        .send({ error: "Informe `profissional_id` (preferido) ou `profissional`." });
+    }
+
     try {
-      const { rows: proRows } = await pool.query(
-        `SELECT id FROM public.profissionais WHERE nome = $1 AND ativo = TRUE LIMIT 1`,
-        [profissional],
-      );
-      if (!proRows.length) {
+      // ACEITA ID OU NOME, e prefere o id.
+      //
+      // Resolver por NOME era o unico caminho ate 08/09, e era ambiguo por natureza:
+      // `WHERE nome = $1 ... LIMIT 1` sobre a tabela inteira. Com duas barbearias, dois
+      // barbeiros homonimos fazem o `LIMIT 1` escolher um deles por sorteio — e o
+      // cliente marcaria com o barbeiro da outra loja, sem erro nenhum aparecer.
+      //
+      // O recorte por `barbearia_id` fecha isso. O nome continua aceito porque ele e o
+      // contrato que o painel e o site usam hoje; ambiguidade DENTRO da mesma loja vira
+      // 409 explicito em vez de sorteio silencioso.
+      let alvo = null;
+
+      if (profissionalIdPedido) {
+        alvo = await profissionalDaBarbearia(profissionalIdPedido, barbearia.id);
+      } else {
+        const { rows: porNome } = await pool.query(
+          `SELECT id, nome FROM public.profissionais
+            WHERE nome = $1 AND barbearia_id = $2 AND ativo = TRUE`,
+          [profissional, barbearia.id],
+        );
+
+        if (porNome.length > 1) {
+          return reply.status(409).send({
+            error:
+              "Mais de um profissional com esse nome nesta barbearia. Use `profissional_id`.",
+            codigo: "nome_ambiguo",
+          });
+        }
+        alvo = porNome[0] ?? null;
+      }
+
+      if (!alvo) {
         return reply
           .status(404)
           .send({ error: "Profissional não encontrado." });
       }
 
-      const professionalId = proRows[0].id;
+      const professionalId = alvo.id;
       const config = await getAgendaConfig(professionalId);
       if (!isWithinBookingWindow(dia_marcado, config.janela_agendamento_dias)) {
         return reply
@@ -1648,10 +1871,10 @@ function buildServer() {
       const { rows: bookedRows } = await pool.query(
         `SELECT a.hora_marcada::text
          FROM public.agendamentos a
-         WHERE a.profissional = $1
+         WHERE a.profissional_id = $1
            AND a.dia_marcado = $2
            AND a.status = ANY($3)`,
-        [profissional, dia_marcado, BOOKED_STATUSES],
+        [professionalId, dia_marcado, BOOKED_STATUSES],
       );
       const booked = new Set(bookedRows.map((r) => fmtTime(r.hora_marcada)));
       const requestedSlot = fmtTime(hora_marcada);
@@ -1664,22 +1887,33 @@ function buildServer() {
         return reply.status(409).send({ error: "Horário indisponível." });
       }
 
+      // `barbearia_id` e `profissional_id` vao EXPLICITOS, e nao pelos dispositivos de
+      // transicao (o default `barbearia_em_transicao()` e o gatilho
+      // `agendamentos_resolver_profissional`). Aqueles existem para o codigo que ainda
+      // nao sabe de barbearias; este sabe. Enquanto esta rota depender deles, a rede de
+      // seguranca vira muleta — e muleta nao sai mais.
+      //
+      // O nome (`profissional`) continua sendo gravado enquanto a coluna existir: ela
+      // so morre na migracao B, depois que todo leitor passar a usar o id.
       const { rows } = await pool.query(
         `INSERT INTO public.agendamentos
-           (telefone, cliente, profissional, servico, dia_marcado, hora_marcada, status, source)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           (telefone, cliente, profissional, profissional_id, servico,
+            dia_marcado, hora_marcada, status, source, barbearia_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *,
            dia_marcado::text  AS dia_marcado,
            hora_marcada::text AS hora_marcada`,
         [
           telefone,
           cliente,
-          profissional,
+          alvo.nome,
+          professionalId,
           servico,
           dia_marcado,
           hora_marcada,
           status,
           source,
+          barbearia.id,
         ],
       );
 
@@ -1704,7 +1938,8 @@ function buildServer() {
       fastify.log.error(err);
       return reply.status(500).send({ error: "Erro ao criar agendamento." });
     }
-  });
+    }),
+  );
 
   // PUT /agendamentos/:id — atualiza agendamento completo
   fastify.put(
@@ -2553,14 +2788,17 @@ function buildServer() {
   // AdminDrawer do site publico, que nao existe mais aqui — entao `PUT /servicos`,
   // `GET/PUT /categorias-servicos` e `GET/PUT /configuracao/:chave` sairam junto
   // com ele. Ate existir tela nossa, o catalogo se edita pelo painel do Supabase.
-  fastify.get("/servicos", async (_request, reply) => {
+  fastify.get(
+    "/servicos",
+    noSite(async (_request, reply, barbearia) => {
     try {
-      return await getServicesFromTables();
+      return await getServicesFromTables(barbearia.id);
     } catch (err) {
       fastify.log.error(err);
       return reply.status(500).send({ error: "Erro ao buscar servicos." });
     }
-  });
+    }),
+  );
 
   return fastify;
 }

@@ -295,12 +295,69 @@ O slug será **obrigatório** (400 sem ele), e não opcional com padrão: padrã
 repete o problema do `barbearia_em_transicao()` no banco — quem esquecer atende a loja
 errada sem erro.
 
+## Fase 4 — rotas públicas por barbearia (2026-09-08)
+
+As 9 rotas públicas passaram a exigir a barbearia. Elas eram o caminho crítico do
+site e **nenhuma sabia de qual loja falava**.
+
+**O slug é obrigatório** (400 sem ele), não opcional com padrão: padrão silencioso
+repetiria aqui o defeito que o `barbearia_em_transicao()` tem no banco.
+
+**Duas formas de dizer qual barbearia**, e não é indecisão — são dois chamadores com
+informações diferentes: o **site** é anônimo e sabe de qual loja é (manda o slug); o
+**painel** é logado e não sabe o próprio slug (quem diz é o JWT). Quatro rotas são
+usadas pelos dois. O slug tem precedência quando vem.
+
+### Três bugs achados no caminho
+
+1. **Junção por NOME.** `horarios-disponiveis` e `dias-disponiveis` juntavam
+   `agendamentos` com `profissionais` em `ON a.profissional = p.nome`. Com duas lojas,
+   barbeiros homônimos casariam um com o outro — horário ocupado numa apareceria
+   ocupado na outra. Agora é por `profissional_id`.
+2. **`POST /agendamentos` resolvia o profissional pelo nome, globalmente**
+   (`WHERE nome = $1 ... LIMIT 1` sobre a tabela inteira). O `LIMIT 1` escolhia por
+   sorteio. Agora resolve dentro da barbearia, aceita `profissional_id` (preferido), e
+   nome ambíguo **dentro da mesma loja** vira 409 explícito.
+3. **`POST /profissionais` teria dado 42501 para o dono da loja B.** Ele inseria sem
+   `barbearia_id`, caindo no default de transição (sempre loja A), e o `with check` da
+   RLS recusaria. Agora grava `public.barbearia_atual()`.
+
+### `verificar-telefone` era o vazamento mais sério
+
+Sem recorte, ela respondia se um telefone tem horário marcado em **qualquer**
+barbearia do SaaS. Um concorrente com uma lista de clientes descobriria onde cada um
+corta o cabelo, uma consulta por vez, sem login.
+
+### Default de transição estreitado
+
+`agendamentos`, `profissionais` e `servicos` perderam o default — o calendário passou
+a mandar a barbearia explícita. Sobraram as 5 tabelas que só o bot escreve, e elas
+saem na Fase 6. Rede de segurança além do necessário deixa de ser rede e vira chão
+falso.
+
+**Verificado:** isolamento em todas as 9 rotas, profissional de outra loja dá 404 em
+5 rotas, `verificar-telefone` não vaza, POST grava os ids explícitos, o painel resolve
+pela sessão sem slug, e o dono da loja B consegue criar profissional na loja certa.
+
 ## PENDENTE: o deploy (adiado em 08/09/2026)
 
 Tudo abaixo está **pronto e verificado localmente, e NÃO está no ar**. O banco já
 mudou (Fases 1 e 2 aplicadas); o código que sabe usar essas mudanças, não. O que
 segura o sistema funcionando nesse intervalo são os dois dispositivos de transição
 (gatilho + default `barbearia_em_transicao()`).
+
+### As Fases 3 e 4 agora sobem JUNTAS, com o JWT ligado
+
+Isto mudou em 08/09 e custa uma quebra se for ignorado: quatro rotas públicas são
+usadas também pelo painel (`/profissionais`, `/servicos`, `agenda-config`,
+`dias-bloqueados`). O painel não manda slug — ele depende da sessão. **Em modo legado
+não há sessão, e essas quatro respondem 400.**
+
+Ou seja: `SUPABASE_JWKS_URL` e as variáveis do Supabase deixaram de ser opcionais
+neste deploy. Subir o código sem elas deixa o painel meio quebrado (calendário e
+dashboard funcionam; equipe, serviços e configuração de agenda, não).
+
+Conferido no ar local, nos dois modos.
 
 ### A ordem importa, e errá-la derruba o bot
 
