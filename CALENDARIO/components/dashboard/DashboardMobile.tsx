@@ -61,7 +61,7 @@ export const DashboardMobile: React.FC<Props> = ({
           <KpiCard
             key={k.chave}
             compact
-            label={k.chave === "marcacoes" ? "Marcações" : k.label}
+            label={k.label}
             value={k.value}
             sub={k.sub}
             destaque={k.destaque}
@@ -131,16 +131,10 @@ export const DashboardMobile: React.FC<Props> = ({
               número não tem plural para errar, e diz melhor para onde leva —
               o destino é a agenda, não uma lista maior aqui dentro. */}
           {agenda.length > 0 && (
-            <li
-              className="agenda__more"
-              role="button"
-              tabIndex={0}
-              onClick={onVerAgenda}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") onVerAgenda();
-              }}
-            >
-              Ver o dia inteiro na agenda ›
+            <li>
+              <button type="button" className="agenda__more" onClick={onVerAgenda}>
+                Ver o dia inteiro na agenda ›
+              </button>
             </li>
           )}
         </ul>

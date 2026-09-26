@@ -8,6 +8,7 @@ import React, {
   useImperativeHandle,
   forwardRef,
   useRef,
+  useCallback,
 } from "react";
 import type { Event, Professional } from "../types";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
@@ -15,6 +16,7 @@ import { ChevronDown } from "lucide-react";
 import { getAgendaConfig, getAvailableSlots, getConfiguredServices, type AgendaConfig, type ConfiguredService } from "../services/calendarApi";
 import cardBgTexture from "../assets/4b5627d79bc66c97c95c39ec56cdaf20.jpg";
 import BottomSheet from "./ui/BottomSheet";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 
 /* Serviço só existe de verdade com dashboard premium + financeiro (V1 não
    tem). "Ocultar, nunca apagar": o campo some da tela e composeDescription()
@@ -48,7 +50,7 @@ const CARD_TEXTURE = [
 const FOCUSABLE_SEL =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const SCROLLBAR_CLASS =
-  "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-[#101014] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#6B3EFF]/45 hover:[&::-webkit-scrollbar-thumb]:bg-[#6B3EFF]/65";
+  "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-[#101014] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-accent/45 hover:[&::-webkit-scrollbar-thumb]:bg-accent/65";
 
 const PHONE_LINE_RE = /Telefone:\s*([^\n]+)/i;
 const SERVICE_LINE_RE = /Servi[cç]o:\s*([^\n]+)/i;
@@ -154,11 +156,47 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
     const [agendaConfig, setAgendaConfig] = useState<AgendaConfig | null>(null);
 
     const prefersReducedMotion = useReducedMotion();
+    const isMobile = useMediaQuery("(max-width: 767px)");
     const titleInputRef = useRef<HTMLInputElement | null>(null);
     const serviceInputRef = useRef<HTMLInputElement | null>(null);
     const notesInputRef = useRef<HTMLTextAreaElement | null>(null);
     const cardRef = useRef<HTMLDivElement>(null);
+    const fieldsScrollRef = useRef<HTMLDivElement>(null);
+    const revealFieldFrameRef = useRef<number | null>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
+
+    const revealFocusedField = useCallback(() => {
+      if (!isMobile) return;
+
+      if (revealFieldFrameRef.current !== null) {
+        window.cancelAnimationFrame(revealFieldFrameRef.current);
+      }
+
+      revealFieldFrameRef.current = window.requestAnimationFrame(() => {
+        revealFieldFrameRef.current = null;
+
+        const active = document.activeElement;
+        const scrollArea = fieldsScrollRef.current;
+        if (!(active instanceof HTMLElement) || !scrollArea?.contains(active)) return;
+
+        const fieldRect = active.getBoundingClientRect();
+        const scrollRect = scrollArea.getBoundingClientRect();
+        const viewport = window.visualViewport;
+        const viewportTop = viewport?.offsetTop ?? 0;
+        const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+        const visibleTop = Math.max(scrollRect.top, viewportTop) + 12;
+        const visibleBottom = Math.min(scrollRect.bottom, viewportBottom) - 12;
+
+        let delta = 0;
+        if (fieldRect.bottom > visibleBottom) {
+          delta = fieldRect.bottom - visibleBottom;
+        } else if (fieldRect.top < visibleTop) {
+          delta = fieldRect.top - visibleTop;
+        }
+
+        if (Math.abs(delta) > 1) scrollArea.scrollTop += delta;
+      });
+    }, [isMobile]);
 
     useEffect(() => {
       if (!isOpen) return;
@@ -167,16 +205,35 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
     }, [isOpen]);
 
     useEffect(() => {
+      if (!isOpen || !isMobile || !window.visualViewport) return;
+
+      window.visualViewport.addEventListener("resize", revealFocusedField);
+      window.visualViewport.addEventListener("scroll", revealFocusedField);
+      return () => {
+        window.visualViewport?.removeEventListener("resize", revealFocusedField);
+        window.visualViewport?.removeEventListener("scroll", revealFocusedField);
+        if (revealFieldFrameRef.current !== null) {
+          window.cancelAnimationFrame(revealFieldFrameRef.current);
+          revealFieldFrameRef.current = null;
+        }
+      };
+    }, [isOpen, isMobile, revealFocusedField]);
+
+    useEffect(() => {
       if (!isOpen) return;
       const onKey = (e: KeyboardEvent) => {
         if (e.key === "Escape") {
+          if (isDropdownOpen || isDateOpen || isStartOpen || isServiceOpen) {
+            closeAllDropdowns();
+            return;
+          }
           closeAllDropdowns();
           onClose();
         }
       };
       document.addEventListener("keydown", onKey);
       return () => document.removeEventListener("keydown", onKey);
-    }, [isOpen, onClose]);
+    }, [isOpen, onClose, isDropdownOpen, isDateOpen, isStartOpen, isServiceOpen]);
 
     useEffect(() => {
       if (!isOpen) return;
@@ -478,7 +535,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
       : "";
 
     /* CAMPOS
-       Eram `border-2 border-[#8b5cf6]/80`: contorno roxo de 2px, em alfa
+       Eram `border-2 border-accent-400/80`: contorno roxo de 2px, em alfa
        alto, em TODOS os campos ao mesmo tempo. É a razão nº 1 de o modal ler
        como se fosse de outro aplicativo -- em nenhuma outra tela um campo tem
        contorno colorido, e o de busca de Conversas (que o dono validou) não
@@ -489,7 +546,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
        contorno permanente não destaca nada, só faz barulho.
        `p-3` -> `px-3.5 py-3.5` leva o campo a ~52px, o mesmo do login. */
     const fieldClass =
-      "w-full rounded-xl px-3.5 py-3.5 text-[15px] text-white placeholder:text-white/40 " +
+      "w-full rounded-xl px-3.5 py-3.5 text-base text-white placeholder:text-white/40 md:text-[15px] " +
       "bg-white/[0.05] border border-white/[0.10] " +
       "focus:outline-none focus:border-white/25 focus-visible:ring-2 focus-visible:ring-white/20 " +
       "shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] " +
@@ -508,12 +565,12 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
              mais escapar do card -- `overflow-y-auto` aqui é só um piso de
              segurança pra telas baixíssimas; quem rola de verdade agora é o
              miolo do card. */
-          className="fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto px-4 py-6 sm:px-0"
+          className="fixed inset-0 z-[110] flex h-dvh items-stretch justify-center overflow-hidden p-0 md:h-auto md:items-center md:overflow-y-auto md:py-6"
           style={{
             overscrollBehavior: 'contain',
             backgroundColor: "rgba(0,0,0,0.72)",
-            backdropFilter: "blur(8px)",
-            WebkitBackdropFilter: "blur(8px)",
+            backdropFilter: isMobile ? "none" : "blur(8px)",
+            WebkitBackdropFilter: isMobile ? "none" : "blur(8px)",
           }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -532,7 +589,10 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
             role="dialog"
             aria-modal="true"
             aria-labelledby="event-modal-title"
-            /* `my-auto` centraliza enquanto couber e vira topo-do-scroll
+            /* No celular, o card deixa de flutuar e vira a própria tela:
+               `h-dvh` acompanha a área visível quando o teclado abre, enquanto
+               header e rodapé ficam fora do miolo rolável. No desktop,
+               `my-auto` centraliza enquanto couber e vira topo-do-scroll
                quando não couber -- com `items-center` puro, conteúdo mais
                alto que a tela tem o topo cortado e inalcançável.
                `max-h-[85vh]` + `flex-col` + `overflow-hidden`: o card virou
@@ -541,23 +601,37 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                dia cheio de campos (4.5). Só dá pra fechar em `overflow-hidden`
                porque os três dropdowns que escapavam do card viraram
                BottomSheet -- nada mais precisa vazar pra fora dele. */
-            className="relative my-auto flex max-h-[85vh] w-full max-w-md flex-shrink-0 flex-col overflow-hidden rounded-3xl text-white"
+            className="relative flex h-dvh max-h-dvh w-full max-w-none flex-shrink-0 flex-col overflow-hidden rounded-none border-0 text-white md:my-auto md:h-auto md:max-h-[85vh] md:max-w-md md:rounded-3xl md:border md:border-white/[0.12]"
             style={{
-              backgroundImage: CARD_TEXTURE,
+              backgroundColor: isMobile ? "#141414" : undefined,
+              backgroundImage: isMobile ? "none" : CARD_TEXTURE,
               backgroundSize: "cover",
               backgroundPosition: "center",
-              boxShadow: [
-                "0 32px 72px rgba(0,0,0,0.85)",
-                "0 8px 24px rgba(0,0,0,0.55)",
-                "inset 0 0 80px rgba(0,0,0,0.55)",
-                "inset 60px 0 80px rgba(0,0,0,0.40)",
-                "inset -60px 0 80px rgba(0,0,0,0.40)",
-              ].join(", "),
-              border: "1px solid rgba(255,255,255,0.12)",
+              boxShadow: isMobile
+                ? "none"
+                : [
+                    "0 32px 72px rgba(0,0,0,0.85)",
+                    "0 8px 24px rgba(0,0,0,0.55)",
+                    "inset 0 0 80px rgba(0,0,0,0.55)",
+                    "inset 60px 0 80px rgba(0,0,0,0.40)",
+                    "inset -60px 0 80px rgba(0,0,0,0.40)",
+                  ].join(", "),
             }}
-            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 10 }}
+            initial={
+              prefersReducedMotion
+                ? { opacity: 0 }
+                : isMobile
+                  ? { opacity: 0, y: 24 }
+                  : { opacity: 0, scale: 0.96, y: 10 }
+            }
             animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 10 }}
+            exit={
+              prefersReducedMotion
+                ? { opacity: 0 }
+                : isMobile
+                  ? { opacity: 0, y: 16 }
+                  : { opacity: 0, scale: 0.96, y: 10 }
+            }
             transition={{ duration: prefersReducedMotion ? 0.1 : 0.18, ease: "easeOut" }}
             onKeyDown={(e: React.KeyboardEvent) => {
               if (e.key !== 'Tab') return;
@@ -573,7 +647,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
             }}
           >
             {/* RAY — glow central vindo do topo */}
-            <div aria-hidden="true" style={{
+            <div aria-hidden="true" className="hidden md:block" style={{
               position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
               width: '380px', height: '160px', pointerEvents: 'none', zIndex: 0,
               borderTopLeftRadius: 'inherit',
@@ -590,7 +664,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                   topo, o dobro do resto do app (tudo aqui anda em 16px) de
                   propósito: é a única peça que não compete por altura com o
                   miolo rolável. */}
-              <div className="flex-shrink-0 px-5 pt-6">
+              <div className="flex-shrink-0 px-5 pt-[max(1.5rem,env(safe-area-inset-top))] md:pt-6">
                 {/* Título alinhado à esquerda e em 22px, o padrão da casa
                     (Conversas, Agenda, Dashboard). Centralizado em 24px era a
                     única tela do app com esse tratamento -- parte do porquê
@@ -604,7 +678,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
               {/* Miolo -- só ele rola. `space-y-5` -> `space-y-4`: com 8
                   campos, cada 4px a menos entre eles tira 28px da altura
                   total. */}
-              <div className={`min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-4 pt-5 ${SCROLLBAR_CLASS}`}>
+              <div ref={fieldsScrollRef} className={`min-h-0 flex-1 scroll-pb-28 space-y-4 overflow-y-auto overscroll-contain px-5 pb-4 pt-5 ${SCROLLBAR_CLASS}`}>
                 {/* Nome */}
                 <div>
                   <label className="mb-1 ml-1 block text-sm font-medium text-white">
@@ -757,7 +831,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                             }}
                             className={`rounded-xl p-2.5 transition ${
                               isSelected
-                                ? "bg-[#8b5cf6] text-white"
+                                ? "bg-accent-400 text-white"
                                 : "text-white/90 hover:bg-white/10"
                             }`}
                           >
@@ -945,6 +1019,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                     ref={notesInputRef}
                     rows={3}
                     value={notes}
+                    onFocus={revealFocusedField}
                     onChange={(e) => {
                       setNotes(e.target.value);
                       if (error) setError("");
@@ -962,7 +1037,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
               {/* Rodapé -- fixo, fora do scroll (4.5). Antes, num dia cheio
                   de campos, dava pra rolar a página inteira e nunca alcançar
                   Cancelar/Salvar -- o "canto mais difícil da tela". */}
-              <div className="flex-shrink-0 border-t border-white/[0.08] px-5 pb-6 pt-4">
+              <div className="flex-shrink-0 border-t border-white/[0.08] px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-4 md:pb-6">
                 <div className="flex items-center justify-between">
                   <div>
                     {eventToEdit && (
@@ -999,7 +1074,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                         precisar brilhar. */}
                     <button
                       type="submit"
-                      className="min-h-[44px] rounded-xl bg-[#6a3dff] px-6 py-2.5 text-[15px] font-semibold text-white transition-all duration-200 hover:bg-[#5b2ee6] active:scale-[0.98]"
+                      className="min-h-[44px] rounded-xl bg-accent px-6 py-2.5 text-[15px] font-semibold text-white transition-all duration-200 hover:bg-accent-hover active:scale-[0.98]"
                     >
                       Salvar
                     </button>

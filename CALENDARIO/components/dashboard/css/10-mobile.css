@@ -81,7 +81,7 @@
   border-radius: 50%;
   background: var(--primary-alt);
   border: 1px solid rgba(255,255,255,.12);
-  box-shadow: 0 0 0 2px rgba(107,62,255,.18);
+  box-shadow: 0 0 0 2px rgba(86,80,249,.18);
   color: #fff;
   font-size: 12px; font-weight: 600;
   font-family: inherit;
@@ -105,6 +105,10 @@
    `padding: 7px 0` sobre 12px de fonte dava ~31px de altura num controle que
    ele toca de pe, com uma mao. 11px + 14px de fonte leva a 44. */
 .mb-period .chip { flex: 1; padding: 11px 0; font-size: 14px; text-align: center; white-space: nowrap; }
+/* Periodo escolhido leva o contorno roxo -- regra do site publico (2026-09-15):
+   traco roxo marca a escolha feita; o fundo continua neutro. So no celular por
+   ora, a pedido do dono. */
+.mb-period .chip--on { box-shadow: inset 0 0 0 1px var(--primary-alt); }
 .mb-filterbtn {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; font-family: inherit;
@@ -117,17 +121,50 @@
   flex: none;
 }
 
+/* KPIs: uma superficie so, segmentada em 2x2 -- a mesma identidade da faixa do
+   desktop e do Financeiro (`.db-kpis`), em vez de quatro cards soltos. As
+   divisorias sao o `gap` de 1px mostrando a borda do contêiner por tras. O
+   destaque ocupa a celula inteira com o roxo translucido, como no desktop,
+   no lugar da barra lateral. */
 .mb-kpis {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  padding: 0 16px 14px;
+  gap: 1px;
+  margin: 0 16px 14px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.mb-kpis > .kpi {
+  border-radius: 0;
+  background: var(--panel);
+  padding: 14px;
+  min-height: 118px;
+  display: flex;
+  flex-direction: column;
+}
+.mb-kpis > .kpi--destaque {
+  background: linear-gradient(rgba(86,80,249,0.12), rgba(86,80,249,0.12)), var(--panel);
+  box-shadow: none;
+}
+/* Hierarquia: rotulo (apoio) -> numero (destaque) -> linha de apoio. O apoio
+   desce para o pe da celula e quebra equilibrado, para "0 cancelados" nao
+   ficar sozinho numa linha. */
+.mb-kpis .kpi__label { font-size: 12px; margin-bottom: 6px; color: rgba(255,255,255,0.62); }
+.mb-kpis .kpi__value { font-size: 28px; }
+.mb-kpis .kpi__sub {
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  text-wrap: balance;
 }
 
 
 .mb-now {
   margin: 0 16px 14px;
-  background: linear-gradient(135deg, rgba(106,61,255,0.18) 0%, rgba(106,61,255,0.08) 100%);
+  background: linear-gradient(135deg, rgba(86,80,249,0.18) 0%, rgba(86,80,249,0.08) 100%);
   border: 1px solid var(--border-purple);
   border-radius: 14px;
   padding: 12px;
@@ -187,7 +224,11 @@
    ========================================================================= */
 .mb-dock {
   position: absolute;
-  left: 0; right: 0; bottom: 26px;
+  left: 0; right: 0;
+  /* A area segura e o espaco do indicador de home, nao a folga do dock: em
+     iPhone `bottom: 26px` deixava a pilula em cima dele. Somar em vez de
+     escolher o maior -- mesma formula do modal do dashboard (20-modal.css). */
+  bottom: max(26px, calc(env(safe-area-inset-bottom) + 12px));
   margin: 0 auto;
   /* Larga o bastante para nao parecer perdida no meio da tela, e proporcional
      para nao encolher de novo em aparelho maior. Com tres abas, `max-content`

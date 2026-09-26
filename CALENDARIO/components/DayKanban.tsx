@@ -2,9 +2,9 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import type { Event, Professional } from '../types';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Scissors, UserCheck, Sun, Sunset, Moon, ChevronRight, Pencil } from 'lucide-react';
+import { Scissors, UserCheck, Sun, Sunset, Moon, ChevronRight, Pencil, Check } from 'lucide-react';
 import { NeonCheckbox } from './ui/NeonCheckbox';
-import { CASCA_BACKGROUND, CASCA_BORDER, PILULA_BACKGROUND } from './ui/vidro';
+import { CASCA_BACKGROUND, CASCA_BORDER } from './ui/vidro';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 
 interface DayKanbanProps {
@@ -95,7 +95,7 @@ const DayKanban: React.FC<DayKanbanProps> = ({
     return [
       {
         id: -101,
-        title: 'Cliente presencial (exemplo)',
+        title: 'Cliente presencial',
         date: hoje,
         startTime: '19:00',
         endTime: '19:40',
@@ -165,7 +165,7 @@ const DayKanban: React.FC<DayKanbanProps> = ({
 
   const renderCard = (event: Event) => {
     const professional = professionals.find(p => p.id === event.professionalId);
-    const profColor = professional?.color || '#6B3EFF';
+    const profColor = professional?.color || '#5650f9';
     const isCompleting = completingIds.has(event.id);
     const isPresencial = event.source === 'presencial';
     /* Card de exemplo (id negativo): desenha igual, mas não abre modal e não
@@ -288,20 +288,18 @@ const DayKanban: React.FC<DayKanbanProps> = ({
                         handleMarkAsDone(event);
                       }}
                       disabled={isCompleting}
-                      /* Discreto: vidro + cor do barbeiro só no texto -- deixou
-                         de ser o maior volume de roxo do app (decidido com o
-                         dono). h-11 mantém o piso de 44px de alvo de toque. */
-                      className="flex h-11 flex-1 items-center justify-center rounded-xl text-[14px]
-                                 font-semibold transition-opacity disabled:opacity-60
+                      /* Ação operacional, não CTA global: largura pelo conteúdo,
+                         superfície neutra e cor do profissional somente no check.
+                         h-11 preserva o alvo de toque de 44px no celular. */
+                      className="ml-auto inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg
+                                 border border-white/[0.10] bg-white/[0.035] px-3 text-[13px]
+                                 font-medium text-white/70 transition-colors
+                                 hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white
+                                 active:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-50
                                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
-                      style={{
-                        backgroundImage: PILULA_BACKGROUND,
-                        border: CASCA_BORDER,
-                        color: profColor,
-                        boxShadow: '0 0 4px rgba(0,0,0,0.4), inset 0 -3px 2px rgba(0,0,0,0.3)',
-                      }}
                     >
-                      Marcar como Feito
+                      <Check aria-hidden="true" size={15} strokeWidth={2.25} style={{ color: profColor }} />
+                      {isCompleting ? 'Marcando...' : 'Marcar como feito'}
                     </button>
                   )}
                 </div>
@@ -358,7 +356,7 @@ const DayKanban: React.FC<DayKanbanProps> = ({
   return (
     <div
       className="flex flex-col h-full mx-2 md:mx-0 bg-[#141314]
-                 border border-[#6B3EFF]/40 rounded-[28px]
+                 border border-accent/40 rounded-[28px]
                  overflow-hidden px-5 pt-5 pb-5"
     >
       <div aria-live="polite" aria-atomic="true" className="sr-only">{liveMessage}</div>
@@ -373,12 +371,17 @@ const DayKanban: React.FC<DayKanbanProps> = ({
             color={p.color}
             size={20}
             label={
+              /* No celular, só o primeiro nome e sem quebra: três nomes completos
+                 não cabem em 375px e cada um virava duas linhas, desmontando a
+                 barra. Mesmo critério do selo "Em atendimento" do CalendarHeader. */
               <span
-                className={`text-[14px] font-medium transition-colors duration-200 ${
+                title={p.name}
+                className={`whitespace-nowrap text-[14px] font-medium transition-colors duration-200 ${
                   activePros.has(p.id) ? 'text-white/80' : 'text-white/35'
                 }`}
               >
-                {p.name}
+                <span className="md:hidden">{p.name.trim().split(' ')[0]}</span>
+                <span className="hidden md:inline">{p.name}</span>
               </span>
             }
           />
@@ -417,7 +420,8 @@ const DayKanban: React.FC<DayKanbanProps> = ({
                   className={`flex-1 flex min-h-[44px] items-center justify-center gap-1.5 py-2.5 rounded-xl text-[14px] font-semibold transition-colors
                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40
                     ${isActive
-                      ? 'bg-white/[0.12] text-white border border-white/[0.18] shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]'
+                      /* Escolha feita = contorno roxo, fundo neutro (regra do site público). */
+                      ? 'bg-white/[0.12] text-white border border-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]'
                       : 'bg-white/[0.04] text-white/45 border border-transparent'
                     }`}
                 >

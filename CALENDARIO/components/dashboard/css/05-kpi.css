@@ -26,6 +26,10 @@
    Tres linhas alinhadas a esquerda, sem coluna de icone. O ladrilho
    arredondado saiu em 2026-08-02: 18,6% da largura do card no desktop (~30% no
    celular) para nao carregar informacao nenhuma.
+
+   No desktop, `.db-kpis` transforma estes cards em celulas de uma unica faixa,
+   seguindo a geometria aprovada no Financeiro. A base arredondada continua
+   valendo no mobile, que usa os mesmos primitivos em uma grade 2x2.
    ========================================================================= */
 .kpi {
   background: rgba(255,255,255,0.035);
@@ -59,8 +63,20 @@
 .kpi__sub { margin-top: 7px; font-size: 11px; line-height: 1.4; color: var(--text-muted); }
 
 /* Um unico card com tratamento diferente: "Novas marcacoes" e o unico numero
-   da tela que cai na hora se o bot parar de pe. */
+   da tela que cai na hora se o bot parar de pe. No mobile ele conserva a linha
+   lateral; no desktop o destaque ocupa a celula inteira, como no Financeiro. */
 .kpi--destaque { box-shadow: inset 3px 0 0 var(--primary-alt); }
+
+.db-kpis > .kpi {
+  min-height: 126px;
+  border-radius: 0;
+  background: transparent;
+}
+.db-kpis > .kpi:not(:last-child) { border-right: 1px solid var(--border); }
+.db-kpis > .kpi--destaque {
+  background: rgba(86,80,249,0.12);
+  box-shadow: none;
+}
 
 .kpi--compact { padding: 13px 14px; border-radius: 12px; }
 .kpi--compact .kpi__label { font-size: 12px; margin-bottom: 5px; }

@@ -27,7 +27,7 @@ const linkifyDescription = (text: string) => {
           className={
             isWhatsApp
               ? "text-[#25D366] underline break-all"
-              : "text-indigo-300 underline break-all"
+              : "text-accent-300 underline break-all"
           }
         >
           {isWhatsApp ? "Abrir WhatsApp" : part}
@@ -76,7 +76,7 @@ const EventPopover: React.FC<EventPopoverProps> = ({
   const professionalColor =
      professional?.color && professional.color.startsWith('#')
        ? professional.color
-       : '#6B3EFF';
+       : '#5650f9';
 
   const colorStyle =
      professional?.color && professional.color.startsWith('#')

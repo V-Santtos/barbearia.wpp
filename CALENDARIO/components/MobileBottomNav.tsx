@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion';
-import { CalendarDays, BarChart2, MessageCircleMore } from 'lucide-react';
+import { Calendar, LayoutDashboard, MessageSquare } from 'lucide-react';
 import './dashboard/css/index.css';
 
 export type MobileTab = 'calendar' | 'dashboard' | 'conversations';
@@ -10,10 +10,12 @@ interface Props {
   conversationCount?: number;
 }
 
+/* Mesmo conjunto da coluna de seções do desktop (`shell/secoes.ts`): uma seção,
+   um ícone, nas duas telas. O tamanho é maior (22px) porque aqui é alvo de toque. */
 const tabs = [
-  { id: 'calendar' as MobileTab, label: 'Agenda', icon: CalendarDays },
-  { id: 'conversations' as MobileTab, label: 'Conversas', icon: MessageCircleMore },
-  { id: 'dashboard' as MobileTab, label: 'Dashboard', icon: BarChart2 },
+  { id: 'calendar' as MobileTab, label: 'Agenda', icon: Calendar },
+  { id: 'conversations' as MobileTab, label: 'Conversas', icon: MessageSquare },
+  { id: 'dashboard' as MobileTab, label: 'Dashboard', icon: LayoutDashboard },
 ];
 
 /**
@@ -101,7 +103,9 @@ export default function MobileBottomNav({ tab, onChange, conversationCount = 0 }
                 variants={{ pressionado: { scale: 1.18 } }}
                 transition={{ type: 'spring', stiffness: 700, damping: 18, mass: 0.4 }}
               >
-                <Icon size={24} strokeWidth={ativo ? 2.3 : 1.8} />
+                {/* Traço igual no ativo e no inativo, como no desktop: quem
+                    marca a aba é o brilho e a pílula, não a espessura. */}
+                <Icon size={22} strokeWidth={2} />
               </motion.span>
               {/* Fora do wrapper, de propósito: o wrapper encolhe pro tamanho
                   do ícone (24px), e o badge precisa do quadrado 50px inteiro

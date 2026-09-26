@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { KeyRound, Lock, Mail, Shield } from 'lucide-react';
 import { StardustButton } from './ui/StardustButton';
-import ownerLogoUrl from '../assets/lucas-costa-logo-transparent.png';
+import MarcaHubBarber from './shell/MarcaHubBarber';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 
 export interface OwnerSession {
@@ -32,12 +32,19 @@ const isInitiallyMobile = () =>
    do app (o campo de busca de Conversas usa o mesmo). */
 const fieldClassName = `w-full bg-[rgba(25,25,25,0.6)]
   border border-[rgba(100,100,100,0.4)] rounded-2xl py-3.5 pl-11 pr-4 text-[15px]
-  focus:outline-none focus:border-purple-500
+  focus:outline-none focus:border-accent
   shadow-[inset_0_1px_4px_rgba(255,255,255,0.05),inset_0_-1px_4px_rgba(0,0,0,0.6)]
   transition-all duration-200 placeholder-gray-400`;
 
 /* Centro real: com o campo mais alto, um `top` fixo desalinha o icone. */
-const iconClassName = 'absolute left-4 top-1/2 -translate-y-1/2 text-[#6a3dff]';
+const iconClassName = 'absolute left-4 top-1/2 -translate-y-1/2 text-accent-400';
+
+/* Genérica de propósito: antes do login não se sabe quem está na tela nem se já
+   acessou, então a saudação não carrega nome nem estado. Só o período muda. */
+function saudacao(hora = new Date().getHours()) {
+  const periodo = hora >= 5 && hora < 12 ? 'Bom dia' : hora >= 12 && hora < 18 ? 'Boa tarde' : 'Boa noite';
+  return `${periodo}, boas-vindas`;
+}
 
 const BackgroundCanvas = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -240,7 +247,7 @@ const MorphingText = ({ onFinished }: MorphingTextProps) => {
     const exitHold = 500;
     const exitDuration = 1300;
     const glowFilter =
-      'drop-shadow(0 0 3px rgba(106,61,255,0.8)) drop-shadow(0 0 10px rgba(106,61,255,0.25))';
+      'drop-shadow(0 0 3px rgba(86,80,249,0.8)) drop-shadow(0 0 10px rgba(86,80,249,0.25))';
 
     container.style.filter = glowFilter;
     text1.textContent = texts[0];
@@ -352,10 +359,10 @@ const MorphingText = ({ onFinished }: MorphingTextProps) => {
   return (
     <div
       ref={containerRef}
-      className="pointer-events-none fixed left-1/2 top-[40%] z-10 h-[120px] w-full max-w-[800px] -translate-x-1/2 -translate-y-1/2 select-none text-center font-sans text-5xl font-bold tracking-wider text-[#6a3dff] transition-filter duration-100 ease-out sm:text-7xl lg:text-[5rem]"
+      className="pointer-events-none fixed left-1/2 top-[40%] z-10 h-[120px] w-full max-w-[800px] -translate-x-1/2 -translate-y-1/2 select-none text-center font-sans text-5xl font-bold tracking-wider text-accent-400 transition-filter duration-100 ease-out sm:text-7xl lg:text-[5rem]"
       style={{
         filter:
-          'drop-shadow(0 0 3px rgba(106, 61, 255, 0.8)) drop-shadow(0 0 10px rgba(106, 61, 255, 0.25))',
+          'drop-shadow(0 0 3px rgba(86, 80, 249, 0.8)) drop-shadow(0 0 10px rgba(86, 80, 249, 0.25))',
       }}
     >
       <div className="relative h-full w-full">
@@ -436,30 +443,35 @@ function LoginCard({ onLogin }: LoginScreenProps) {
 
   return (
     <div
-      className="relative z-10 flex min-h-dvh flex-col items-center justify-center pb-12 text-white"
+      /* Centralizado por `my-auto` no bloco, não por `justify-center` no pai:
+         com `justify-center`, quando o conteúdo passa da altura da tela ele
+         transborda para os dois lados e a parte de cima fica inalcançável — era
+         por isso que a marca sumia com o teclado aberto e a rolagem não salvava. */
+      className="relative z-10 flex min-h-dvh flex-col items-center
+                 pt-10 pb-[calc(env(safe-area-inset-bottom)+48px)] text-white"
     >
-      <div className="flex w-full max-w-[330px] flex-col items-center gap-5 px-6">
+      <div className="my-auto flex w-full max-w-[330px] flex-col items-center gap-5 px-6">
         <div className={`text-center ${enterClassName}`} style={enterStyle(0)}>
-          <img
-            src={ownerLogoUrl}
-            alt="Lucas Costa Barbearia"
-            className="mx-auto mb-6 h-52 w-52 object-contain"
-            draggable={false}
-          />
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary-soft/80">
-            Área do proprietário
-          </p>
+          <div className="mb-8 flex flex-col items-center gap-4 text-white" aria-label="Barber">
+            <MarcaHubBarber className="h-28 w-28 sm:h-32 sm:w-32" />
+            <span className="text-[36px] leading-none sm:text-[40px]" style={{ fontFamily: '"Aclonica", sans-serif' }}>
+              Barber
+            </span>
+          </div>
+          {/* Marca é o destaque (branco cheio); saudação é apoio — distinção por
+              valor e peso, não por cor, para o roxo continuar só nas ações. */}
+          <p className="text-[15px] font-normal text-white/50">{saudacao()}</p>
           {!isLogin && (
-            <p className="mt-1 text-sm leading-tight text-gray-400">
-              Acesso exclusivo para clientes ativos
+            <p className="mt-1.5 text-[13px] leading-tight text-white/35">
+              Use o código que você recebeu.
             </p>
           )}
         </div>
 
         <div
-          className={`relative flex w-full rounded-3xl border border-[rgba(168,85,247,0.25)]
+          className={`relative flex w-full rounded-3xl border border-white/8
           bg-[linear-gradient(180deg,rgba(25,25,25,0.9)_0%,rgba(10,10,10,0.8)_100%)]
-          p-[6px] shadow-[inset_0_0_10px_rgba(255,255,255,0.05),0_0_18px_rgba(168,85,247,0.15)]
+          p-[6px] shadow-[inset_0_0_10px_rgba(255,255,255,0.05)]
           backdrop-blur-sm ${enterClassName}`}
           style={enterStyle(140)}
         >
@@ -467,8 +479,8 @@ function LoginCard({ onLogin }: LoginScreenProps) {
             type="button"
             className={`flex-1 rounded-2xl py-2.5 min-h-[44px] text-[15px] font-medium transition-all duration-300 ${
               isLogin
-                ? 'bg-[linear-gradient(180deg,rgba(40,40,40,1)_0%,rgba(15,15,15,1)_100%)] text-white shadow-[inset_0_0_8px_rgba(255,255,255,0.15),0_0_10px_rgba(168,85,247,0.2)]'
-                : 'text-gray-400 hover:text-white hover:shadow-[0_0_8px_rgba(168,85,247,0.1)]'
+                ? 'bg-[linear-gradient(180deg,rgba(32,32,32,1)_0%,rgba(18,18,18,1)_100%)] text-white shadow-[inset_0_0_0_1px_rgba(86,80,249,0.3)]'
+                : 'text-gray-400 hover:text-white'
             }`}
             onClick={() => setIsLogin(true)}
           >
@@ -478,8 +490,8 @@ function LoginCard({ onLogin }: LoginScreenProps) {
             type="button"
             className={`flex-1 rounded-2xl py-2.5 min-h-[44px] text-[15px] font-medium transition-all duration-300 ${
               !isLogin
-                ? 'bg-[linear-gradient(180deg,rgba(40,40,40,1)_0%,rgba(15,15,15,1)_100%)] text-white shadow-[inset_0_0_8px_rgba(255,255,255,0.15),0_0_10px_rgba(168,85,247,0.2)]'
-                : 'text-gray-400 hover:text-white hover:shadow-[0_0_8px_rgba(168,85,247,0.1)]'
+                ? 'bg-[linear-gradient(180deg,rgba(32,32,32,1)_0%,rgba(18,18,18,1)_100%)] text-white shadow-[inset_0_0_0_1px_rgba(86,80,249,0.3)]'
+                : 'text-gray-400 hover:text-white'
             }`}
             onClick={() => setIsLogin(false)}
           >
@@ -498,7 +510,7 @@ function LoginCard({ onLogin }: LoginScreenProps) {
 
         {isLogin ? (
           <form className="flex w-full flex-col gap-4" onSubmit={handleSubmit}>
-            <div className={`relative ${enterClassName}`} style={enterStyle(240)}>
+            <div className={`group relative ${enterClassName}`} style={enterStyle(240)}>
               <label htmlFor="login-email" className="sr-only">E-mail</label>
               <Mail className={iconClassName} size={18} />
               <input
@@ -512,7 +524,7 @@ function LoginCard({ onLogin }: LoginScreenProps) {
               />
             </div>
 
-            <div className={`relative ${enterClassName}`} style={enterStyle(320)}>
+            <div className={`group relative ${enterClassName}`} style={enterStyle(320)}>
               <label htmlFor="login-password" className="sr-only">Senha de acesso</label>
               <Lock className={iconClassName} size={18} />
               <input
@@ -528,7 +540,7 @@ function LoginCard({ onLogin }: LoginScreenProps) {
 
             <div className={`flex items-center justify-between text-sm text-gray-400 ${enterClassName}`} style={enterStyle(400)}>
               <label className="flex items-center gap-2">
-                <input type="checkbox" name="remember" className="accent-purple-500" />
+                <input type="checkbox" name="remember" className="accent-(--color-accent)" />
                 <span>Lembrar-me</span>
               </label>
               <button type="button" className="transition-all hover:text-white">
@@ -542,19 +554,19 @@ function LoginCard({ onLogin }: LoginScreenProps) {
           </form>
         ) : (
           <form className="flex w-full flex-col gap-4" onSubmit={handleSubmit}>
-            <div className={`relative ${enterClassName}`} style={enterStyle(240)}>
+            <div className={`group relative ${enterClassName}`} style={enterStyle(240)}>
               <label htmlFor="register-email" className="sr-only">E-mail</label>
               <Mail className={iconClassName} size={18} />
               <input id="register-email" className={fieldClassName} type="email" name="email" placeholder="E-mail" autoComplete="email" />
             </div>
 
-            <div className={`relative ${enterClassName}`} style={enterStyle(320)}>
+            <div className={`group relative ${enterClassName}`} style={enterStyle(320)}>
               <label htmlFor="register-password" className="sr-only">Senha</label>
               <Lock className={iconClassName} size={18} />
               <input id="register-password" className={fieldClassName} type="password" name="password" placeholder="Senha" autoComplete="new-password" />
             </div>
 
-            <div className={`relative ${enterClassName}`} style={enterStyle(400)}>
+            <div className={`group relative ${enterClassName}`} style={enterStyle(400)}>
               <label htmlFor="register-confirm" className="sr-only">Confirme sua senha</label>
               <Shield className={iconClassName} size={18} />
               <input
@@ -567,14 +579,14 @@ function LoginCard({ onLogin }: LoginScreenProps) {
               />
             </div>
 
-            <div className={`relative ${enterClassName}`} style={enterStyle(480)}>
+            <div className={`group relative ${enterClassName}`} style={enterStyle(480)}>
               <label htmlFor="register-code" className="sr-only">Código de acesso</label>
               <KeyRound className={iconClassName} size={18} />
               <input id="register-code" className={fieldClassName} type="text" name="accessCode" placeholder="Código de acesso" autoComplete="off" />
             </div>
 
             <div className={`flex justify-center pt-4 ${enterClassName}`} style={enterStyle(580)}>
-              <StardustButton type="submit">Solicitar acesso</StardustButton>
+              <StardustButton type="submit">Ativar acesso</StardustButton>
             </div>
           </form>
         )}
@@ -598,7 +610,11 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
   }, [isMobile, showCard]);
 
   return (
-    <div className="h-dvh w-screen overflow-hidden bg-[#0e0e10] font-sans">
+    /* `overflow-y-auto` e não `hidden`: com o teclado aberto o `dvh` encolhe e,
+       antes, a composição inteira era espremida — a marca aparecia cortada no
+       topo. Agora o conteúdo passa da altura visível e simplesmente rola, que é
+       como o iOS leva o campo em foco para a área visível. */
+    <div className="h-dvh w-screen overflow-y-auto overscroll-contain bg-[#0e0e10] font-sans">
       <BackgroundCanvas />
 
       {!isMobile && !showCard && <MorphingText onFinished={() => setShowCard(true)} />}

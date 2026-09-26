@@ -5,6 +5,8 @@ import { X } from "lucide-react";
 import type { Professional } from "../types";
 import { getBlockedDays, saveBlockedPeriods, type BlockPeriod } from "../services/calendarApi";
 import { ProfileBlockedPeriodsSkeleton } from "./ui/Skeleton";
+import MarcaHubBarber from "./shell/MarcaHubBarber";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 
 type Props = {
   open: boolean;
@@ -20,7 +22,7 @@ type Props = {
 };
 
 const PERIODS: { key: BlockPeriod; label: string }[] = [
-  { key: "morning", label: "Manha" },
+  { key: "morning", label: "Manhã" },
   { key: "afternoon", label: "Tarde" },
   { key: "night", label: "Noite" },
 ];
@@ -49,6 +51,7 @@ export default function ProfileModal({
   const modalContentRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const prefersReducedMotion = useReducedMotion();
+  const isMobile = useMediaQuery("(max-width: 767px)");
 
   const [displayName, setDisplayName] = useState<string>(initial?.display_name ?? "");
   const [avatar1x, setAvatar1x] = useState<string>("");
@@ -235,15 +238,13 @@ export default function ProfileModal({
     }
   };
 
-  const placeholderSvg = `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'><circle cx='60' cy='45' r='22' fill='%23555'/><path d='M20 100a40 26 0 0 1 80 0' fill='%23555'/></svg>`;
   const hasPhoto = Boolean(avatar1x || avatar2x);
-  const imgSrc = hasPhoto ? avatar1x : placeholderSvg;
   const imgSrcSet = hasPhoto && avatar2x ? `${avatar1x} 1x, ${avatar2x} 2x` : undefined;
 
   const modal = (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-[9999] flex h-dvh items-stretch justify-center overflow-hidden bg-black/70 md:h-auto md:items-center"
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <motion.div
@@ -251,12 +252,26 @@ export default function ProfileModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="profile-modal-title"
-        initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 8 }}
+        initial={
+          prefersReducedMotion
+            ? { opacity: 0 }
+            : isMobile
+              ? { opacity: 0, y: 24 }
+              : { opacity: 0, scale: 0.96, y: 8 }
+        }
         animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
-        exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 8 }}
+        exit={
+          prefersReducedMotion
+            ? { opacity: 0 }
+            : isMobile
+              ? { opacity: 0, y: 16 }
+              : { opacity: 0, scale: 0.96, y: 8 }
+        }
         transition={{ duration: prefersReducedMotion ? 0.1 : 0.18, ease: "easeOut" }}
-        className="relative w-[min(420px,92vw)] rounded-2xl border border-white/[0.08]
-                   bg-[#1a1a1a] shadow-[0_24px_64px_rgba(0,0,0,0.6)] overflow-hidden"
+        className="relative flex h-dvh max-h-dvh w-full max-w-none flex-col overflow-hidden
+                   rounded-none border-0 bg-[#191919] shadow-[0_24px_64px_rgba(0,0,0,0.46)]
+                   md:mx-4 md:h-auto md:max-h-[88vh] md:max-w-lg md:rounded-[16px]
+                   md:border md:border-white/[0.09]"
         onKeyDown={(e: React.KeyboardEvent) => {
           if (e.key !== 'Tab') return;
           const focusable = Array.from(modalContentRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SEL) ?? []);
@@ -276,46 +291,107 @@ export default function ProfileModal({
         <button
           aria-label="Fechar"
           onClick={onClose}
-          className="absolute right-4 top-4 rounded-lg p-1.5 text-white/30 hover:text-white hover:bg-white/8 transition-colors"
+          className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-10 flex h-11 w-11 items-center justify-center rounded-lg text-white/45 transition-colors
+                     hover:bg-white/[0.06] hover:text-white focus-visible:outline-none
+                     focus-visible:ring-2 focus-visible:ring-accent-400/70 md:top-4"
         >
           <X size={15} />
         </button>
 
-        <div className="px-6 pt-6 pb-6 flex flex-col gap-5">
+        <div
+          className="min-h-0 flex-1 overflow-y-auto
+                     [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent
+                     [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/[0.14]
+                     hover:[&::-webkit-scrollbar-thumb]:bg-white/[0.24]"
+          style={{
+            scrollbarWidth: "thin",
+            scrollbarColor: "rgba(255,255,255,0.14) transparent",
+          }}
+        >
+          {/* `min-h-full` no celular: o miolo ocupa a folha inteira e a lista
+              distribui as linhas no espaço que sobra. Sem isso o conteúdo
+              terminava no meio da tela e deixava um vazio grande até as ações
+              ancoradas embaixo. */}
+          <div className="flex flex-col gap-6 px-5 pb-5 pt-[max(1.5rem,env(safe-area-inset-top))] md:gap-4 md:pt-6 min-h-full md:min-h-0">
 
-          {/* Avatar */}
-          <div className="flex flex-col items-center gap-3">
+          {/* Avatar. No celular este bloco absorve parte da sobra vertical —
+              até um teto — para o topo respirar em vez de a folha inteira
+              terminar num vão antes das ações. */}
+          <div
+            className={`flex flex-col items-center gap-3 ${
+              isMobile ? "min-h-[104px] max-h-[152px] flex-1 justify-center" : ""
+            }`}
+          >
             <button
-              className="h-24 w-24 overflow-hidden rounded-full ring-2 ring-[#6B3EFF]/55 bg-[#111]
-                         shadow-[0_0_0_4px_rgba(107,62,255,0.08)] transition hover:ring-[#6B3EFF]/70 hover:shadow-[0_0_20px_rgba(107,62,255,0.18)]"
+              aria-label={hasPhoto ? "Visualizar foto do perfil" : "Foto do perfil"}
+              disabled={!hasPhoto}
+              /* No celular a foto é identificação, não capa: 56 px e sem o anel
+                 roxo, que ali virava a peça mais pesada da tela inteira. No
+                 desktop a geometria aprovada em 2026-09-09 continua. */
+              className="flex flex-shrink-0 items-center justify-center overflow-hidden rounded-full
+                         border border-white/12 bg-primary text-primary-foreground transition
+                         h-[88px] w-[88px] md:h-20 md:w-20 md:shadow-[0_0_0_3px_rgba(86,80,249,0.18)]
+                         hover:border-accent-400/70 hover:brightness-110
+                         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400/70
+                         focus-visible:ring-offset-2 focus-visible:ring-offset-[#191919]
+                         disabled:cursor-default disabled:hover:border-white/12 disabled:hover:brightness-100"
               onClick={() => { if (hasPhoto) setPreviewOpen(true); }}
             >
-              <img
-                alt="Foto do perfil"
-                className="h-full w-full select-none object-cover"
-                src={imgSrc}
-                srcSet={imgSrcSet}
-                width={96}
-                height={96}
-              />
+              {hasPhoto ? (
+                <img
+                  alt="Foto do perfil"
+                  className="h-full w-full select-none object-cover"
+                  src={avatar1x}
+                  srcSet={imgSrcSet}
+                  width={80}
+                  height={80}
+                />
+              ) : (
+                <MarcaHubBarber className="h-1/2 w-1/2" />
+              )}
             </button>
 
           </div>
 
-          {/* Bloqueio de períodos */}
-          <div className="rounded-xl border border-white/[0.08] bg-[#111] overflow-hidden">
-            <div className="h-px bg-[#6B3EFF]/35" />
-            <div className="px-4 py-4">
-              <div className="flex items-center gap-2 mb-3">
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0 text-white/35 fill-current">
-                  <path d="M12 1a5 5 0 00-5 5v2H6a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2v-8a2 2 0 00-2-2h-1V6a5 5 0 00-5-5zm-3 7V6a3 3 0 016 0v2H9zm3 5a1.5 1.5 0 11.001 3.001A1.5 1.5 0 0112 13z"/>
-                </svg>
-                <span className="text-[12px] font-semibold text-white/50 tracking-tight">
-                  Bloqueio de agendamentos por período
+          {/* Bloqueio de períodos.
+
+              No celular esta parte deixou de ser cartão dentro de cartão dentro
+              de cartão: título como rótulo de seção, data numa linha e um
+              profissional por linha, separados por filete — a lista de ajustes
+              de aparelho, não um formulário de desktop esticado. No desktop a
+              moldura de 2026-09-09 continua intacta. */}
+          <div className={isMobile ? "flex min-h-0 flex-1 flex-col" : "overflow-hidden rounded-[10px] border border-white/[0.08] bg-[#111]"}>
+            <div className={isMobile ? "flex min-h-0 flex-1 flex-col" : "px-4 py-4"}>
+              <div className={`flex items-center gap-2 ${isMobile ? "mb-2" : "mb-3"}`}>
+                {!isMobile && (
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0 text-white/35 fill-current">
+                    <path d="M12 1a5 5 0 00-5 5v2H6a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2v-8a2 2 0 00-2-2h-1V6a5 5 0 00-5-5zm-3 7V6a3 3 0 016 0v2H9zm3 5a1.5 1.5 0 11.001 3.001A1.5 1.5 0 0112 13z"/>
+                  </svg>
+                )}
+                <span
+                  className={
+                    isMobile
+                      ? "text-[11px] font-semibold uppercase tracking-[0.08em] text-white/35"
+                      : "text-[12px] font-semibold text-white/50 tracking-tight"
+                  }
+                >
+                  {isMobile ? "Bloqueio por período" : "Bloqueio de agendamentos por período"}
                 </span>
               </div>
 
-              <div className="mb-3 rounded-xl border border-white/[0.08] bg-[#151515] px-3 py-2">
+              {isMobile && (
+                <p className="mb-4 text-[12px] leading-relaxed text-pretty text-white/40">
+                  Os períodos marcados ficam indisponíveis nesta data.
+                </p>
+              )}
+
+              <div
+                className={
+                  isMobile
+                    ? "flex items-baseline justify-between border-y border-white/[0.07] py-3.5"
+                    : "mb-3 rounded-lg border border-white/[0.08] bg-[#1c1c1c] px-3 py-2"
+                }
+              >
                 <span className="block text-[11px] font-semibold uppercase tracking-wider text-white/30">
                   Hoje
                 </span>
@@ -329,11 +405,11 @@ export default function ProfileModal({
                 </span>
               </div>
 
-              <div className="max-h-[230px] space-y-3 overflow-y-auto pr-1">
+              <div className={isMobile ? "flex min-h-0 flex-1 flex-col" : "space-y-2"}>
                 {loadingBlocks ? (
                   <ProfileBlockedPeriodsSkeleton count={professionals.length || 2} />
                 ) : professionals.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-white/[0.08] px-3 py-5 text-center text-[12px] text-white/35">
+                  <div className="rounded-lg border border-dashed border-white/[0.08] px-3 py-5 text-center text-[12px] text-white/35">
                     Nenhum profissional carregado.
                   </div>
                 ) : (
@@ -348,19 +424,33 @@ export default function ProfileModal({
                     return (
                       <div
                         key={professionalId}
-                        className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-3"
+                        className={
+                          isMobile
+                            ? "flex flex-1 flex-col justify-center border-b border-white/[0.07] py-3.5 max-h-[136px]"
+                            : "rounded-[10px] border border-white/[0.08] bg-white/[0.025] p-3"
+                        }
                       >
-                        <div className="mb-2 flex items-center gap-2">
+                        <div className={`flex items-center gap-2 ${isMobile ? "mb-3" : "mb-2"}`}>
                           <span
                             className="h-2.5 w-2.5 rounded-full"
-                            style={{ backgroundColor: pro.color || "#6B3EFF" }}
+                            style={{ backgroundColor: pro.color || "#5650f9" }}
                           />
                           <span className="min-w-0 truncate text-[13px] font-semibold text-white/85">
                             {pro.name}
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2">
+                        {/* No celular os três períodos viraram um controle
+                            segmentado: uma superfície, três divisões. Eram três
+                            botões contornados, com peso de ação principal cada
+                            um, para uma escolha que é só ligar/desligar. */}
+                        <div
+                          className={
+                            isMobile
+                              ? "grid grid-cols-3 gap-1 rounded-xl bg-white/[0.04] p-1"
+                              : "grid grid-cols-3 gap-2"
+                          }
+                        >
                           {PERIODS.map((period) => {
                             return (
                               <button
@@ -370,11 +460,16 @@ export default function ProfileModal({
                                 }}
                                 disabled={saving}
                                 aria-pressed={blocks[period.key] ?? false}
-                                className={`rounded-xl border py-2.5 text-[13px] font-semibold transition-colors
-                                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6B3EFF]/50
+                                className={`${isMobile ? "min-h-[52px]" : "min-h-11"} text-[13px] font-semibold transition-colors
+                                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50
+                                  ${isMobile ? "rounded-lg px-2 py-2" : "rounded-lg border px-2 py-2.5"}
                                   ${blocks[period.key]
-                                      ? "border-red-400/50 bg-red-500/10 text-red-300"
-                                      : "border-white/[0.08] bg-[#1a1a1a] text-white/50 hover:border-[#6B3EFF]/60 hover:text-white/80"}`}
+                                      ? isMobile
+                                        ? "bg-red-500/15 text-red-300"
+                                        : "border-red-400/50 bg-red-500/10 text-red-300"
+                                      : isMobile
+                                        ? "text-white/45 hover:text-white/80"
+                                        : "border-white/[0.08] bg-[#1a1a1a] text-white/50 hover:border-accent/60 hover:text-white/80"}`}
                               >
                                 {period.label}
                               </button>
@@ -389,29 +484,36 @@ export default function ProfileModal({
             </div>
           </div>
 
-          {/* Footer */}
-          {feedback && (
-            <p aria-live="polite" className="text-center text-[12px] font-medium text-red-300">
-              {feedback}
-            </p>
-          )}
-          <div className="flex gap-2 pt-1">
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex min-h-14 items-center justify-between gap-3 border-t border-white/[0.07]
+                        px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-3 md:py-3">
+          <span
+            aria-live="polite"
+            aria-atomic="true"
+            className={`text-xs font-medium text-red-300 ${feedback ? "" : "opacity-0"}`}
+          >
+            {feedback ?? "."}
+          </span>
+          <div className="flex flex-shrink-0 gap-2">
             <button
               onClick={onClose}
-              className="flex-1 rounded-xl border border-white/[0.08] bg-[#111]
-                         py-2.5 text-[14px] font-semibold text-white/50
-                         hover:bg-white/5 hover:text-white/80 transition-colors
-                         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+              className="min-h-[44px] rounded-lg px-3 py-2 text-sm text-white/55 transition-colors
+                         hover:bg-white/[0.05] hover:text-white/80
+                         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 md:min-h-0"
             >
               Cancelar
             </button>
             <button
               onClick={handleSave}
               disabled={saving || loadingBlocks}
-              className="flex-1 rounded-xl bg-[#6B3EFF] py-2.5 text-[14px] font-semibold text-white
-                         hover:brightness-110 transition-all shadow-[0_4px_16px_rgba(107,62,255,0.35)]
+              className="min-h-[44px] rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white
+                         transition-colors hover:bg-accent-hover
                          disabled:cursor-not-allowed disabled:opacity-60
-                         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6B3EFF]/60"
+                         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400/70
+                         focus-visible:ring-offset-2 focus-visible:ring-offset-[#191919] md:min-h-0"
             >
               {saving ? "Salvando..." : "Salvar"}
             </button>

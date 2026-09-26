@@ -25,10 +25,10 @@ const BLOB_STYLE = {
 } as CSSProperties;
 
 const BLOBS_INACTIVE = [
-  { backgroundColor: '#4C1D95', backgroundImage: 'linear-gradient(#4C1D95,#7C3AED,#4C1D95)', transform: 'rotate(30deg) scale(1.03)' },
-  { backgroundColor: '#FFFFFF', backgroundImage: 'linear-gradient(#FFFFFF,#DDD6FE,#FFFFFF)', transform: 'rotate(60deg) scale(0.95)' },
-  { backgroundColor: '#6B3EFF', backgroundImage: 'linear-gradient(#6B3EFF,#A78BFA,#6B3EFF)', transform: 'rotate(90deg) scale(0.97)' },
-  { backgroundColor: '#7C3AED', backgroundImage: 'linear-gradient(#7C3AED,#DDD6FE,#7C3AED)', transform: 'rotate(120deg) scale(1.02)' },
+  { backgroundColor: '#3d38cc', backgroundImage: 'linear-gradient(#3d38cc,#5650f9,#3d38cc)', transform: 'rotate(30deg) scale(1.03)' },
+  { backgroundColor: '#FFFFFF', backgroundImage: 'linear-gradient(#FFFFFF,#e5e4ff,#FFFFFF)', transform: 'rotate(60deg) scale(0.95)' },
+  { backgroundColor: '#5650f9', backgroundImage: 'linear-gradient(#5650f9,#9a96fc,#5650f9)', transform: 'rotate(90deg) scale(0.97)' },
+  { backgroundColor: '#5650f9', backgroundImage: 'linear-gradient(#5650f9,#e5e4ff,#5650f9)', transform: 'rotate(120deg) scale(1.02)' },
 ];
 
 function getBlobsForColor(color: string) {

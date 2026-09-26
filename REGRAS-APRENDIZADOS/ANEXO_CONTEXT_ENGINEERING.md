@@ -18,6 +18,32 @@ sem precisar reavaliar o repositório do zero.
   `skill-creator` para criar uma skill nova do projeto, ou desenharmos contratos
   internos de API/webhook, esse conhecimento melhora o resultado.
 
+## ✅ Sistema de memória do repositório (2026-09-08)
+
+Fonte adicional:
+`C:\Users\victo\Desktop\agent-memory-engineering\SKILL.md`.
+
+O conhecimento foi adotado de forma parcial e operacional, usando a estrutura que o
+projeto já possuía:
+
+| Camada | Arquivo | Regra de escrita |
+|---|---|---|
+| Roteamento compartilhado | `AGENTS.md` e `<pasta>/AGENTS.md` | Curado; curto; aponta, não duplica |
+| Estado da etapa | `CONTEXTO.md` | Mutável; somente o que pode envelhecer |
+| Memória durável | `REGRAS-APRENDIZADOS/` | Fonte, data e supervisão humana |
+| Curadoria externa | `docs/skills-log.md` | Um veredito auditável por fonte |
+| Scratchpad individual | Fora do Git | Nunca promovido automaticamente |
+
+Toda escrita em memória compartilhada usa controle otimista: hash na leitura, novo
+hash imediatamente antes da gravação e releitura quando houver divergência. O Git
+fornece versionamento e rollback. O `AGENTS.md` da pasta funciona como
+permissionamento por escopo: `CALENDARIO/` é a frente ativa; `BARBEARIA/` é
+leitura contextual por padrão.
+
+Não foi criado outro memory store. O padrão de `dreaming` permanece parqueado até
+existirem múltiplas sessões/transcrições e um problema repetido que justifique
+consolidação assíncrona.
+
 ## ⏸️ Parqueadas (baixar sob demanda, não reavaliar do zero)
 
 **Foundational** — relevantes se o produto passar a ter algum componente LLM

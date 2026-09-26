@@ -5,16 +5,17 @@
  * faz "adicionar o Financeiro" ser uma linha aqui em vez de uma edição no
  * componente de navegação.
  *
- * Ícones: cobertura de conceitos vinda do template shadcn, mas escolhendo a
- * **variante redonda** do lucide onde ela existe. A regra tem motivo: o
- * conjunto do template é retilíneo (`MessageSquare`, `LayoutDashboard`,
- * `Banknote`) e este app é o contrário — "Criar" é pílula, FAB e avatar são
- * círculos, painéis têm canto de 28px. Decidido com o dono em 2026-09-08.
+ * Ícones: o conjunto do template shadcn, tal como ele é — retilíneo e no
+ * mesmo par de números da referência (16px, traço 2, sem variação entre ativo
+ * e inativo). A regra da "variante redonda" foi revertida com o dono em
+ * 2026-09-08: o objetivo passou a ser o minimalismo da sidebar do Studio
+ * Admin, e ali o peso vem do tamanho pequeno, não do traço fino.
  *
- * `Coins` no Financeiro e não `CircleDollarSign` porque o segundo é cifrão de
- * dólar, e a barbearia cobra em real.
+ * Cada seção pega o ícone do item equivalente da referência: Calendar do
+ * "Calendar", MessageSquare do "Chat", LayoutDashboard do "Default" e
+ * Banknote do "Finance".
  */
-import { CalendarDays, Coins, Gauge, MessageCircleMore } from "lucide-react";
+import { Banknote, Calendar, LayoutDashboard, MessageSquare } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export type IdSecao = "agenda" | "conversas" | "dashboard" | "financeiro";
@@ -33,30 +34,32 @@ export const SECOES: Secao[] = [
   {
     id: "agenda",
     rotulo: "Agenda",
-    Icone: CalendarDays,
+    Icone: Calendar,
     temPainel: true,
     pronta: true,
   },
   {
     id: "conversas",
     rotulo: "Conversas",
-    Icone: MessageCircleMore,
-    temPainel: true,
-    pronta: false,
+    Icone: MessageSquare,
+    temPainel: false,
+    pronta: true,
   },
   {
     id: "dashboard",
     rotulo: "Dashboard",
-    Icone: Gauge,
+    Icone: LayoutDashboard,
     temPainel: false,
-    pronta: false,
+    pronta: true,
   },
   {
     id: "financeiro",
     rotulo: "Financeiro",
-    Icone: Coins,
-    temPainel: true,
-    pronta: false,
+    Icone: Banknote,
+    /* Gráficos e tabela precisam da largura de trabalho. Não existe ainda
+       contexto lateral legítimo que justifique roubar 288px desta seção. */
+    temPainel: false,
+    pronta: true,
   },
 ];
 

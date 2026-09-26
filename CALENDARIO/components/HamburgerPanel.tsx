@@ -1,20 +1,19 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Calendar, CalendarDays, CalendarRange, Settings, PaintBucket, Trash2 } from 'lucide-react';
+import { X, Plus, CirclePlus, Calendar, CalendarDays, CalendarRange, Settings, PaintBucket, Trash2 } from 'lucide-react';
 import type { CalendarView, Professional } from '../types';
 import { NeonCheckbox } from './ui/NeonCheckbox';
-import { CASCA, PILULA, BRILHO_TOPO, BRILHO_BASE_INFERIOR } from './ui/vidro';
 
 const COLORS = [
   '#FF2A29', '#FF5000', '#2FFF40', '#07FF99',
   '#07FFF5', '#0047FF', '#8400FF', '#FC00FF',
 ];
 
-/* Botão de vidro do "Criar agendamento" -- anatomia de quatro camadas (casca,
-   pílula, dois brilhos, texto duplicado) documentada em `ui/vidro.ts`, que é
-   quem também alimenta os chips do dia (`DayKanban.tsx`, Frente 1). Aqui a
-   peça usa a receita completa, do tamanho de menu (68px) -- ver o arquivo
-   pra medida/cor/detalhe geométrico dos cantos concêntricos. */
+/* O "Criar agendamento" é a mesma peça do "Criar" da coluna do desktop
+   (`shell/ColunaDeSecoes.tsx`): pílula branca, texto escuro, "+" roxo como único
+   respingo de marca. Só a altura muda (44px), porque aqui é alvo de toque. Era o
+   botão de vidro de `ui/vidro.ts`, que continua servindo os chips do dia. */
 
 interface Props {
   open: boolean;
@@ -80,7 +79,7 @@ export default function HamburgerPanel({
             className="fixed inset-y-0 left-0 z-[70] w-[74%] max-w-[288px] bg-[#161616] border-r border-white/[0.08] flex flex-col md:hidden"
             style={{
               paddingTop: 'max(1.5rem, env(safe-area-inset-top))',
-              paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))',
+              paddingBottom: 'calc(env(safe-area-inset-bottom) + 24px)',
             }}
             initial={{ x: '-100%' }}
             animate={{ x: 0 }}
@@ -114,48 +113,19 @@ export default function HamburgerPanel({
               </button>
             </div>
 
-            {/* Botão Criar -- ver a anatomia de quatro camadas no topo do
-                arquivo. Era um retângulo roxo chapado; virou a peça de vidro
-                que o dono trouxe do Figma. */}
+            {/* Botão Criar -- ver o topo do arquivo. */}
             <div className="px-5 pt-5">
-              <motion.button
+              <button
+                type="button"
                 onClick={() => { onAddEvent(); onClose(); }}
-                style={CASCA}
-                className="relative w-full block overflow-hidden text-white"
-                /* Incha, não encolhe -- mesma regra do dock: vidro responde ao
-                   dedo crescendo, encolher é idioma do Android. */
-                whileTap="pressionado"
+                className="flex h-11 w-full items-center justify-center gap-2 whitespace-nowrap
+                           rounded-lg bg-white text-[15px] font-semibold text-[#17151c]
+                           transition-colors hover:bg-white/90 active:bg-white/85
+                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
               >
-                <motion.span
-                  className="absolute"
-                  style={{ ...PILULA, inset: 9 }}
-                  variants={{ pressionado: { filter: 'brightness(1.35)' } }}
-                  transition={{ type: 'spring', stiffness: 700, damping: 22, mass: 0.4 }}
-                />
-                <span style={BRILHO_TOPO} />
-                <span style={BRILHO_BASE_INFERIOR} />
-
-                {/* O texto é impresso duas vezes: a cópia de baixo, borrada,
-                    é o halo -- é ela que faz a letra parecer acesa por dentro
-                    do vidro em vez de colada por cima. Fica escondida de leitor
-                    de tela, senão o rótulo é anunciado em dobro. */}
-                <span
-                  aria-hidden
-                  className="absolute inset-0 flex items-center justify-center gap-2 text-[15px] font-semibold"
-                  style={{ filter: 'blur(7px)' }}
-                >
-                  <Plus size={18} strokeWidth={2.5} />
-                  Criar agendamento
-                </span>
-                <motion.span
-                  className="relative flex h-full items-center justify-center gap-2 text-[15px] font-semibold"
-                  variants={{ pressionado: { scale: 1.04 } }}
-                  transition={{ type: 'spring', stiffness: 700, damping: 20, mass: 0.4 }}
-                >
-                  <Plus size={18} strokeWidth={2.5} />
-                  Criar agendamento
-                </motion.span>
-              </motion.button>
+                <CirclePlus size={18} strokeWidth={2} className="flex-shrink-0 text-accent" />
+                Criar agendamento
+              </button>
             </div>
 
             {/* Modos de visualização */}
@@ -298,27 +268,34 @@ export default function HamburgerPanel({
             </div>
 
             {/* Color Picker (portal dentro do painel) */}
-            {showColorPicker !== null && (
+            {showColorPicker !== null && typeof document !== 'undefined' && createPortal(
               <div
-                className="fixed inset-0 z-[80] bg-black/20 flex items-center justify-center"
+                className="fixed inset-0 z-[120] flex items-end justify-center bg-black/50"
                 onClick={() => setShowColorPicker(null)}
               >
                 <div
-                  className="rounded-2xl bg-[#28292d] p-4 shadow-xl"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Escolher cor do profissional"
+                  className="w-full rounded-t-2xl border-t border-white/10 bg-[#28292d]
+                             px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-4 shadow-xl"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="grid grid-cols-4 gap-2">
+                  <p className="mb-4 text-sm font-semibold text-white">Cor do profissional</p>
+                  <div className="grid grid-cols-4 justify-center gap-3">
                     {COLORS.map((color) => (
                       <button
                         key={color}
                         onClick={() => { onChangeProfessionalColor(showColorPicker, color); setShowColorPicker(null); }}
-                        className="w-8 h-8 rounded-full transition-transform hover:scale-110"
+                        aria-label={`Escolher cor ${color}`}
+                        className="h-11 w-11 rounded-full transition-transform active:scale-95"
                         style={{ backgroundColor: color }}
                       />
                     ))}
                   </div>
                 </div>
-              </div>
+              </div>,
+              document.body,
             )}
           </motion.aside>
         </>

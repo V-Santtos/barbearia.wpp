@@ -20,7 +20,7 @@
 .firstfree__when {
   font-size: 11px;
   color: var(--primary-soft);
-  background: rgba(106,61,255,0.08);
+  background: rgba(86,80,249,0.08);
   padding: 2px 8px;
   border-radius: 5px;
   font-variant-numeric: tabular-nums;

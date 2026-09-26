@@ -1,6 +1,9 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import type { CalendarDay, Event, Professional } from "../types";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { empilharPorHora } from "../lib/empilhamento";
+import TarjaDeEvento from "./agenda/TarjaDeEvento";
+import DayEventsPopover, { type Anchor as DayAnchor } from "./DayEventsPopover";
 
 interface WeekViewProps {
   week: CalendarDay[];
@@ -10,7 +13,28 @@ interface WeekViewProps {
   onTimeslotClick: (date: string, time: string) => void;
 }
 
-type OverlappedEvent = Event & { column: number };
+const PRIMEIRA_HORA = 5;
+const PIXELS_POR_HORA = 48;
+/* Altura UNICA para toda tarja, e nao uma altura proporcional a duracao.
+
+   A duracao dos atendimentos aqui varia pouco (20 a 45 min), entao desenhar
+   22, 30 e 34 px lado a lado nao comunicava duracao: comunicava desalinho —
+   duas pilulas no mesmo horario, uma maior que a outra, sem motivo visivel.
+   Com altura unica, a grade ganha um ritmo so, e a duracao exata fica no
+   clique, junto do resto do agendamento.
+
+   A posicao vertical continua saindo do horario real; o que deixou de sair de
+   la e o tamanho. */
+const ALTURA_DA_TARJA = 24;
+/* Respiro entre blocos encostados, para dois horarios seguidos nao virarem um
+   retangulo so. */
+const RESPIRO = 2;
+/* Quantas tarjas cabem empilhadas dentro de uma celula de uma hora. Sai da
+   divisao, e nao de um numero escrito a mao, para que mexer na altura da tarja
+   nao deixe a conta para tras. */
+const TARJAS_POR_CELULA = Math.floor(PIXELS_POR_HORA / ALTURA_DA_TARJA);
+/* Calha reservada a tarja `+N`, e so na linha que a recebe. */
+const CALHA_DO_EXCEDENTE = 26;
 
 const WeekView: React.FC<WeekViewProps> = ({
   week,
@@ -20,14 +44,20 @@ const WeekView: React.FC<WeekViewProps> = ({
   onTimeslotClick,
 }) => {
   const isMobile = useMediaQuery("(max-width: 767px)");
-  const hours = Array.from({ length: 18 }, (_, i) => 5 + i); // 05h - 22h
+  const hours = Array.from({ length: 18 }, (_, i) => PRIMEIRA_HORA + i); // 05h - 22h
   const gridTemplateColumns = isMobile
     ? "56px repeat(7, minmax(96px, 1fr))"
     : "80px repeat(7, 1fr)";
 
+  const [diaAberto, setDiaAberto] = useState<{
+    dateISO: string;
+    eventos: Event[];
+    anchor: DayAnchor;
+  } | null>(null);
+
   const getProfessionalColor = (professionalId: number) => {
     const color = professionals.find((p) => p.id === professionalId)?.color;
-    return color?.startsWith("#") ? color : "#6B3EFF";
+    return color?.startsWith("#") ? color : "#5650f9";
   };
 
   const eventsByDate = useMemo(() => {
@@ -40,31 +70,12 @@ const WeekView: React.FC<WeekViewProps> = ({
   const now = new Date();
   const currentHour = now.getHours() + now.getMinutes() / 60;
 
-  const timeToPosition = (time: string) => {
-    const [h, m] = time.split(":").map(Number);
-    return (h + m / 60 - 5) * 48;
-  };
-
-  const calcOverlap = (dayEvents: Event[]) => {
-    const sorted = [...dayEvents].sort((a, b) =>
-      a.startTime.localeCompare(b.startTime)
-    );
-    const overlaps: OverlappedEvent[] = [];
-    sorted.forEach((event) => {
-      let column = 0;
-      while (
-        overlaps.some(
-          (o) =>
-            o.column === column &&
-            !(event.endTime <= o.startTime || event.startTime >= o.endTime)
-        )
-      ) {
-        column++;
-      }
-      overlaps.push({ ...event, column });
-    });
-    return overlaps;
-  };
+  /* Onde uma tarja comeca: a celula da hora, mais a linha que ela ocupa dentro
+     da celula. A posicao nao sai mais do minuto exato — e isso e deliberado,
+     porque minuto exato de tres profissionais com ritmos diferentes (40, 30 e
+     45 min) nunca alinha, e era o que deixava as pilulas tortas. */
+  const topoDaLinha = (hora: number, linha: number) =>
+    (hora - PRIMEIRA_HORA) * PIXELS_POR_HORA + linha * ALTURA_DA_TARJA;
 
   const orderedWeek = useMemo(() => {
     const days = [...week];
@@ -78,7 +89,7 @@ const WeekView: React.FC<WeekViewProps> = ({
   }, [week]);
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 bg-[#141314] md:border md:border-[#6B3EFF]/45 md:rounded-[28px] overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 bg-[#141314] md:border md:border-accent/45 md:rounded-[28px] overflow-hidden">
       <div
         className="flex flex-1 min-h-0 overflow-x-auto custom-scrollbar"
         style={{
@@ -121,7 +132,7 @@ const WeekView: React.FC<WeekViewProps> = ({
 
                     <p
                       className={`mt-1 mx-auto flex h-7 w-7 items-center justify-center rounded-full text-base font-medium md:h-8 md:w-8 md:text-lg ${
-                        isToday ? "bg-[#6B3EFF] text-white" : "text-gray-300"
+                        isToday ? "bg-accent text-white" : "text-gray-300"
                       }`}
                     >
                       {new Date(day.date + "T12:00:00").getDate()}
@@ -145,7 +156,11 @@ const WeekView: React.FC<WeekViewProps> = ({
                 </div>
 
                 {orderedWeek.map((day) => {
-                  const dayEvents = calcOverlap(eventsByDate[day.date] || []);
+                  const doDia = eventsByDate[day.date] || [];
+                  const { tarjas, excedentes } = empilharPorHora(
+                    doDia,
+                    TARJAS_POR_CELULA
+                  );
                   const isToday =
                     new Date(day.date + "T12:00:00").toDateString() ===
                     now.toDateString();
@@ -168,70 +183,79 @@ const WeekView: React.FC<WeekViewProps> = ({
                         />
                       ))}
 
-                      {dayEvents.map((event) => {
-                        const overlappingEvents = dayEvents.filter(
-                          (e) =>
-                            !(
-                              event.endTime <= e.startTime ||
-                              event.startTime >= e.endTime
-                            )
-                        );
-
-                        const hasOverlap = overlappingEvents.length > 1;
-                        const top = timeToPosition(event.startTime);
-                        const end = timeToPosition(event.endTime);
-                        const height = Math.max(48, end - top);
-                        const width = `${100 / overlappingEvents.length}%`;
-                        const left = `${event.column * parseFloat(width)}%`;
-
-                        return (
-                          <div
-                            key={`event-${event.id}`}
+                      {tarjas.map(
+                        ({
+                          evento,
+                          hora,
+                          linha,
+                          continuacao,
+                          divideAlinhaComExcedente,
+                        }) => (
+                          <TarjaDeEvento
+                            key={`event-${evento.id}-${hora}`}
+                            atenuada={continuacao}
+                            titulo={evento.title}
+                            horaInicio={evento.startTime}
+                            cor={getProfessionalColor(evento.professionalId)}
+                            ancora="nome"
                             onClick={(e) => {
                               e.stopPropagation();
-                              onEventClick(event, {
+                              onEventClick(evento, {
                                 x: e.clientX,
                                 y: e.clientY,
                               });
                             }}
-                            className="absolute overflow-hidden rounded-xl border border-white/10 bg-[#1f1f1f] font-semibold text-white shadow-md transition hover:border-white/20 hover:bg-[#262626]"
+                            className="absolute left-0 rounded-lg px-2.5 text-[12px]"
                             style={{
-                              boxShadow: `inset 3px 0 0 ${getProfessionalColor(event.professionalId)}, 0 8px 18px rgba(0,0,0,0.2)`,
+                              top: `${topoDaLinha(hora, linha)}px`,
+                              height: `${ALTURA_DA_TARJA - RESPIRO}px`,
+                              width: divideAlinhaComExcedente
+                                ? `calc(100% - ${CALHA_DO_EXCEDENTE}px)`
+                                : "100%",
+                            }}
+                          />
+                        )
+                      )}
+
+                      {excedentes.map((grupo) => {
+                        const top = topoDaLinha(grupo.hora, grupo.linha);
+
+                        return (
+                          <button
+                            key={`excedente-${day.date}-${grupo.hora}`}
+                            type="button"
+                            aria-label={`Mostrar mais ${grupo.eventos.length} agendamentos`}
+                            title={`Mostrar mais ${grupo.eventos.length} agendamentos`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const rect =
+                                e.currentTarget.getBoundingClientRect();
+                              setDiaAberto({
+                                dateISO: day.date,
+                                eventos: doDia,
+                                anchor: {
+                                  x: rect.left,
+                                  y: rect.top + rect.height / 2,
+                                },
+                              });
+                            }}
+                            className="absolute right-0 flex w-[24px] items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] text-[11px] font-semibold text-white/60 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/70"
+                            style={{
                               top: `${top}px`,
-                              height: `${height}px`,
-                              left,
-                              width,
-                              display: "flex",
-                              flexDirection: hasOverlap ? "column" : "row",
-                              justifyContent: hasOverlap
-                                ? "center"
-                                : "space-between",
-                              alignItems: "center",
-                              fontSize: hasOverlap ? "12px" : "13px",
-                              padding: hasOverlap ? "4px 6px" : "3px 8px",
-                              textAlign: "center",
+                              height: `${ALTURA_DA_TARJA - RESPIRO}px`,
                             }}
                           >
-                            {hasOverlap ? (
-                              <>
-                                <span>{event.title}</span>
-                                <span className="opacity-90 text-xs">
-                                  {event.startTime} - {event.endTime}
-                                </span>
-                              </>
-                            ) : (
-                              <span className="truncate">
-                                {event.title} {event.startTime} - {event.endTime}
-                              </span>
-                            )}
-                          </div>
+                            +{grupo.eventos.length}
+                          </button>
                         );
                       })}
 
                       {isToday && (
                         <div
-                          className="absolute left-0 right-0 h-[2px] bg-[#6B3EFF]/80"
-                          style={{ top: `${(currentHour - 5) * 48}px` }}
+                          className="absolute left-0 right-0 h-[2px] bg-accent/80"
+                          style={{
+                            top: `${(currentHour - PRIMEIRA_HORA) * PIXELS_POR_HORA}px`,
+                          }}
                         />
                       )}
                     </div>
@@ -242,6 +266,21 @@ const WeekView: React.FC<WeekViewProps> = ({
           </div>
         </div>
       </div>
+
+      {diaAberto && (
+        <DayEventsPopover
+          dateISO={diaAberto.dateISO}
+          events={diaAberto.eventos}
+          professionals={professionals}
+          anchor={diaAberto.anchor}
+          onPick={(ev) => {
+            const anchor = diaAberto.anchor;
+            setDiaAberto(null);
+            onEventClick(ev, anchor);
+          }}
+          onClose={() => setDiaAberto(null)}
+        />
+      )}
     </div>
   );
 };

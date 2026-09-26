@@ -29,7 +29,7 @@
 .db-topbar__logo {
   width: 26px; height: 26px;
   display: grid; place-items: center;
-  background: linear-gradient(135deg, #6B3EFF 0%, #4520c4 100%);
+  background: linear-gradient(135deg, #5650f9 0%, #3d38cc 100%);
   color: #fff;
   border-radius: 8px;
   box-shadow: var(--purple-glow);
@@ -86,7 +86,7 @@
 .db-avatar-me {
   width: 30px; height: 30px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #6B3EFF, #FC00FF);
+  background: linear-gradient(135deg, #5650f9, #FC00FF);
   color: #fff;
   font-size: 11px;
   font-weight: 600;

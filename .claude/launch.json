@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "calendario",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "CALENDARIO", "run", "dev"],
+      "port": 3002
+    }
+  ]
+}

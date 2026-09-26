@@ -35,6 +35,19 @@ interface Props {
   aberto: boolean;
   isMobile: boolean;
   onFechar: () => void;
+  /**
+   * Onde esta tela está montada.
+   *
+   * `modal` é a camada por cima da agenda, aberta pelo menu do avatar — o que
+   * sempre existiu. `secao` é o Dashboard como irmão de Agenda e Conversas na
+   * casca: sem véu, sem X e sem `Esc`, porque não há de onde sair; sair é
+   * clicar em outra seção.
+   *
+   * O que muda é só a casca. Dado, cabeçalho, filtro e miolo são os mesmos
+   * objetos nos dois modos, de propósito: dois dashboards de verdade seriam
+   * dois lugares para consertar o mesmo número errado.
+   */
+  variante?: "modal" | "secao";
 }
 
 function useResumo(ativo: boolean) {
@@ -84,7 +97,9 @@ export const DashboardScreen: React.FC<Props> = ({
   aberto,
   isMobile,
   onFechar,
+  variante = "modal",
 }) => {
+  const naSecao = variante === "secao";
   const [filtro, setFiltro] = React.useState<FiltroProf>("all");
   const [periodo, setPeriodo] = React.useState<PeriodoDashboard>("hoje");
   const { dados, erro } = useResumo(aberto);
@@ -93,13 +108,13 @@ export const DashboardScreen: React.FC<Props> = ({
   // `Esc` fecha — mas só no desktop, onde ele é camada. No celular a saída é o
   // dock, e não existe teclado para pressionar.
   React.useEffect(() => {
-    if (!aberto || isMobile) return;
+    if (!aberto || isMobile || naSecao) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onFechar();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [aberto, isMobile, onFechar]);
+  }, [aberto, isMobile, naSecao, onFechar]);
 
   const vm = React.useMemo(() => (dados ? montarVm(dados) : null), [dados]);
 
@@ -171,7 +186,7 @@ export const DashboardScreen: React.FC<Props> = ({
         {vm && !isMobile && (
           <ProfFilter value={filtro} onChange={setFiltro} profs={vm.profs} />
         )}
-        {!isMobile && (
+        {!isMobile && !naSecao && (
           <button
             className="dash-fechar"
             onClick={onFechar}
@@ -227,6 +242,17 @@ export const DashboardScreen: React.FC<Props> = ({
       />
     );
   })();
+
+  if (naSecao) {
+    return (
+      <div className="dash-root dash-secao">
+        <div className="dash-secao__corpo">
+          {cabecalho}
+          {miolo}
+        </div>
+      </div>
+    );
+  }
 
   if (isMobile) {
     return (

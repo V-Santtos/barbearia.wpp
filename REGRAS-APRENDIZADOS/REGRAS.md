@@ -4,6 +4,201 @@ Decisões duráveis. Cada regra vale até ser explicitamente revista — se uma 
 informação contradiz uma regra aqui, isso é um conflito a debater (ver README.md desta
 pasta), não uma sobrescrita silenciosa.
 
+## [2026-09-21] Grades de Agenda: o que a posição diz e o que o texto diz
+
+Rodada inteira sobre legibilidade das tarjas de agendamento, decidida na tela com o
+dono, medindo a agenda de teste (165 marcações, durações de 40, 30 e 45 min).
+
+- **A âncora nunca cede espaço; o acréscimo entra só quando a tarja mede o bastante.**
+  E a âncora é oposta em cada grade: no **Mês** a célula não tem eixo de tempo, então a
+  hora é a âncora e o nome entra ao lado; na **Semana** a posição vertical e a calha já
+  dizem a hora, então o nome é a âncora e a hora não é escrita. Quem mede é a própria
+  tarja (`@container`), nunca breakpoint de viewport — a coluna de seções recolhe de
+  240 px para 64 px e a tarja muda de largura sem a janela mudar de tamanho.
+- **Semana: a célula da hora é a unidade, e o empilhamento é vertical.** Posicionar pelo
+  minuto exato não alinha, por construção: cada profissional corre num ritmo próprio e
+  não existe grade de slots comum. Dentro da célula, a linha é a **fatia da hora**
+  (antes ou depois de `:30`), não a ordem de chegada — a posição continua dizendo
+  quando, sem gastar texto. Empilhar na horizontal está proibido: era o que dava 48 px
+  por tarja e transformava "Natália Coutinho" em "N…".
+- **Altura da tarja da Semana é única, não proporcional à duração.** Com durações entre
+  20 e 45 min, alturas de 22, 30 e 34 px lado a lado não comunicavam duração:
+  comunicavam desalinho. A duração exata fica no clique. Se um dia entrar serviço longo
+  (2 h), esta regra se reabre.
+- **Altura fixa obriga a colisão a ser medida pela extensão VISÍVEL, não pela do
+  relógio.** Senão dois horários a 25 min de distância caem na mesma coluna e as tarjas
+  se sobrepõem — o defeito de origem voltando por outra porta.
+- **Quem atravessa a hora reserva a linha de cima da célula seguinte**, como tarja
+  apagada. 16% das marcações atravessam; sem isso a grade mostra como livre uma hora
+  que não está, que é o único tipo de erro que custa dinheiro. **Encostar o card na
+  linha divisória foi avaliado e recusado**: desfaz o alinhamento e não diz quanto
+  atravessa.
+- **A conta de quantas tarjas cabem e o que o CSS desenha têm de sair do MESMO número.**
+  No Mês havia dois modelos da mesma altura e eles divergiram em quatro pontos; como a
+  célula tem `overflow-hidden`, todo excesso virava tarja cortada. Altura, respiro e o
+  botão de excedente agora são constantes únicas aplicadas por estilo inline.
+- **Sem piso de linhas.** Se a conta diz que cabem duas, desenha duas. O
+  `Math.max(MIN, ...)` era o que mandava desenhar quatro em célula de seis semanas.
+- **A sigla do dia da semana é linha própria acima da grade, no desktop.** Dentro da
+  primeira célula ela custava 34 px e fazia a primeira semana caber uma tarja a menos
+  que as outras.
+
+## [2026-09-21] Celular: a célula é o alvo, e o dia abre em página própria
+
+- **No Mês do celular, o alvo de toque é a célula inteira, não a tarja.** A tarja mede
+  14 px; numa célula com quatro, o dedo não acerta nenhuma. Elas viram desenho
+  (`pointer-events: none`, fora da árvore de acessibilidade) e quem responde é a célula.
+- **Tocar num dia abre a Folha do Dia**, uma sobreposição em tela cheia com estado
+  próprio (`diaAberto`), e **não** uma `view` nova. O lugar "Dia" do celular continua
+  sendo o Kanban, e o mês por baixo não perde mês, rolagem nem filtro.
+- **O Kanban é a tela do TURNO CORRENTE e não serve para um dia qualquer.** Ele abre na
+  aba do relógio da máquina (`new Date().getHours()`) e oferece "concluir atendimento".
+  Num dia futuro as duas coisas estão erradas. Não mandar navegação de data para lá.
+- **A Folha do Dia abre já no conteúdo**: hora atual se for hoje, primeiro agendamento
+  se não for, começo do expediente se o dia estiver vazio. Nunca nas 05:00 vazias.
+- **Empilhamento dentro de qualquer grade de dia usa o grupo de colisão como
+  denominador, nunca o maior amontoado do dia.** Um par sobreposto às 15h não pode
+  encolher o bloco que está sozinho às 09h.
+
+## [2026-09-17] Celular: área segura, visão de Mês e um caminho por seção
+
+Decidido com o dono, olhando o Google Calendar do aparelho dele lado a lado.
+
+- **Área segura se SOMA, nunca se escolhe.** Rodapé ancorado usa
+  `calc(env(safe-area-inset-bottom) + <folga>)`. `max(<folga>, env(...))` está errado:
+  num iPhone o inset já é maior que a folga, então o resultado é o inset puro e o botão
+  encosta no indicador de home. Vale para modais, folhas, painéis e o dock — e vale
+  igual em Safari e PWA, porque onde não há inset o `env()` é 0.
+- **Mês no celular: no máximo quatro tarjas por célula**, e o que passar disso vira o
+  indicador de excedente. O número não é decorativo: é o da referência. Quem calcula
+  quantas cabem tem de partir das alturas que a célula **realmente** desenha; contar por
+  estimativa foi o que fez a quinta tarja nascer cortada.
+- **A malha do Mês não tem linha de corte.** A área atrás do dock é a continuação da
+  última carreira, sem borda no topo. Nenhuma régua horizontal fecha a grade no meio da
+  tela.
+- **Tocar num dia do Mês abre o dia** no celular; criar agendamento é gesto do desktop.
+  A visão mensal é leitura de alto nível — o detalhe vem ao tocar.
+- **A faixa superior do celular é uma peça só** para Dia, Semana e Mês: mesmo respiro
+  (área segura do aparelho) e mesma folga abaixo. Ela não muda de altura conforme a
+  visão.
+- **Encolher um controle não pode encolher o alvo de toque.** As pílulas de mês têm 36 px
+  de superfície visível dentro de um botão de 44 px. O respiro vem da superfície, não do
+  alvo.
+- **Uma seção, um caminho.** O Dashboard é seção irmã no desktop e aba do dock no
+  celular; o atalho que abria a mesma tela como camada pelo menu do avatar foi
+  aposentado. Não recriar um segundo caminho para uma tela que já tem lugar.
+
+## [2026-09-17] Login: a ação principal não se preenche de roxo
+
+Tentado e revertido com o dono no mesmo dia. O botão que conclui o login continua em
+superfície escura com rótulo roxo: o relevo do `stardust` é vidro sobre preto e, sobre
+roxo saturado, lê como plástico — e preenchimento contraria a regra do site público
+("traço roxo marca a escolha, preenchimento não"). Quando a ação parecer fraca diante de
+um seletor, **tirar peso do seletor**, não encher a ação. O fundo de ondas do login é
+moldura da tela e fica como está; véus e escurecimentos sobre ele foram recusados.
+
+## [2026-09-15] Site público de agendamento: padrões visuais validados pelo dono
+
+Vale para `SITE-BARB-PROF-UNICO` (`localhost:3001`). Decidido tela a tela com o dono,
+por print do celular, buscando o sistema mais minimalista possível.
+
+- **Roxo só onde a pessoa age.** Botões de ação, a escolha feita (dia selecionado,
+  filtro ativo) e as opções que são a própria ação (horários). Informação fica em branco:
+  preço, borda de card, título. Roxo repetido em cada card apaga o destaque.
+- **Botão que avança etapa é contornado em roxo e se preenche no clique.** Vale para
+  Prosseguir (nome e telefone), Ver horários e Agendar. O preenchimento dura 0,45 s e o
+  avanço sai de um `setTimeout`, nunca do fim da animação
+  (`hooks/useFillAdvance.ts`). "Agendando…" já nasce cheio. Não voltar a ter botão
+  principal cheio numa etapa e contornado em outra.
+- **Calendário mostra só a janela aberta pelo barbeiro,** em semanas inteiras e sequência
+  contínua. Na virada de mês o dia 1 leva a sigla do mês; o destaque grande acompanha o
+  dia selecionado. Setas de mês só existem no modo de reserva (sem disponibilidade
+  carregada). Hoje = escuro com contorno roxo; selecionado = roxo cheio com borda clara.
+- **Seleção muda na hora; animação é enfeite.** Nenhum `onComplete`/`animationend` decide
+  se um toque vale.
+- **Títulos de etapa: 17 px, sem dois-pontos,** e o conteúdo abaixo agrupado com ele.
+- **Layout do celular em proporção da tela** (vw), não em escala fixa: o título da home
+  é o destaque, e o botão fica menor que ele.
+- **Resumo segue o caminho real do cliente** (Serviço → Nome → Telefone → Profissional →
+  Data), sem frase de instrução que repete o botão.
+
+**Por quê importa:** o fluxo inteiro foi padronizado junto — mudar um desses pontos numa
+etapa só reabre exatamente a inconsistência que a rodada fechou.
+
+## [2026-09-15] Um roxo só para o produto inteiro, e ele mora em token
+
+- **Regra:** site público e painel usam a **mesma escala**, com os mesmos nomes e
+  valores: `accent` (`#5650f9`), `accent-hover` (`#4842e5`), `accent-pressed`
+  (`#3d38cc`), `accent-400` … `accent-50`. No calendário ela está no `@theme` do
+  `index.css`, e `primary`/`primary-soft` apontam para ela. Cor nova entra como token;
+  hex de roxo escrito à mão em componente é regressão.
+- **Regra de uso:** roxo só onde a pessoa age — ação, escolha feita, campo em uso.
+  Informação (marca, título, saudação, rótulo) fica em branco, e a hierarquia entre
+  textos se faz por tamanho e opacidade, não por cor. A escolha feita é marcada por
+  **contorno** roxo, não por preenchimento.
+- **Não é marca, é dado:** as 8 cores de profissional, a cor do cliente no avatar de
+  Conversas e as cores semânticas de período do Kanban (manhã âmbar, noite índigo).
+  Essas não entram na escala e não mudam quando a marca mudar.
+- **Por quê importa:** havia dez roxos diferentes no calendário, e três deles
+  conviviam na mesma tela de login. Com token, trocar a marca é editar um arquivo;
+  com hex espalhado, é caçar 200 ocorrências de novo.
+
+## [2026-09-15] O celular segue o desktop nos mesmos elementos
+
+- **Regra:** quando os dois têm a mesma coisa, o celular usa o mesmo desenho: ícone de
+  seção (o conjunto da coluna), "Criar" (pílula branca com "+" roxo), avatar de cliente
+  (círculo neutro com ponto de cor) e contorno roxo no item escolhido. O que muda é
+  **escala e alvo de toque** (44 px de piso), nunca a identidade da peça.
+- **Adapta, não inventa:** texto que não cabe encolhe pelo conteúdo — o filtro do
+  Kanban mostra o primeiro nome no celular — em vez de quebrar em duas linhas ou virar
+  outro controle.
+- **Por quê importa:** o app já discordou de si mesmo antes (dashboard como aba no
+  celular e como camada no desktop). Cada divergência dessas volta como retrabalho.
+
+- **Agendamentos** mede os compromissos dentro do período selecionado. No recorte
+  Hoje, o apoio usa sempre a ordem **ativos · concluídos · cancelados**.
+- **Marcações recebidas** mede reservas criadas no período (`created_at`), não a data
+  para a qual o atendimento foi marcado. Não voltar ao rótulo ambíguo “Novas
+  marcações” nem fundir essa métrica com Agendamentos.
+- **Horários livres** é o resumo de capacidade; o painel de próximos horários livres
+  é o detalhe acionável. Não substituir o card por “primeira vaga” ou “vagas restantes
+  hoje”, pois isso duplicaria o painel logo abaixo e quebraria os filtros mais longos.
+
+## [2026-09-15] Financeiro preserva semântica temporal e reduz decoração
+
+- Os filtros Hoje, 15 dias, Mês, 6 meses e Ano alteram janela e granularidade, não a
+  definição das métricas. No gráfico divergente, faturamento fica acima da linha zero
+  e saídas abaixo; barras compartilham o mesmo centro, e o hover informa faturamento,
+  saída e resultado sem cobrir o período observado.
+- No filtro Ano, o seletor lista somente anos existentes nas movimentações. Ano atual
+  é acumulado até hoje e compara com o mesmo trecho do ano anterior; ano encerrado é
+  calendário completo e compara com o calendário completo anterior.
+- Não criar tabela de “anos congelados” nem duplicar somas anuais. O histórico deve ser
+  reconstruído dos fatos financeiros datados e imutáveis; exportação futura lê essa
+  mesma fonte de verdade.
+- A rosca de serviços usa segmentos visualmente separados e arredondados. Na tabela,
+  direção de movimento usa seta sem bolha: roxo para entrada, salmão para saída, 16 px
+  dentro de uma coluna fixa de 18 px. Cor comunica sem transformar o ícone decorativo
+  em falso botão.
+
+## [2026-09-08] Financeiro V1 não cria um ritual manual de pagamento
+
+- **Regra:** assinaturas, comissões e controle por forma de pagamento ficam mapeados,
+  mas fora da primeira versão do Financeiro. Não criar abas vazias, filtros inativos ou
+  componentes de fachada para esses temas.
+- **Operação atual:** o cliente paga presencialmente, em geral por dinheiro ou Pix. O
+  produto não fará cobrança online e não pedirá ao barbeiro que reabra cada atendimento
+  apenas para informar manualmente como ele foi pago.
+- **Verdade exibida:** enquanto não houver estado de pagamento e reconciliação, a agenda
+  alimenta **faturamento dos atendimentos concluídos**, não “recebido em caixa”. O
+  resultado operacional é esse faturamento menos as saídas cadastradas; não representa
+  saldo bancário ou caixa auditado.
+- **Lançamento manual:** reservar para fatos que o sistema não deduz — compras,
+  materiais, custos, investimentos, retiradas e ajustes. Receita de serviço concluído
+  nasce automaticamente da agenda e precisa preservar o preço praticado no atendimento.
+- **Quando reabrir:** se o produto passar a cobrar online, precisar conciliar dinheiro e
+  Pix, controlar inadimplência, operar assinaturas ou calcular repasses/comissões.
+
 ## [2026-09-08] O painel navega por SEÇÕES, não por camadas sobre o calendário
 - **Regra:** Agenda, Conversas, Dashboard e Financeiro são lugares irmãos, alcançados
   pela coluna da esquerda. Trocar de seção troca a área de trabalho inteira.
@@ -18,22 +213,28 @@ pasta), não uma sobrescrita silenciosa.
   E seção montada e inativa **precisa** passar `enabled: false` ao `usePolling` — quatro
   pollings simultâneos é o empilhamento que gerou os 8.711ms de 2026-08-01.
 
-## [2026-09-08] Ícones: cobertura do template, forma do app
-- **Regra:** o vocabulário de ícones sai do template shadcn (quais conceitos ganham qual
-  ícone), mas **onde o lucide oferece par redondo/quadrado, escolhe-se o redondo**.
-  Conjunto travado: `CalendarDays`, `MessageCircleMore`, `Gauge`, `Coins`, `Settings`,
-  `CirclePlus`, mais `PanelLeft`/`PanelLeftClose`.
-- **Por quê importa:** o conjunto do template é retilíneo (`MessageSquare`,
-  `LayoutDashboard`, `CheckSquare`, `Banknote`) e este app é o oposto — "Criar" é
-  pílula, FAB e avatar são círculos, painéis têm canto de 28px. Importar a gramática
-  inteira brigaria com a geometria já lapidada. Efeito colateral bom: o
-  `MessageCircleMore` (troca deliberada de 2026-08-04) deixa de ser exceção e vira a
-  regra do conjunto.
-- **Como aplicar:** ícone novo se resolve aplicando a regra, sem reabrir a discussão.
-  `Coins` e não `CircleDollarSign` no Financeiro porque o segundo é cifrão de **dólar**
-  num app que cobra em real. `Gauge` e não `BarChart2` porque o `BarChart2` era o único
-  do conjunto antigo sem forma que o contivesse — ao lado de ícones fechados ele lê mais
-  leve.
+## [2026-09-08] Ícones: o conjunto do template, inclusive os números dele
+
+**Revertida no mesmo dia.** A primeira versão desta regra mandava preferir a variante
+redonda do lucide onde ela existisse (`CalendarDays`, `MessageCircleMore`, `Gauge`,
+`Coins`), para o conjunto acompanhar a geometria redonda do app. O dono comparou lado a
+lado com a sidebar do Studio Admin e pediu o oposto: o minimalismo de lá.
+
+- **Regra:** a coluna de seções usa o ícone do item equivalente da referência
+  `arhamkhnz/next-shadcn-admin-dashboard`, **e os números dela**: 16px (`size-4`),
+  traço 2 (o padrão do lucide), sem variação de traço entre ativo e inativo.
+  Conjunto atual: `Calendar` (Agenda), `MessageSquare` (Conversas),
+  `LayoutDashboard` (Dashboard), `Banknote` (Financeiro), `CirclePlus` (Criar).
+- **Por quê importa:** o que dá o ar leve à sidebar da referência **não é traço fino —
+  é tamanho pequeno**. A tentativa anterior buscava leveza afinando o traço (1.8) num
+  ícone grande (22px), e o resultado lia mais pesado, não mais leve. Trocar a forma
+  redonda pela retilínea sem trocar a escala não teria resolvido nada.
+- **Como aplicar:** ícone novo sai do item correspondente da referência, nos mesmos
+  16px/traço 2. O contraste entre ativo e inativo mora **na cor** (`text-white` contra
+  `text-white/55`) e na pílula de fundo, nunca na espessura.
+- **Ainda em aberto:** o menu do avatar (`User`, `Gem`, `Settings`, `LogOut`, 16px) não
+  passou por esta rodada, e "Dashboard" segue com ícone diferente em cada lugar —
+  `LayoutDashboard` na coluna, `Gem` no menu, `BarChart2` no mobile.
 
 ## [2026-09-08] O "+ Criar" pertence à coluna da esquerda, em um lugar só
 - **Regra:** marcar horário é a ação primária do produto e mora na coluna de navegação,
@@ -59,7 +260,48 @@ pasta), não uma sobrescrita silenciosa.
   que o calendário desenha, nunca escrito à parte — senão as duas telas discordam, que é
   o defeito que o `DashboardScreen` existe para evitar. E nada de data cravada nem
   `Math.random()`: relativo a `new Date()` para não envelhecer, com semente fixa para o
-  F5 reconstruir o mesmo mundo.
+  F5 reconstruir o mesmo mundo. A massa visual tem teto de **cinco agendamentos por
+  dia**; hoje reserva tarde e noite para Lucas e Rafael e pode ganhar somente o
+  atendimento em curso. Não voltar a preencher cada slot disponível, porque isso cria
+  dias artificiais com `+19`/`+22` e atrapalha a leitura dos cards.
+
+## [2026-09-08] Conversas é WhatsApp, não uma inbox multicanal
+- **Regra:** a seção Conversas mostra lista de clientes e histórico do WhatsApp.
+  Não adicionar Inbox, Mentions, Snoozed, Channels, Views, notas internas, perfil
+  detalhado do cliente ou ações de CRM sem uma nova decisão explícita do dono.
+- **Por quê importa:** a referência visual usada para a primeira inserção tinha
+  recursos de central multicanal que não pertencem ao produto atual. Copiar a tela
+  inteira criaria interface para capacidades que não existem no domínio.
+- **Como aplicar:** desktop e mobile podem ter adapters visuais diferentes, mas ambos
+  usam as mesmas conversas, mensagens, estados de leitura e rotas existentes.
+
+## [2026-09-08] A conta mora na barra superior, não no cabeçalho da agenda
+- **Regra:** o avatar e a engrenagem ficam à direita da `ControleDaColuna`, nessa
+  ordem. O menu do avatar guarda o que é da **pessoa** (Ver perfil, Dashboard, Tema,
+  Sair); a engrenagem, que é ajuste de **aplicativo**, fica por fora, como botão irmão.
+- **Por quê importa:** preso ao `CalendarHeader`, o avatar sumia ao entrar em Conversas
+  ou Dashboard — ele não é da agenda, é do aplicativo. E enterrar "Configurações" dentro
+  do menu de uma pessoa esconde ajuste de sistema atrás de um retrato.
+- **Como aplicar:** o avatar entra `compacto` (36px) na barra, igual aos outros botões
+  de 36px dela; no celular ele continua em 44px no `CalendarHeader`, porque a barra é
+  `md:flex`. O `pr` da barra é **cópia** do `px` da linha desktop do `CalendarHeader`
+  (`6 / md:8 / lg:10`): as duas faixas terminam na mesma borda, e é isso que põe o
+  avatar na mesma vertical do "Mês". Mexeu num, mexe no outro — há comentário nos dois
+  apontando um para o outro. A linha divisória da barra para no mesmo recuo; indo até
+  `right-0` ela vira moldura.
+
+## [2026-09-08] Tema é atributo no `<html>`, não contexto de React
+- **Regra:** o modo de cor vive em `<html data-tema="claro">` mais `localStorage`, e o
+  CSS reage sozinho: `index.css` redefine os tokens de cor dentro de
+  `[data-tema="claro"]`. A marca (`--color-primary`) **não** muda com o tema.
+- **Por quê importa:** quem precisa saber a cor é a folha de estilo, e ela já lê o
+  atributo. Um provider seria estado de aplicação para uma decisão que nunca sai do CSS.
+  Funciona porque `bg-background` e cia. compilam para `var(--color-*)` no Tailwind v4 —
+  trocar a variável troca tudo que passa por ela, sem segunda folha.
+- **Como aplicar:** cor nova entra como token, não como hex no componente. Hoje o claro
+  cobre **só o que usa token**: `bg-[#191919]`, `text-white/55`, `bg-[#1c1c1c]` e os CSS
+  do dashboard continuam escuros. A varredura é etapa própria, com a paleta aprovada
+  pelo dono — está marcada com `ponytail:` no `index.css`.
 
 ## [2026-07-29] Plataforma de deploy alvo: Vercel Pro + Supabase Pro
 - **Regra:** o sistema, quando amadurecer, sobe em Vercel Pro (compute/hosting) e
@@ -1019,9 +1261,9 @@ que ainda não aconteceu. Ver `CONTEXTO.md` para o estado vivo.
   null`, um só por vez, decidido com o dono). Dentro do aberto: serviço,
   nome do profissional com dot na cor dele, horário completo, e duas
   ações — lápis (edita, só quando `!inerte`: some em presencial/
-  placeholder) e "Marcar como Feito" (virou botão de vidro discreto, cor
-  do barbeiro só no texto — decidido com o dono, deixou de ser o maior
-  volume de roxo do app). O card em si adotou o material de vidro (casca +
+  placeholder) e "Marcar como feito" (ação operacional compacta e neutra,
+  raio de 8 px, sem gradiente ou sombra, com a cor do barbeiro somente no
+  ícone de check e alvo de toque de 44 px). O card em si adotou o material de vidro (casca +
   rampa, sem os dois brilhos borrados — pequenos demais pra caber) no lugar
   do fundo chapado `#1f1f1f`; fundo tingido por cor de barbeiro saiu
   inteiro (cor só em três lugares: fio, dot, `focus-visible:ring`).
@@ -1038,13 +1280,16 @@ que ainda não aconteceu. Ver `CONTEXTO.md` para o estado vivo.
   dono — mudar de tela é trabalho de layout novo, melhor corrigir a leitura
   primeiro e decidir relocação depois de ver funcionando). Três defeitos
   corrigidos em `RelogioDoDia.tsx`/`modelo.ts`:
-  - **Costura visível:** `anguloDaHora` reserva `CORTE_DEG = 3°` de vão no
-    topo (onde fim do dia encosta no começo), com um traço mais forte
-    (`.relo__costura`) no meio do vão — sem isso `t=janelaDia.fim` e
-    `t=janelaDia.ini` caíam no mesmo ponto e a volta lia como ciclo.
+  - **Orientação de relógio:** 12h fica no topo; na janela atual de 12 horas,
+    15h vai à direita, 18h embaixo e 9h à esquerda. `anguloDaHora` reserva
+    `CORTE_DEG = 3°` de vão na lateral esquerda, onde fim do dia encosta no
+    começo, com um traço mais forte (`.relo__costura`) no meio — sem isso
+    `t=janelaDia.fim` e `t=janelaDia.ini` caem no mesmo ponto e a volta lê
+    como ciclo.
   - **Rótulos pela janela, não por `h % 3`:** abertura e fechamento são
     âncoras à parte, sempre rotuladas (mesmo fora de hora cheia), peso
-    maior + a palavra "abre"/"fecha" ao lado da hora
+    maior + a palavra "abre"/"fecha" ao lado da hora. Na costura lateral,
+    abertura fica acima e fechamento abaixo, fora dos anéis
     (`.relo__hora--ancora`, `.relo__hora-palavra`). O miolo rotula a cada
     `passoRotulo = max(2, round(duração/5))` horas — nunca mais de ~6
     rótulos, e não quebra mais se o expediente mudar de 8h pra 7h.
@@ -1063,3 +1308,92 @@ que ainda não aconteceu. Ver `CONTEXTO.md` para o estado vivo.
 fechadas — não as reabrir sem o dono pedir. O que ainda falta (backlog da
 crítica `$impeccable`, listado no fim do `ANEXO-PLANO-LAPIDACAO.md`) segue
 **não pedido** e não foi tocado nesta sessão.
+
+
+## 2026-09-08 — Moldura das seções, avatar de cliente e a casca do dashboard
+
+Decisões tomadas com o dono enquanto o chat de referência
+(`arhamkhnz/next-shadcn-admin-dashboard`, rodando em `localhost:3000`) era
+lapidado dentro do calendário.
+
+- **Da referência entra estrutura, não token.** Sequência, espaçamento e
+  geometria podem ser copiados; cor, tipografia e raio continuam sendo os do
+  calendário, que já tem sistema próprio. Vale para qualquer referência externa
+  daqui pra frente.
+- **Seção do painel mora dentro de uma moldura.** `components/shell/
+  MolduraDeSecao.tsx`: respiro de 24 px, título e linha de apoio opcionais por
+  fora, conteúdo dentro de uma pílula de raio 24 px com borda branca 8%. O
+  conteúdo de uma seção não encosta na borda da janela. O respiro é simétrico;
+  a faixa vazia de 48 px que antes fabricava o recuo esquerdo foi removida com
+  a casca inset em 2026-09-09.
+- **Cabeçalhos que dividem uma pílula compartilham a altura.** Lista e conversa
+  têm 72 px cada para a linha de baixo ser uma só. Mexer em um sem mexer no
+  outro quebra a emenda — os dois números estão comentados um apontando para o
+  outro.
+- **A cor do cliente é um ponto, não o avatar.** Círculo neutro com a inicial e
+  um ponto de 10 px no canto inferior direito, com anel de 2 px na cor do fundo
+  daquela superfície. Oito avatares chapados brigavam entre si e com o roxo da
+  marca. Vale no desktop (Conversas e gaveta da Agenda); o painel de Conversas
+  do celular ainda não foi convertido, e isso é escolha, não esquecimento.
+- **Uma tela, duas cascas — nunca duas telas.** O dashboard virou seção sem ser
+  duplicado: `DashboardScreen` recebe `variante: "modal" | "secao"` e só a casca
+  muda. Dado, cabeçalho, filtro e miolo são os mesmos objetos. Duplicar criaria
+  dois lugares respondendo "quantos horários livres hoje", que é exatamente o
+  defeito que o protótipo já teve. O modal do menu do avatar continua existindo
+  até o dono mandar aposentá-lo.
+- **No SVG, regra de CSS vence atributo de apresentação.** Como `.relo__hora`
+  declara `text-anchor: middle`, passar `textAnchor` no JSX não teria efeito
+  nenhum — e o silêncio é a parte cara. Alinhamento de texto em SVG deste
+  projeto se resolve por classe.
+
+**Como aplicar:** seção nova nasce dentro da `MolduraDeSecao`; avatar de cliente
+nasce neutro com ponto; tela que muda de lugar ganha casca nova, não cópia.
+
+
+## 2026-09-08 — Gramática visual dos controles e da coluna esquerda
+
+Fonte: decisões do dono sobre os prints desta rodada, estrutura observada no
+dashboard de referência em `localhost:3000` e critérios consultados em
+`C:\Users\victo\Desktop\AGENTES\Atlas Design-critico`.
+
+- **Raio depende da função; não existe achatamento global.** Navegação, campos,
+  menus e ações compactas usam retângulo controlado, em geral 8 px (menu externo
+  pode usar 10 px). Avatares, pontos, amostras de cor e controles que realmente
+  representam uma pílula continuam circulares/arredondados.
+- **Roxo indica, não cobre.** Em seleção secundária, usar borda, fio, ponto ou
+  foco roxo sobre superfície neutra. Preenchimento roxo sólido fica reservado a
+  ação primária ou estado que precise de destaque forte.
+- **A coluna esquerda é carvão neutro `#141414`.** O item ativo usa somente uma
+  superfície branca de baixa opacidade, sem fio roxo; não transformar a barra
+  inteira em roxa ou branca. Esta cor foi escolhida explicitamente pelo dono
+  depois de ver a primeira versão violeta-escura.
+- **Aclonica é exclusiva do nome da marca.** `Barber` usa Aclonica Regular
+  (400), carregada localmente via `@fontsource`; textos de navegação, dados e
+  controles permanecem em Inter.
+- **Um profissional, um único seletor visual.** A lista `Profissionais` da
+  gaveta e os filtros do Kanban usam o mesmo `NeonCheckbox`, alimentado pela cor
+  do profissional; a caixa mede 18 px na gaveta mais densa e 20 px no Kanban.
+  Não reintroduzir checkbox nativo em um dos lados.
+- **A casca desktop usa o padrão inset da referência.** Atualização decidida em
+  2026-09-09: recolhida, a coluna mede 64 px (48 px de rail + 8 px de respiro em
+  cada lado) e os controles medem 32 px; expandida, continua em 240 px. A área
+  de trabalho recua 8 px, tem raio de 12 px e borda sutil. A barra superior tem
+  48 px porque o respiro externo já a afasta da janela. Não reintroduzir uma
+  faixa vazia entre o rail e a gaveta: o espaçamento pertence à casca.
+- **Controles do sistema operacional não entram nos modais críticos.** Seleção e
+  calendário devem pertencer ao visual do produto, sem perder teclado, foco,
+  nomes acessíveis, fechamento por `Esc` e limites de data.
+- **Modal de perfil não cria uma rolagem dentro de outra.** Com os três
+  profissionais atuais, `Ver perfil` mostra todos os períodos de uma vez. Só o
+  corpo geral pode rolar como proteção para viewport menor ou equipe maior, com
+  trilho transparente e polegar discreto. Sua geometria acompanha o modal de
+  configurações: 512 px de largura máxima, raio externo de 16 px e controles de
+  8–10 px; o avatar continua circular porque representa uma pessoa e, sem foto,
+  mostra o mesmo SVG `MarcaHubBarber` usado no menu da conta.
+- **Menu flutuante não disputa com a navegação.** Deve ser opaco, ter respiro,
+  largura suficiente para o rótulo completo e nunca cobrir o item seguinte como
+  se ambos fossem a mesma peça.
+
+**Como aplicar:** antes de criar outra pílula ou superfície roxa, identificar a
+função do controle. Se for seleção secundária, começar por superfície neutra +
+indicador; se for campo/menu, começar por raio de 8–10 px e espaçamento interno.

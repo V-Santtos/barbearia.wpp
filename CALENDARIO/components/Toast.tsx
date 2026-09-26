@@ -50,13 +50,13 @@ const VARIANTS: Record<
   ToastVariant,
   { Icon: typeof Clock; accent: string; glow: string }
 > = {
-  warning: { Icon: Clock, accent: "#fbbf24", glow: "rgba(106, 61, 255, 0.30)" },
+  warning: { Icon: Clock, accent: "#fbbf24", glow: "rgba(86, 80, 249, 0.30)" },
   error: {
     Icon: AlertTriangle,
     accent: "#f87171",
     glow: "rgba(239, 68, 68, 0.28)",
   },
-  info: { Icon: Info, accent: "#a78bfa", glow: "rgba(106, 61, 255, 0.30)" },
+  info: { Icon: Info, accent: "#9a96fc", glow: "rgba(86, 80, 249, 0.30)" },
 };
 
 function ToastCard({
@@ -97,7 +97,7 @@ function ToastCard({
       className="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl border px-4 py-3 backdrop-blur-md"
       style={{
         background: "rgba(20, 19, 20, 0.92)",
-        borderColor: "rgba(168, 85, 247, 0.25)",
+        borderColor: "rgba(86, 80, 249, 0.25)",
         boxShadow: `0 10px 34px rgba(0,0,0,0.55), 0 0 24px ${glow}`,
       }}
     >

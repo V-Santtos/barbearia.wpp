@@ -32,10 +32,15 @@ import MobileBottomNav, { type MobileTab } from "./components/MobileBottomNav";
 import HamburgerPanel from "./components/HamburgerPanel";
 import DashboardScreen from "./components/dashboard/DashboardScreen";
 import ColunaDeSecoes from "./components/shell/ColunaDeSecoes";
+import ControleDaColuna from "./components/shell/ControleDaColuna";
 import GavetaDeSecao from "./components/shell/GavetaDeSecao";
 import SecaoVazia from "./components/shell/SecaoVazia";
 import { abreGaveta, secaoPorId, type IdSecao } from "./components/shell/secoes";
 import LimiteDeErro from "./components/dashboard/LimiteDeErro";
+import ConversasDesktop from "./components/conversations/ConversasDesktop";
+import MolduraDeSecao from "./components/shell/MolduraDeSecao";
+import FinanceiroScreen from "./components/financeiro/FinanceiroScreen";
+import FolhaDoDia from "./components/agenda/FolhaDoDia";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { usePolling } from "./hooks/usePolling";
 
@@ -96,17 +101,15 @@ function App() {
     document.body.style.backgroundColor = corDaTela;
   }, [ownerSession, appReady]);
 
-  // O dashboard é camada, não visualização: `view` não é tocado, então voltar
-  // devolve a agenda exatamente como estava — mesma data, mesma visualização,
-  // mesmo filtro. No celular quem manda é o dock, e `mobileTab` já é o estado
-  // dele; aqui só o desktop precisa de um interruptor próprio.
-  const [dashboardAberto, setDashboardAberto] = useState(false);
-  const dashboardVisivel = isMobile
-    ? mobileTab === "dashboard"
-    : dashboardAberto;
+  // O dashboard como camada sobrou só no celular, onde quem manda é o dock e
+  // `mobileTab` já é o estado dele. No desktop ele é seção irmã da Agenda
+  // (`variante="secao"`), e o atalho que abria a camada pelo menu do avatar foi
+  // aposentado em 2026-09-17 — não existe mais um segundo caminho para a mesma
+  // tela. O dashboard continua sendo camada, não visualização: `view` não é
+  // tocado, então voltar devolve a agenda como estava.
+  const dashboardVisivel = isMobile && mobileTab === "dashboard";
 
   const fecharDashboard = useCallback(() => {
-    setDashboardAberto(false);
     setMobileTab((atual) => (atual === "dashboard" ? "calendar" : atual));
   }, []);
 
@@ -115,6 +118,8 @@ function App() {
   const [secaoAtiva, setSecaoAtiva] = useState<IdSecao>("agenda");
   const [gavetaAberta, setGavetaAberta] = useState(true);
   const [colunaExpandida, setColunaExpandida] = useState(true);
+  const [buscaAgenda, setBuscaAgenda] = useState("");
+  const [solicitacaoNovoLancamento, setSolicitacaoNovoLancamento] = useState(0);
 
   const selecionarSecao = useCallback(
     (id: IdSecao) => {
@@ -124,6 +129,7 @@ function App() {
       if (id === secaoAtiva) {
         setGavetaAberta((v) => (abreGaveta(id) ? !v : false));
       } else {
+        setBuscaAgenda("");
         setSecaoAtiva(id);
         setGavetaAberta(abreGaveta(id));
       }
@@ -152,6 +158,10 @@ function App() {
   >(new Set());
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  /* A Folha do Dia e um estado proprio, e nao uma `view`: o lugar "Dia" do
+     celular continua sendo o Kanban, e o mes por baixo nao perde mes, rolagem
+     nem filtro enquanto ela esta aberta. */
+  const [diaAberto, setDiaAberto] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
@@ -450,11 +460,26 @@ function App() {
     });
   }, []);
 
-  const filteredEvents = events.filter(
-    (event) =>
-      event.status !== "concluido" &&
-      selectedProfessionals.has(event.professionalId!),
-  );
+  const termoBusca = buscaAgenda.trim().toLocaleLowerCase("pt-BR");
+  const filteredEvents = events.filter((event) => {
+    if (
+      event.status === "concluido" ||
+      !selectedProfessionals.has(event.professionalId!)
+    ) {
+      return false;
+    }
+
+    if (!termoBusca) return true;
+
+    return [
+      event.title,
+      event.profissional,
+      event.servico,
+      event.telefone,
+      event.startTime,
+      event.date,
+    ].some((valor) => valor?.toLocaleLowerCase("pt-BR").includes(termoBusca));
+  });
 
   const handleSaveEvent = async (
     eventData: Omit<Event, "id"> & { id?: number },
@@ -627,6 +652,21 @@ function App() {
     setEditingEvent(null);
     setSelectedDate(date);
     setIsModalOpen(true);
+  };
+
+  /* Tocar numa célula do Mês no celular abre o DIA daquela data, não o formulário
+     de novo agendamento — é o padrão do Google Calendar e o que o rótulo de
+     acessibilidade da célula já prometia ("Abrir agenda de ..."). No desktop o
+     clique continua criando, que é o gesto da própria referência lá. */
+  const abrirDiaDoMes = (date: string) => {
+    if (!isMobile) {
+      openModalWithDate(date);
+      return;
+    }
+    /* Antes isto trocava para o Kanban, que e a tela do TURNO CORRENTE: ele
+       abre na aba do relogio da maquina e oferece "concluir atendimento".
+       Num dia que nao e hoje, as duas coisas estao erradas. */
+    setDiaAberto(date);
   };
 
   const handleEventClick = (
@@ -807,7 +847,7 @@ function App() {
             events={filteredEvents}
             professionals={professionals}
             selectedDate={selectedDate || undefined}
-            onDayClick={openModalWithDate}
+            onDayClick={abrirDiaDoMes}
             onEventClick={handleEventClick}
             onRequestDelete={handleDeleteEvent}
             onScrollPrev={goToPrev}
@@ -839,7 +879,7 @@ function App() {
           exit={{ opacity: 0, filter: "blur(8px)" }}
           transition={{ duration: 0.3, ease: "easeOut" }}
         >
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-[#6B3EFF]" />
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-accent" />
           <span className="text-sm text-white/70">Carregando dados...</span>
         </motion.div>
       )}
@@ -847,7 +887,7 @@ function App() {
       {ownerSession && appReady && (
         <motion.div
           key="app"
-          className="flex h-dvh overflow-hidden bg-background font-sans text-foreground"
+          className="flex h-dvh overflow-hidden bg-[#141414] font-sans text-foreground"
           initial={{ opacity: 0, filter: "blur(8px)", y: 6 }}
           animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
           transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
@@ -856,101 +896,210 @@ function App() {
             ativa={secaoAtiva}
             onSelecionar={selecionarSecao}
             expandida={colunaExpandida}
-            onAlternar={() => setColunaExpandida((v) => !v)}
-            onCriar={() =>
+            onCriarAgendamento={() =>
               openModalWithDate(new Date().toLocaleDateString("en-CA"))
             }
+            onCriarLancamento={() => {
+              setSecaoAtiva("financeiro");
+              setGavetaAberta(false);
+              setBuscaAgenda("");
+              setSolicitacaoNovoLancamento((atual) => atual + 1);
+            }}
           />
 
-          <GavetaDeSecao
-            aberta={gavetaAberta && abreGaveta(secaoAtiva)}
-            isMobile={isMobile}
-          >
-            {agendaVisivel ? (
-          <Sidebar
-            professionals={professionals}
-            selectedProfessionals={selectedProfessionals}
-            onProfessionalToggle={handleProfessionalToggle}
-            onAddProfessional={handleAddProfessional}
-            onDeleteProfessional={handleDeleteProfessional}
-            onChangeProfessionalColor={handleChangeProfessionalColor}
-            onOpenSettings={handleOpenSettings}
-            currentDate={currentDate}
-            onDateChange={setDate}
-            mobilePanel={
-              isMobile && mobileTab === "conversations" ? "conversations" : null
-            }
-            onCloseMobilePanel={() => setMobileTab("calendar")}
-            externalShowAddModal={showAddProfModal}
-            onExternalAddModalClose={() => setShowAddProfModal(false)}
-          />
-            ) : null}
-          </GavetaDeSecao>
-
-          {/* A agenda fica MONTADA quando outra seção está aberta, só escondida.
-              É assim que a promessa antiga sobrevive: voltar devolve a mesma
-              data, a mesma visualização e a mesma rolagem, sem refazer busca.
-              `!hidden` porque a classe `flex` abaixo venceria um `hidden` seco. */}
+          {/* Variante inset: a coluna fica no plano externo e todo o espaço de
+              trabalho vira uma única superfície recuada. Aberta, a própria
+              folga interna da coluna já cria o vão; recolhida, entram mais 8px
+              à esquerda, como no `SidebarInset` da referência. */}
           <div
-            className={`flex flex-col flex-1 min-h-0 min-w-0 ${
-              agendaVisivel ? "" : "!hidden"
-            }`}
+            className={`flex min-w-0 flex-1 flex-col bg-[#1c1c1c]
+                        md:my-2 md:mr-2 md:overflow-hidden md:rounded-xl
+                        md:border md:border-white/[0.07]
+                        md:shadow-[0_1px_2px_rgba(0,0,0,0.24)]
+                        md:transition-[margin-left] md:duration-200 ${
+                          colunaExpandida ? "md:ml-0" : "md:ml-2"
+                        }`}
           >
-            <CalendarHeader
-              currentDate={currentDate}
-              onPrev={goToPrev}
-              onNext={goToNext}
-              onToday={goToToday}
-              view={view}
-              viewMode={viewMode}
-              onViewChange={handleViewChange}
-              onToggleKanban={() =>
-                setViewMode((prev) =>
-                  prev === "timeline" ? "kanban" : "timeline",
-                )
+            <ControleDaColuna
+              expandida={colunaExpandida}
+              onAlternar={() => setColunaExpandida((v) => !v)}
+              busca={buscaAgenda}
+              onBusca={setBuscaAgenda}
+              rotuloBusca={
+                secaoAtiva === "conversas"
+                  ? "Pesquisar conversas"
+                  : secaoAtiva === "financeiro"
+                    ? "Pesquisar movimentações"
+                    : "Pesquisar agendamentos"
               }
               owner={ownerSession}
               onLogout={handleLogout}
               professionals={professionals}
-              presencialIds={presencialIds}
-              onMenuOpen={() => setHamburgerOpen(true)}
-              onNavigateToDate={setDate}
-              onOpenDashboard={() => setDashboardAberto(true)}
             />
 
-            <main
-              /* pb-16 e não pb-28: o card do dia (`DayKanban`) esticou
-                 verticalmente a pedido do dono em 2026-08-04, e o dock passou
-                 a flutuar levemente POR CIMA da borda inferior do card, não
-                 mais só sobre o respiro vazio depois dele. Mês e semana
-                 continuam sem nenhum respiro (viram tela cheia desde
-                 2026-08-04) — só o dia guarda uma folga, agora menor. */
-              className={`flex-1 flex flex-col min-h-0 md:p-6 lg:p-8 md:pb-6 lg:pb-8 ${
-                view === "month" || view === "week" ? "" : "pb-16"
-              }`}
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
-            >
+            <div className="flex min-h-0 min-w-0 flex-1">
+              <GavetaDeSecao
+                aberta={gavetaAberta && abreGaveta(secaoAtiva)}
+                isMobile={isMobile}
+              >
+                {agendaVisivel ? (
+                  <Sidebar
+                    professionals={professionals}
+                    selectedProfessionals={selectedProfessionals}
+                    onProfessionalToggle={handleProfessionalToggle}
+                    onAddProfessional={handleAddProfessional}
+                    onDeleteProfessional={handleDeleteProfessional}
+                    onChangeProfessionalColor={handleChangeProfessionalColor}
+                    onOpenSettings={handleOpenSettings}
+                    currentDate={currentDate}
+                    onDateChange={setDate}
+                    mobilePanel={
+                      isMobile && mobileTab === "conversations"
+                        ? "conversations"
+                        : null
+                    }
+                    onCloseMobilePanel={() => setMobileTab("calendar")}
+                    externalShowAddModal={showAddProfModal}
+                    onExternalAddModalClose={() => setShowAddProfModal(false)}
+                  />
+                ) : null}
+              </GavetaDeSecao>
+
+              {/* A agenda fica MONTADA quando outra seção está aberta, só escondida.
+                  É assim que a promessa antiga sobrevive: voltar devolve a mesma
+                  data, a mesma visualização e a mesma rolagem, sem refazer busca.
+                  `!hidden` porque a classe `flex` abaixo venceria um `hidden` seco. */}
               <div
-                className={`flex-1 flex flex-col min-h-0 ${
-                  view === "month" || view === "week" || viewMode === "kanban"
-                    ? "overflow-hidden"
-                    : "overflow-y-auto"
+                className={`flex flex-col flex-1 min-h-0 min-w-0 ${
+                  agendaVisivel ? "" : "!hidden"
                 }`}
               >
-                {renderView()}
-              </div>
-            </main>
-          </div>
+                <CalendarHeader
+                  currentDate={currentDate}
+                  onPrev={goToPrev}
+                  onNext={goToNext}
+                  onToday={goToToday}
+                  view={view}
+                  viewMode={viewMode}
+                  onViewChange={handleViewChange}
+                  onToggleKanban={() =>
+                    setViewMode((prev) =>
+                      prev === "timeline" ? "kanban" : "timeline",
+                    )
+                  }
+                  owner={ownerSession}
+                  onLogout={handleLogout}
+                  professionals={professionals}
+                  presencialIds={presencialIds}
+                  onMenuOpen={() => setHamburgerOpen(true)}
+                  onNavigateToDate={setDate}
+                />
 
-          {!agendaVisivel && (
-            <div className="flex flex-1 flex-col min-h-0 min-w-0">
-              <SecaoVazia
-                rotulo={secaoPorId(secaoAtiva).rotulo}
-                Icone={secaoPorId(secaoAtiva).Icone}
-              />
+                <main
+                  /* No Mês, a informação termina antes da zona de navegação,
+                     mas a malha continua vazia por trás do dock, como no
+                     Google Calendar. Dia mantém a folga menor já validada;
+                     Semana não muda nesta rodada. */
+                  className={`relative flex-1 flex flex-col min-h-0 md:p-6 lg:p-8 md:pb-6 lg:pb-8 md:pt-3 lg:pt-4 ${
+                    view === "month"
+                      ? "pb-[calc(104px+env(safe-area-inset-bottom))]"
+                      : view === "week"
+                        ? ""
+                        : /* No Dia o conteúdo começa direto embaixo da faixa,
+                             sem a fileira de pílulas de mês no meio: sem estes
+                             8 px a moldura do Kanban encosta no avatar. */
+                          "pt-2 pb-16"
+                  }`}
+                  onTouchStart={handleTouchStart}
+                  onTouchEnd={handleTouchEnd}
+                >
+                  <div
+                    className={`flex-1 flex flex-col min-h-0 ${
+                      view === "month" ||
+                      view === "week" ||
+                      viewMode === "kanban"
+                        ? "overflow-hidden"
+                        : "overflow-y-auto"
+                    }`}
+                  >
+                    {renderView()}
+                  </div>
+                  {isMobile && view === "month" && (
+                    <div
+                      aria-hidden="true"
+                      /* Sem borda no topo: a malha da última semana continua
+                         para baixo sem emenda, como no Google Calendar. A linha
+                         que existia aqui desenhava um recorte no meio da tela. */
+                      className="pointer-events-none absolute inset-x-0 bottom-0 grid h-[calc(104px+env(safe-area-inset-bottom))] grid-cols-7 bg-[#141314]"
+                    >
+                      {Array.from({ length: 7 }, (_, index) => (
+                        <span
+                          key={index}
+                          className={`${index === 0 ? "border-l" : ""} ${
+                            index < 6 ? "border-r" : ""
+                          } border-white/10`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </main>
+              </div>
+
+              {!agendaVisivel && secaoAtiva === "conversas" && (
+                <ConversasDesktop busca={buscaAgenda} ativa={!isMobile} />
+              )}
+
+              {/* O mesmo dashboard do menu do avatar, agora também como seção.
+                  É o componente de sempre em outra casca (`variante="secao"`),
+                  não uma cópia: um só lugar continua respondendo "quantos
+                  horários livres hoje".
+
+                  Montado apenas enquanto a seção está aberta — sair desmonta e
+                  para o polling de 30s, que é a chamada mais cara do app.
+
+                  A cerca de erro vem junto: se a rota do resumo mudar e a tela
+                  estourar, ela cai sozinha e devolve a casca em pé. Sair, aqui,
+                  é voltar para a Agenda. */}
+              {!agendaVisivel && secaoAtiva === "dashboard" && (
+                <MolduraDeSecao rotulo="Dashboard">
+                  <LimiteDeErro onFechar={() => selecionarSecao("agenda")}>
+                    <DashboardScreen
+                      aberto
+                      isMobile={false}
+                      variante="secao"
+                      onFechar={() => selecionarSecao("agenda")}
+                    />
+                  </LimiteDeErro>
+                </MolduraDeSecao>
+              )}
+
+              {!agendaVisivel && secaoAtiva === "financeiro" && (
+                <MolduraDeSecao rotulo="Financeiro">
+                  <LimiteDeErro onFechar={() => selecionarSecao("agenda")}>
+                    <FinanceiroScreen
+                      eventos={events}
+                      profissionais={professionals}
+                      busca={buscaAgenda}
+                      solicitacaoNovoLancamento={solicitacaoNovoLancamento}
+                      chaveSessao={ownerSession.email.trim().toLocaleLowerCase("pt-BR")}
+                    />
+                  </LimiteDeErro>
+                </MolduraDeSecao>
+              )}
+
+              {!agendaVisivel &&
+                secaoAtiva !== "conversas" &&
+                secaoAtiva !== "dashboard" &&
+                secaoAtiva !== "financeiro" && (
+                  <div className="flex flex-1 flex-col min-h-0 min-w-0">
+                    <SecaoVazia
+                      rotulo={secaoPorId(secaoAtiva).rotulo}
+                      Icone={secaoPorId(secaoAtiva).Icone}
+                    />
+                  </div>
+                )}
             </div>
-          )}
+          </div>
 
           {popoverEvent && popoverAnchor && (
             <EventPopover
@@ -968,6 +1117,24 @@ function App() {
               onClose={handleClosePopover}
             />
           )}
+
+          <AnimatePresence>
+            {diaAberto && isMobile && (
+              <FolhaDoDia
+                key={`folha-${diaAberto}`}
+                dateISO={diaAberto}
+                events={filteredEvents}
+                professionals={professionals}
+                onFechar={() => setDiaAberto(null)}
+                /* Sem ancora: cai no mesmo caminho que o Kanban ja usa no
+                   celular, abrindo o agendamento no `EventModal`. A folha
+                   segue aberta por baixo, entao fechar o modal devolve o dia,
+                   e nao o mes. */
+                onEventClick={(evento) => handleEventClick(evento)}
+                onCriar={(data) => openModalWithDate(data)}
+              />
+            )}
+          </AnimatePresence>
 
           <AgendaSettingsModal
             professional={settingsProfessional}
@@ -1004,11 +1171,12 @@ function App() {
                   openModalWithDate(currentDate.toLocaleDateString("en-CA"))
                 }
                 aria-label="Novo agendamento"
-                className="fixed bottom-[100px] right-5 z-50 flex h-14 w-14 items-center
-                           justify-center rounded-2xl bg-[#6B3EFF] text-white shadow-xl
-                           shadow-[#6B3EFF]/30 transition-transform active:scale-90
+                className="fixed right-5 z-[101] flex h-[52px] w-[52px] items-center
+                           justify-center rounded-2xl bg-accent text-white shadow-xl
+                           shadow-accent/30 transition-transform active:scale-90
                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30
                            md:hidden"
+                style={{ bottom: "max(100px, calc(env(safe-area-inset-bottom) + 86px))" }}
               >
                 <Plus size={26} />
               </button>

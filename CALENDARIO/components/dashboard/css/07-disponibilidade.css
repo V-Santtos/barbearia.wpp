@@ -12,7 +12,7 @@
 /* A celula, compartilhada pelas duas telas. */
 .dcell {
   display: flex; align-items: center; justify-content: center;
-  min-height: 34px; border-radius: 7px;
+  min-height: 34px; border-radius: 6px;
   font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
   background: rgba(255,255,255,.05);
 }
@@ -23,8 +23,8 @@
 .dcell--cheio  { color: rgba(255,255,255,.88); background: rgba(255,255,255,.10); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
 .dcell--nao    { background: rgba(255,255,255,.015); }
 /* A coluna de hoje era marcada pela metade: so o cabecalho recebia o roxo. */
-.dcell.is-today { background: rgba(107,62,255,.16); }
-.dcell--nao.is-today { background: rgba(107,62,255,.07); }
+.dcell.is-today { background: rgba(86,80,249,.22); }
+.dcell--nao.is-today { background: rgba(86,80,249,.07); }
 
 /* Dias na vertical, uma coluna por barbeiro. O nome dele fica no cabecalho da
    coluna -- uma vez -- e a grade alinha as celulas por baixo dele. O motivo de
@@ -48,8 +48,13 @@
    capacidades diferentes. */
 .dlist__cap { font-size: 11px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
 
-.dlist__row { padding: 2px 6px; border-radius: 8px; }
-.dlist__row.is-today { background: rgba(107,62,255,.14); }
+.dlist__row { padding: 2px 6px; border-radius: 10px; }
+/* A faixa de hoje precisa enquadrar as celulas, nao comprimi-las. O respiro
+   extra e o contraste entre os dois roxos deixam clara a hierarquia. */
+.dlist__row.is-today {
+  padding-block: 4px;
+  background: rgba(86,80,249,.10);
+}
 .dlist__day { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .dlist__day b { color: rgba(255,255,255,.85); font-weight: 600; text-transform: capitalize; }
 .dlist .dcell { min-height: 30px; }

@@ -3,6 +3,66 @@
 Registro de toda skill/repositório/conhecimento avaliado para entrar em `.claude/skills/`.
 Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbearia-design.md`.
 
+## [2026-09-16] UI/UX mobile para o calendário
+
+- Fontes:
+  - https://github.com/lumusitech/AI/tree/main/skills/mobile-ux-patterns
+  - https://github.com/AjnasNB/mobile-app-ux-auditor-skill
+- Veredito: ✅ **Adoção composta das duas skills, escopada ao mobile**.
+- Motivo:
+  - `mobile-ux-patterns` é a referência principal para o React/PWA do calendário:
+    trata touch targets, zonas do polegar, navegação inferior, bottom sheets,
+    formulários, teclado, safe areas, gestos e estados offline. Parte dos exemplos
+    usa sintaxe Angular, mas as decisões de UX e CSS são portáveis para React DOM.
+  - `mobile-app-ux-auditor` complementa com um processo de revisão por fluxo e
+    severidade (P0–P3), incluindo acessibilidade, adaptação de layout, teclado,
+    interrupções e estados de erro. A lista oficial de frameworks é majoritariamente
+    nativa; no PWA, o scanner Python serve apenas como triagem e cada achado precisa
+    ser confirmado no código e no aparelho.
+  - Ambas usam licença MIT. São projetos jovens e com baixa adoção pública; por isso
+    entram como orientação e checklist, nunca como autoridade acima das decisões já
+    validadas com o dono ou do design system existente.
+  - `trmquang93/mobile-design-kit` foi avaliada e não trazida: força um design system
+    paralelo e proíbe roxo no alvo iOS, em conflito direto com a marca já aprovada.
+- Ação: instaladas somente as pastas necessárias em
+  `.agents/skills/mobile-ux-patterns/` e
+  `.agents/skills/mobile-app-ux-auditor/`. Nenhum hook, plugin, instalador de
+  terceiro ou dependência de runtime foi ativado.
+
+## [2026-09-08] Engenharia de memória + arquitetura + design do calendário
+
+- Fontes:
+  - `C:\Users\victo\Desktop\agent-memory-engineering\SKILL.md`
+  - https://www.skills.sh/mattpocock/skills/improve-codebase-architecture
+  - https://www.skills.sh/vercel-labs/agent-skills/web-design-guidelines
+  - https://www.skills.sh/anthropics/skills/frontend-design
+- Veredito: ✂️ **Adoção composta e escopada**.
+- Motivo:
+  - `agent-memory-engineering` entra pelo sistema de arquivos, disclosure
+    progressiva, versionamento e conferência de hash. O padrão assíncrono de
+    `dreaming` fica fora: não há frota de agentes nem lote de transcrições que
+    justifique a infraestrutura.
+  - `improve-codebase-architecture` e sua dependência `codebase-design` entram
+    para mapear atrito e aprofundar modules antes de mover arquivos. O fluxo foi
+    escopado ao `CALENDARIO/`; `BARBEARIA/` é apenas contexto de contrato.
+  - `frontend-design` entra como direção de criação e remodelagem visual.
+  - `web-design-guidelines` entra como auditoria enxuta de acessibilidade e
+    qualidade web, buscando as regras atuais antes de cada revisão.
+- Sobreposição: 🥊 `frontend-design` + `web-design-guidelines` cobrem parte do
+  espaço do `impeccable`, mas ainda não cobrem seu detector e o fluxo de inspeção
+  visual. Como o usuário sugeriu **talvez** removê-lo, ele fica marcado como
+  candidato à exclusão, sem ser apagado nesta rodada. Critério: validar uma rodada
+  completa do calendário com as duas skills novas; se não houver lacuna prática,
+  remover os 153 arquivos (~3,15 MB) e a junction antiga de `.claude/skills/`.
+- Ação:
+  - Criados `AGENTS.md`, `CALENDARIO/AGENTS.md` e `BARBEARIA/AGENTS.md` como
+    roteadores progressivos; a memória durável continua em
+    `REGRAS-APRENDIZADOS/`, sem uma segunda fonte concorrente.
+  - Skills externas pequenas mantidas em `.agents/skills/` para portabilidade e
+    versionamento.
+  - Auditoria arquitetural do calendário gerada como relatório temporário, sem
+    refatorar o código antes da escolha do candidato.
+
 ## [2026-09-08] arhamkhnz/next-shadcn-admin-dashboard
 - Fonte: https://github.com/arhamkhnz/next-shadcn-admin-dashboard
 - Veredito: ✂️ Adotado parcial — só **vocabulário de ícone** e **gramática de layout**.

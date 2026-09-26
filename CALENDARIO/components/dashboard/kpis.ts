@@ -45,8 +45,8 @@ export function montarKpis(
       value: ag.agendamentos.total,
       sub: ehHoje
         ? [
-            plural(ag.agendamentos.concluidos, "concluído", "concluídos"),
             plural(ag.agendamentos.ativos, "ativo", "ativos"),
+            plural(ag.agendamentos.concluidos, "concluído", "concluídos"),
             plural(ag.agendamentos.cancelados, "cancelado", "cancelados"),
           ].join(" · ")
         : `média ${media(ag.agendamentos.total, dias)}/dia`,
@@ -79,14 +79,14 @@ export function montarKpis(
     },
     {
       chave: "marcacoes",
-      label: "Novas marcações",
+      label: "Marcações recebidas",
       value: ag.marcacoes.total,
       // Vem de `created_at`, não de `dia_marcado`: conta quantas vezes alguém
       // marcou, não quantos atendimentos o dia tem. É o único número da tela que
       // cai na hora se o bot parar de pé.
       sub: ehHoje
-        ? "entraram hoje"
-        : `média ${media(ag.marcacoes.total, dias)}/dia`,
+        ? "reservas que entraram hoje"
+        : `média ${media(ag.marcacoes.total, dias)} reservas/dia`,
       destaque: true,
     },
   ];

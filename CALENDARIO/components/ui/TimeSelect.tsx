@@ -103,10 +103,13 @@ export default function TimeSelect({
         }
         break;
       }
-      case 'Escape':
-      case 'Tab': {
+      case 'Escape': {
         e.preventDefault();
         closeDropdown();
+        break;
+      }
+      case 'Tab': {
+        setOpen(false);
         break;
       }
     }
@@ -122,9 +125,9 @@ export default function TimeSelect({
         aria-label={label}
         onClick={() => (open ? closeDropdown() : openDropdown())}
         onKeyDown={handleTriggerKeyDown}
-        className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2
-                   text-sm text-left text-white cursor-pointer
-                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6B3EFF]"
+        className="min-h-10 w-full rounded-lg border border-white/10 bg-[#141414] px-3 py-2
+                   cursor-pointer text-left text-sm text-white transition-colors hover:border-white/[0.16]
+                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         {value}
       </button>
@@ -142,7 +145,7 @@ export default function TimeSelect({
             aria-label={label}
             onKeyDown={handleListKeyDown}
             style={{ position: 'fixed', zIndex: 9999, ...dropStyle }}
-            className="max-h-52 overflow-y-auto rounded-xl border border-white/10 bg-[#1a1b20] py-1 shadow-[0_8px_30px_rgba(0,0,0,0.5)]
+            className="max-h-52 overflow-y-auto rounded-[10px] border border-white/10 bg-[#19181d] p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.48)]
                        [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full"
           >
             {TIME_OPTIONS.map((t, idx) => (
@@ -159,10 +162,10 @@ export default function TimeSelect({
                   onChange(t);
                   closeDropdown();
                 }}
-                className={`cursor-pointer select-none px-3 py-[7px] text-sm transition-colors focus:outline-none focus:bg-white/10 ${
+                className={`cursor-pointer select-none rounded-lg border px-2.5 py-2 text-sm transition-colors focus:outline-none focus:bg-white/[0.09] ${
                   t === value
-                    ? 'bg-[#6B3EFF]/25 text-white font-medium'
-                    : 'text-white/65 hover:bg-white/5 hover:text-white'
+                    ? 'border-accent-400/45 bg-white/[0.08] text-white font-medium'
+                    : 'border-transparent text-white/65 hover:bg-white/[0.05] hover:text-white'
                 }`}
               >
                 {t}

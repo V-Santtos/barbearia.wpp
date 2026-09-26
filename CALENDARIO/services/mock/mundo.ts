@@ -227,51 +227,74 @@ function gerarAgendamentos(hoje: Date, agoraDec: number): AgendamentoMock[] {
     const dataISO = iso(dia);
     const wd = dia.getDay();
 
-    for (const m of MOLDES) {
-      const grade = gradeDoDia(m, wd);
+    const candidatos = MOLDES.flatMap((m) =>
+      gradeDoDia(m, wd).map((slot) => ({
+        m,
+        slot,
+        // Mantém quem tem mais procura aparecendo um pouco mais sem voltar a
+        // preencher cada horário da grade.
+        prioridade: sorteio() / m.procura,
+      })),
+    );
+
+    const escolhidos = offset === 0
+      ? MOLDES.slice(0, 2).flatMap((m) => {
+          const grade = gradeDoDia(m, wd);
+          const janelas = [
+            { inicio: 13, fim: 18, alvo: 15 },
+            { inicio: 18, fim: 22, alvo: 18.5 },
+          ];
+
+          return janelas.flatMap(({ inicio, fim, alvo }) => {
+            const slot = grade
+              .filter((hora) => hora >= inicio && hora < fim)
+              .sort((a, b) => Math.abs(a - alvo) - Math.abs(b - alvo))[0];
+            return slot === undefined ? [] : [{ m, slot }];
+          });
+        })
+      : candidatos
+          .sort((a, b) => a.prioridade - b.prioridade)
+          .slice(0, 2 + Math.floor(sorteio() * 4));
+
+    for (const { m, slot } of escolhidos) {
       const passo = m.duracaoMin / 60;
+      const iCliente = Math.floor(sorteio() * CLIENTES.length);
+      const dado = sorteio();
+      const passou = offset < 0 || (offset === 0 && slot + passo <= agoraDec);
 
-      for (const slot of grade) {
-        if (sorteio() > m.procura) continue;
-
-        const iCliente = Math.floor(sorteio() * CLIENTES.length);
-        const dado = sorteio();
-        const passou = offset < 0 || (offset === 0 && slot + passo <= agoraDec);
-
-        let status: string;
-        if (passou) {
-          // Cancelamento é minoria, e falta é minoria da minoria — a agenda de
-          // uma barbearia que funciona é quase toda "concluído".
-          status = dado < 0.11 ? "cancelado" : "concluido";
-        } else {
-          status = dado < 0.09 ? "reagendado" : "agendado";
-        }
-
-        // Marcado alguns dias antes do atendimento: é o que `created_at`
-        // significa, e é dele que sai o KPI "Novas marcações".
-        const criadoEm = somarDias(dia, -Math.floor(sorteio() * 6) - 1);
-        criadoEm.setHours(9 + Math.floor(sorteio() * 11), 0, 0, 0);
-
-        linhas.push({
-          id: (id += 1),
-          professional_id: m.id,
-          profissional: m.nome,
-          dia_marcado: dataISO,
-          hora_marcada: hhmm(slot),
-          startTime: hhmm(slot),
-          endTime: hhmm(slot + passo),
-          duracao_min: m.duracaoMin,
-          cliente: CLIENTES[iCliente],
-          telefone: telefoneDe(iCliente),
-          servico: SERVICOS[Math.floor(sorteio() * SERVICOS.length)],
-          status,
-          // Dois terços entram pelo bot: é o que as 165 mensagens reais de
-          // junho mostraram, e é o número que dá sentido ao painel existir.
-          source: sorteio() < 0.66 ? "whatsapp" : "painel",
-          created_at: criadoEm.toISOString(),
-          updated_at: criadoEm.toISOString(),
-        });
+      let status: string;
+      if (passou) {
+        // Cancelamento é minoria, e falta é minoria da minoria — a agenda de
+        // uma barbearia que funciona é quase toda "concluído".
+        status = dado < 0.11 ? "cancelado" : "concluido";
+      } else {
+        status = dado < 0.09 ? "reagendado" : "agendado";
       }
+
+      // Marcado alguns dias antes do atendimento: é o que `created_at`
+      // significa, e é dele que sai o KPI "Novas marcações".
+      const criadoEm = somarDias(dia, -Math.floor(sorteio() * 6) - 1);
+      criadoEm.setHours(9 + Math.floor(sorteio() * 11), 0, 0, 0);
+
+      linhas.push({
+        id: (id += 1),
+        professional_id: m.id,
+        profissional: m.nome,
+        dia_marcado: dataISO,
+        hora_marcada: hhmm(slot),
+        startTime: hhmm(slot),
+        endTime: hhmm(slot + passo),
+        duracao_min: m.duracaoMin,
+        cliente: CLIENTES[iCliente],
+        telefone: telefoneDe(iCliente),
+        servico: SERVICOS[Math.floor(sorteio() * SERVICOS.length)],
+        status,
+        // Dois terços entram pelo bot: é o que as 165 mensagens reais de
+        // junho mostraram, e é o número que dá sentido ao painel existir.
+        source: sorteio() < 0.66 ? "whatsapp" : "painel",
+        created_at: criadoEm.toISOString(),
+        updated_at: criadoEm.toISOString(),
+      });
     }
   }
 
