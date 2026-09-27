@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
+import { SUPERFICIE_MENU } from './menuFlutuante';
 
 const TIME_OPTIONS = Array.from({ length: 35 }, (_, i) => {
   const mins = 6 * 60 + i * 30;
@@ -145,8 +146,8 @@ export default function TimeSelect({
             aria-label={label}
             onKeyDown={handleListKeyDown}
             style={{ position: 'fixed', zIndex: 9999, ...dropStyle }}
-            className="max-h-52 overflow-y-auto rounded-[10px] border border-white/10 bg-[#19181d] p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.48)]
-                       [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full"
+            className={`max-h-52 overflow-y-auto p-1.5 ${SUPERFICIE_MENU}
+                       [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full`}
           >
             {TIME_OPTIONS.map((t, idx) => (
               <li

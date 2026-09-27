@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import type { Event, Professional } from '../types';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Scissors, UserCheck, Sun, Sunset, Moon, ChevronRight, Pencil, Check } from 'lucide-react';
+import { Scissors, Sun, Sunset, Moon, ChevronRight, Pencil, Check, UserCheck } from 'lucide-react';
 import { NeonCheckbox } from './ui/NeonCheckbox';
 import { CASCA_BACKGROUND, CASCA_BORDER } from './ui/vidro';
 import { useMediaQuery } from '../hooks/useMediaQuery';
@@ -175,6 +175,21 @@ const DayKanban: React.FC<DayKanbanProps> = ({
     const isPlaceholder = event.id < 0;
     const inerte = isPresencial || isPlaceholder;
     const isOpen = openId === event.id;
+    /* Presencial é um BLOQUEIO, não um cliente: nasce da tesoura, quando o
+       barbeiro avisa que está atendendo alguém sem hora marcada. Por isso ele
+       é levemente diferente dos outros -- listras diagonais (o sinal de
+       "horário ocupado" nos calendários) e o intervalo com um pontinho vivo no
+       lugar só do início, porque num bloqueio a pergunta é "quando ele libera?".
+       Título branco como os outros; antes era colorido e com fio tracejado,
+       que liam como link e borda quebrada (2026-09-26). O rótulo é fixo: o
+       `title` do banco vem como "Atendimento Presencial", em caixa de título, e
+       "Atendimento presencial" inteiro não cabe ao lado do intervalo em 375px. */
+    const agoraHHMM = new Date().toTimeString().slice(0, 5);
+    const acontecendoAgora =
+      isPresencial &&
+      event.date === new Date().toLocaleDateString('en-CA') &&
+      event.startTime <= agoraHHMM &&
+      agoraHHMM < event.endTime;
 
     return (
       <div
@@ -183,11 +198,13 @@ const DayKanban: React.FC<DayKanbanProps> = ({
                    ease-[cubic-bezier(0.25,0.1,0.25,1)]
                    ${isCompleting ? 'translate-y-2 opacity-0' : isPlaceholder ? 'opacity-70' : 'opacity-100'}`}
         style={{
-          backgroundImage: CASCA_BACKGROUND,
+          backgroundImage: isPresencial
+            ? `repeating-linear-gradient(135deg, transparent 0 7px, rgba(255,255,255,0.025) 7px 14px), ${CASCA_BACKGROUND}`
+            : CASCA_BACKGROUND,
           border: CASCA_BORDER,
           borderLeftColor: profColor,
           borderLeftWidth: '3px',
-          borderLeftStyle: isPresencial ? 'dashed' : 'solid',
+          borderLeftStyle: 'solid',
           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14)',
         }}
       >
@@ -209,15 +226,39 @@ const DayKanban: React.FC<DayKanbanProps> = ({
           {/* O nome do cliente é a resposta da única pergunta que o dono faz
               ao abrir o app ("quem é o próximo") -- 16px, o mesmo da linha de
               Conversas que ele validou. */}
-          <span
-            className="min-w-0 flex-1 truncate text-[16px] font-semibold leading-tight"
-            style={{ color: isPresencial ? profColor : '#ffffff' }}
-          >
-            {event.title}
-          </span>
-          <span className="flex-shrink-0 text-[14px] tabular-nums text-white/50">
-            {event.startTime}
-          </span>
+          {isPresencial ? (
+            /* Pessoinha antes do rótulo: diz "cliente presente" antes da
+               palavra e ancora o card entre os outros. Cinza, para o destaque
+               continuar sendo o título. */
+            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+              <UserCheck size={16} aria-hidden="true" className="flex-shrink-0 text-white/55" />
+              <span className="min-w-0 truncate text-[16px] font-semibold leading-tight text-white">
+                Presencial
+              </span>
+            </span>
+          ) : (
+            <span className="min-w-0 flex-1 truncate text-[16px] font-semibold leading-tight text-white">
+              {event.title}
+            </span>
+          )}
+          {isPresencial ? (
+            <span className="flex flex-shrink-0 items-center gap-1.5 text-[14px] tabular-nums text-white/50">
+              <span className="relative flex h-1.5 w-1.5">
+                {acontecendoAgora && (
+                  <span
+                    className="absolute inline-flex h-full w-full rounded-full opacity-60 motion-safe:animate-ping"
+                    style={{ backgroundColor: profColor }}
+                  />
+                )}
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ backgroundColor: profColor }} />
+              </span>
+              {event.startTime}–{event.endTime}
+            </span>
+          ) : (
+            <span className="flex-shrink-0 text-[14px] tabular-nums text-white/50">
+              {event.startTime}
+            </span>
+          )}
         </button>
 
         {/* Aberto: o mesmo chip cresce, sem trocar de peça -- serviço,
@@ -236,16 +277,13 @@ const DayKanban: React.FC<DayKanbanProps> = ({
               className="overflow-hidden"
             >
               <div className="space-y-2 px-3 pb-3 pt-0.5">
-                <div className="flex items-center gap-1.5 text-[14px] text-white/60">
-                  {isPresencial ? (
-                    <UserCheck size={14} className="flex-shrink-0" style={{ color: profColor }} />
-                  ) : (
+                {/* Presencial não repete aqui o que o título já diz. */}
+                {!isPresencial && (
+                  <div className="flex items-center gap-1.5 text-[14px] text-white/60">
                     <Scissors size={14} className="flex-shrink-0 text-white/35" />
-                  )}
-                  <span className="truncate">
-                    {isPresencial ? 'Atendimento presencial' : event.servico || 'Sem serviço informado'}
-                  </span>
-                </div>
+                    <span className="truncate">{event.servico || 'Sem serviço informado'}</span>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-1.5 text-[14px] text-white/60">
                   <span
@@ -316,21 +354,29 @@ const DayKanban: React.FC<DayKanbanProps> = ({
     const periodEvents = byPeriod[periodKey];
     return (
       <div
-        className={`flex flex-col min-h-0 rounded-2xl border border-[#2a2a2a] p-4 ${full ? 'h-full w-full' : 'flex-1'}`}
-        style={{
+        /* `full` é o celular, e lá a coluna não é caixa (2026-09-26): os cards
+           ficam soltos direto na moldura. O cabeçalho "NOITE 1" repetia a aba
+           "Noite 1" logo acima, e a caixa em volta era a terceira borda
+           empilhada (moldura > período > card) -- comia ~40px de largura e era
+           por isso que o card do cliente ficava apertado. No desktop as três
+           colunas continuam caixas: lá não há aba, o cabeçalho é o rótulo. */
+        className={full ? 'flex h-full w-full min-h-0 flex-col' : 'flex flex-1 min-h-0 flex-col rounded-2xl border border-[#2a2a2a] p-4'}
+        style={full ? undefined : {
           backgroundColor: '#181818',
           backgroundImage: 'radial-gradient(rgba(255,255,255,0.012) 1px, transparent 1px)',
           backgroundSize: '3px 3px',
           boxShadow: `inset 0 2px 0 ${accent}`,
         }}
       >
-        <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-white/60 mb-3 flex-shrink-0">
-          <Icon size={12} className="opacity-60" />
-          {label}
-          {contarReais(periodEvents) > 0 && (
-            <span className="ml-auto normal-case tracking-normal font-medium text-white/30">{contarReais(periodEvents)}</span>
-          )}
-        </h3>
+        {!full && (
+          <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-white/60 mb-3 flex-shrink-0">
+            <Icon size={12} className="opacity-60" />
+            {label}
+            {contarReais(periodEvents) > 0 && (
+              <span className="ml-auto normal-case tracking-normal font-medium text-white/30">{contarReais(periodEvents)}</span>
+            )}
+          </h3>
+        )}
 
         <div
           className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-0.5
@@ -338,7 +384,13 @@ const DayKanban: React.FC<DayKanbanProps> = ({
                      [&::-webkit-scrollbar-thumb]:rounded-full
                      [&::-webkit-scrollbar-thumb]:bg-white/10
                      [&::-webkit-scrollbar-track]:transparent"
-          style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}
+          style={{
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'rgba(255,255,255,0.1) transparent',
+            /* O chão de 104px das telas roláveis (ver MobileBottomNav): a lista
+               passa por baixo do dock, mas o último card ainda sobe acima dele. */
+            ...(full && { paddingBottom: 'calc(104px + env(safe-area-inset-bottom))' }),
+          }}
         >
           {periodEvents.length > 0 ? (
             periodEvents.map(renderCard)
@@ -354,10 +406,18 @@ const DayKanban: React.FC<DayKanbanProps> = ({
   };
 
   return (
+    /* No celular a moldura não fecha embaixo: desce até o fim da tela e o dock
+       flutua por cima do conteúdo, como no iOS (2026-09-26). Antes ela e o
+       card do período terminavam exatamente atrás da pílula, e as duas bordas
+       cruzando por trás do dock liam como peça encavalada. */
+    /* Régua de 16px no celular: a moldura a 16px da borda da tela (era 8px,
+       enquanto o cabeçalho e a linha do tempo do Dia já usavam 16) e o
+       conteúdo a 16px da moldura. */
     <div
-      className="flex flex-col h-full mx-2 md:mx-0 bg-[#141314]
-                 border border-accent/40 rounded-[28px]
-                 overflow-hidden px-5 pt-5 pb-5"
+      className="flex flex-col h-full mx-4 md:mx-0 bg-[#141314]
+                 border border-white/[0.08] border-b-0 rounded-t-[28px]
+                 md:border-b md:rounded-[28px]
+                 overflow-hidden px-4 pt-4 pb-0 md:px-5 md:pt-5 md:pb-5"
     >
       <div aria-live="polite" aria-atomic="true" className="sr-only">{liveMessage}</div>
 
@@ -445,7 +505,7 @@ const DayKanban: React.FC<DayKanbanProps> = ({
             style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
           >
             {PERIOD_ORDER.map((p) => (
-              <div key={p} className="flex-shrink-0 w-full snap-start h-full px-1.5">
+              <div key={p} className="flex-shrink-0 w-full snap-start h-full">
                 {renderPeriodColumn(p, true)}
               </div>
             ))}

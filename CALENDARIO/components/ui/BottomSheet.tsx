@@ -1,13 +1,29 @@
-import { useEffect, useId, useRef } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { SUPERFICIE_MENU } from "./menuFlutuante";
 
 interface BottomSheetProps {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
+  /* O campo que abriu a seleção. No desktop, com ele, a folha vira menu
+     colado ao campo (ver abaixo); sem ele, continua folha em qualquer tela. */
+  anchor?: HTMLElement | null;
 }
+
+/* Altura máxima do menu no desktop, e o vão entre ele e o campo. */
+const ALTURA_MAX_MENU = 288;
+
+/* Barra fina, neutra e sem trilho, a mesma do modal de agendamento. Sem
+   `scrollbar-width`/`scrollbar-color` de propósito: no Chrome, declarar
+   qualquer um dos dois desliga os `::-webkit-scrollbar` e volta a barra do
+   sistema, com setinhas e trilho branco. */
+const BARRA_DE_ROLAGEM =
+  "[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/15";
+const VAO_DO_CAMPO = 6;
 
 /* Folha que sobe do rodapé da TELA, não do card que a abriu -- é o que
    resolve escolher entre muitos itens (profissional, data, horário) sem
@@ -24,10 +40,34 @@ interface BottomSheetProps {
    Fica acima do backdrop do modal (z-[110]) sem precisar de portal:
    renderizada como filha normal da árvore,
    `position: fixed` já a tira do fluxo do card. */
-export default function BottomSheet({ open, onClose, title, children }: BottomSheetProps) {
+export default function BottomSheet({ open, onClose, title, children, anchor }: BottomSheetProps) {
   const titleId = useId();
   const sheetRef = useRef<HTMLDivElement>(null);
   const prefersReducedMotion = useReducedMotion();
+  /* Folha que sobe do rodapé é gesto de celular (2026-09-26, apontado pelo
+     dono): no desktop ela atravessava a janela inteira para escolher entre
+     três barbeiros. Lá a seleção vira menu colado ao campo, com a pele dos
+     outros menus do app; abre para baixo e, sem espaço, para cima.
+     `position: fixed` continua dispensando o card de deixar o conteúdo vazar. */
+  const eDesktop = useMediaQuery("(min-width: 768px)");
+  const comoMenu = eDesktop && !!anchor;
+  const [posicao, setPosicao] = useState<CSSProperties>({});
+
+  useLayoutEffect(() => {
+    if (!open || !comoMenu || !anchor) return;
+    const medir = () => {
+      const r = anchor.getBoundingClientRect();
+      const cabeEmbaixo = window.innerHeight - r.bottom - VAO_DO_CAMPO >= 200;
+      setPosicao(
+        cabeEmbaixo
+          ? { left: r.left, width: r.width, top: r.bottom + VAO_DO_CAMPO }
+          : { left: r.left, width: r.width, bottom: window.innerHeight - r.top + VAO_DO_CAMPO }
+      );
+    };
+    medir();
+    window.addEventListener("resize", medir);
+    return () => window.removeEventListener("resize", medir);
+  }, [open, comoMenu, anchor]);
 
   useEffect(() => {
     if (!open) return;
@@ -73,6 +113,50 @@ export default function BottomSheet({ open, onClose, title, children }: BottomSh
     };
   }, [open, onClose]);
 
+  if (comoMenu) {
+    return (
+      <AnimatePresence>
+        {open && (
+          <>
+            {/* Camada invisível: fecha ao clicar fora, sem escurecer a tela --
+                é um menu, não um novo diálogo. */}
+            <div
+              key="menu-backdrop"
+              className="fixed inset-0 z-[130]"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+            />
+            <motion.div
+              key="menu"
+              ref={sheetRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={titleId}
+              tabIndex={-1}
+              className={`fixed z-[130] flex flex-col overflow-hidden p-1.5 text-white focus:outline-none ${SUPERFICIE_MENU}`}
+              style={{ ...posicao, maxHeight: ALTURA_MAX_MENU }}
+              initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.14 }}
+              onAnimationComplete={() => {
+                if (open) sheetRef.current?.focus({ preventScroll: true });
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 id={titleId} className="sr-only">
+                {title}
+              </h3>
+              <div className={`min-h-0 flex-1 overflow-y-auto pr-1 ${BARRA_DE_ROLAGEM}`}>{children}</div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    );
+  }
+
   return (
     <AnimatePresence>
       {open && (
@@ -113,7 +197,7 @@ export default function BottomSheet({ open, onClose, title, children }: BottomSh
             <h3 id={titleId} className="flex-shrink-0 px-5 pb-3 pt-1 text-[15px] font-semibold text-white">
               {title}
             </h3>
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">{children}</div>
+            <div className={`min-h-0 flex-1 overflow-y-auto px-2 pb-4 ${BARRA_DE_ROLAGEM}`}>{children}</div>
           </motion.div>
         </>
       )}

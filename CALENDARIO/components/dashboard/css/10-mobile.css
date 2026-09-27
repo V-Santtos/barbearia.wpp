@@ -236,7 +236,12 @@
      O piso caiu de 62% para 50% em 2026-08-04, a pedido do dono: com 62% a
      pilula lia como barra, nao como dock. */
   width: max-content;
-  min-width: 50%;
+  /* Teto de 200px no piso (2026-09-26): com `50%` puro, numa tela de ~600px
+     (tablet em pé) a pílula abria para 300px com os três ícones no meio e dois
+     vazios sobrando nas pontas. Em 375px o piso continua sendo os 50% (187px).
+     O "+" do Mês/Semana (App.tsx) calcula a posição dele a partir desta mesma
+     largura -- mudar aqui é mudar lá. */
+  min-width: min(50%, 200px);
   /* `center` e nao `space-around`: era o `space-around` quem espalhava os tres
      botoes: ele reparte a sobra ENTRE os itens, entao qualquer largura a mais
      virava vao. Com `center` a sobra vai toda para as pontas e os tres andam
@@ -373,21 +378,12 @@
   position: absolute;
   inset: 0;
   border-radius: 18px;
-  background: rgba(255,255,255,0.12);
-  /* Mesmo fio especular do dock, na escala da pilula: acende em cima, some no
-     meio, volta fraco embaixo. */
-  border: 1px solid transparent;
-  background-image:
-    linear-gradient(rgba(255,255,255,0.12), rgba(255,255,255,0.12)),
-    linear-gradient(
-      150deg,
-      rgba(255,255,255,0.42) 0%,
-      rgba(255,255,255,0.10) 45%,
-      rgba(255,255,255,0.26) 100%
-    );
-  background-origin: border-box;
-  background-clip: padding-box, border-box;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.14);
+  /* Chapada, sem fio especular nem brilho interno (2026-09-26, a pedido do
+     dono). Antes eram duas camadas de 0.12 empilhadas (~0.23 de branco) mais
+     um contorno em degradê: virava o elemento mais claro e mais "3D" da tela,
+     e lia como botão de plástico cinza num app que é todo plano. A marcação
+     do ativo agora é só isto; quem dá o destaque é o ícone em branco puro. */
+  background: rgba(255,255,255,0.10);
 }
 
 /* Wrapper do conteudo do botao -- ver comentario no MobileBottomNav.tsx sobre

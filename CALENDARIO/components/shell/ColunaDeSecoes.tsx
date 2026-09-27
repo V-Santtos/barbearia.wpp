@@ -26,6 +26,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Banknote, CalendarPlus, CirclePlus } from "lucide-react";
 import { SECOES, type IdSecao } from "./secoes";
 import MarcaHubBarber from "./MarcaHubBarber";
+import { SUPERFICIE_MENU } from "../ui/menuFlutuante";
 
 const LARGURA_ABERTA = 240;
 /* 64px = rail de 48px + 8px de respiro em cada lado, exatamente a conta da
@@ -78,6 +79,17 @@ export default function ColunaDeSecoes({
   const mola = reduzir
     ? { duration: 0 }
     : { type: "spring" as const, stiffness: 340, damping: 34 };
+
+  /* Os rótulos ficam MONTADOS nos dois estados (2026-09-26). Antes eles eram
+     desmontados no clique e sumiam de uma vez, com a coluna ainda larga. Agora
+     é a própria coluna que os recorta enquanto encolhe (`overflow-hidden` +
+     `whitespace-nowrap`), e a opacidade acompanha: ao recolher some rápido,
+     antes da mola chegar ao fim; ao abrir volta um tico depois, quando já há
+     espaço para a palavra aparecer inteira. Recolhida, a palavra continua
+     sendo o nome acessível do botão. */
+  const rotuloDaColuna = `transition-opacity motion-reduce:transition-none ${
+    expandida ? "opacity-100 duration-300 delay-100" : "opacity-0 duration-150"
+  }`;
 
   /**
    * Aberta, a coluna ancora o menu logo abaixo do botão. Recolhida, ancora à
@@ -212,22 +224,24 @@ export default function ColunaDeSecoes({
       animate={{ width: expandida ? LARGURA_ABERTA : LARGURA_RECOLHIDA }}
       transition={mola}
     >
-      <div
-        className={`mx-2 mt-2 mb-4 flex h-8 items-center gap-2 text-white/80 ${
-          expandida ? "justify-start px-2" : "justify-center px-0"
-        }`}
-      >
-        <MarcaHubBarber className="h-4 w-4 flex-shrink-0" />
-        {expandida && (
-          <motion.span
-            initial={reduzir ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="truncate text-[15px] font-normal text-white"
-            style={{ fontFamily: '"Aclonica", sans-serif' }}
-          >
-            {NOME_DO_APP}
-          </motion.span>
-        )}
+      {/* Encostado à esquerda nos DOIS estados (2026-09-26). O `justify-center`
+          do recolhido trocava na hora do clique, com a coluna ainda larga: o
+          ícone pulava para o meio e escorregava de volta junto com a mola.
+          Com `px-2` ele já cai centrado nos 64px recolhidos (8 + 8 + 8 = 24px,
+          o mesmo x do aberto), então não se move -- só a coluna encolhe.
+          A marca subiu de 16 para 20px e o nome de 15 para 17px: é a assinatura
+          do app e lia pequena perto do "Criar". Com 20px o recuo vira `px-1.5`
+          (8 + 8 + 6 = 22px), que continua centrando o H nos 64px recolhidos.
+          `leading-none` tira a folga de linha da Aclonica, que empurrava o
+          nome para fora do centro do H. */}
+      <div className="mx-2 mt-2 mb-4 flex h-8 items-center justify-start gap-2 px-1.5 text-white/80">
+        <MarcaHubBarber className="h-5 w-5 flex-shrink-0" />
+        <span
+          className={`whitespace-nowrap text-[17px] font-normal leading-none text-white ${rotuloDaColuna}`}
+          style={{ fontFamily: '"Aclonica", sans-serif' }}
+        >
+          {NOME_DO_APP}
+        </span>
       </div>
 
       <div className="mx-2 mb-4">
@@ -243,7 +257,9 @@ export default function ColunaDeSecoes({
               abrirMenu(event.key === "ArrowDown" ? 0 : 1);
             }
           }}
-          title="Criar"
+          /* A dica nativa só no recolhido, quando o botão vira só o "+". Aberto
+             ela repetia a palavra escrita e ainda cobria o menu. */
+          title={expandida ? undefined : "Criar"}
           aria-label={menuAberto ? "Fechar menu Criar" : "Abrir menu Criar"}
           aria-haspopup="menu"
           aria-expanded={menuAberto}
@@ -251,13 +267,19 @@ export default function ColunaDeSecoes({
           /* A largura pertence ao contêiner, não ao estado da coluna. Mantendo
              `w-full` nos dois estados, o botão acompanha a mesma mola dos itens
              de seção; o recorte segura o rótulo enquanto ainda não há espaço. */
-          className={`flex h-8 w-full items-center justify-center overflow-hidden
-                      whitespace-nowrap rounded-md bg-white text-sm font-semibold
-                      text-[#17151c] transition-colors hover:bg-white/90
-                      focus-visible:outline-none focus-visible:ring-2
-                      focus-visible:ring-accent-400 ${
-                        expandida ? "px-3" : "px-0"
-                      }`}
+          /* Centralizado, e sem salto (2026-09-26, com o dono). O "+" e a
+             palavra andam juntos no centro do botão; ao recolher, a palavra
+             encolhe até largura zero (e some) em vez de ser desmontada, então o
+             grupo vai estreitando e o "+" desliza suave até o centro dos 32px
+             recolhidos junto com a mola, sem o pulo de trocar de alinhamento.
+             36px de altura (era 32): é a ação principal da coluna. O tamanho e
+             o peso do texto ficam no <span>, não aqui -- ver a nota em
+             `agenda/TarjaDeEvento.tsx` sobre `button { font: inherit }`. */
+          className="flex h-9 w-full items-center justify-center overflow-hidden
+                     whitespace-nowrap rounded-lg bg-white text-[#17151c]
+                     transition-colors hover:bg-white/90
+                     focus-visible:outline-none focus-visible:ring-2
+                     focus-visible:ring-accent-400"
         >
           {/* O "+" é roxo, não preto: era assim no botão original da Sidebar
               (SVG à mão com `stroke="#5650f9"`), e é o único respingo de marca
@@ -267,7 +289,16 @@ export default function ColunaDeSecoes({
             strokeWidth={2}
             className="flex-shrink-0 text-accent"
           />
-          {expandida && <span className="ml-1.5">Criar</span>}
+          <span
+            className={`overflow-hidden text-[14px] font-semibold
+                        transition-[max-width,margin,opacity] motion-reduce:transition-none ${
+                          expandida
+                            ? "ml-1.5 max-w-[64px] opacity-100 duration-300"
+                            : "ml-0 max-w-0 opacity-0 duration-200"
+                        }`}
+          >
+            Criar
+          </span>
         </button>
       </div>
 
@@ -288,8 +319,7 @@ export default function ColunaDeSecoes({
               zIndex: 9999,
               ...posicaoMenu,
             }}
-            className="flex flex-col gap-1 rounded-[10px] border border-white/[0.10]
-                       bg-[#211f27] p-2 shadow-[0_18px_48px_rgba(0,0,0,0.52)]"
+            className={`flex flex-col gap-1 p-2 ${SUPERFICIE_MENU}`}
           >
             <button
               ref={(elemento) => {
@@ -310,7 +340,7 @@ export default function ColunaDeSecoes({
                 strokeWidth={2}
                 className="flex-shrink-0 text-white/50 transition-colors group-hover:text-white/80"
               />
-              <span>Novo agendamento</span>
+              <span className="text-[14px]">Novo agendamento</span>
             </button>
             <button
               ref={(elemento) => {
@@ -331,7 +361,7 @@ export default function ColunaDeSecoes({
                 strokeWidth={2}
                 className="flex-shrink-0 text-white/50 transition-colors group-hover:text-white/80"
               />
-              <span>Novo lançamento financeiro</span>
+              <span className="text-[14px]">Novo lançamento financeiro</span>
             </button>
           </motion.div>,
           document.body,
@@ -344,16 +374,15 @@ export default function ColunaDeSecoes({
             <button
               key={id}
               onClick={() => onSelecionar(id)}
-              title={rotulo}
+              title={expandida ? undefined : rotulo}
               aria-current={eAtiva ? "page" : undefined}
-              className={`group relative flex h-8 items-center gap-2 rounded-md
-                          transition-colors hover:bg-white/[0.035]
-                          focus-visible:outline-none focus-visible:ring-2
-                          focus-visible:ring-white/25 ${
-                            expandida
-                              ? "justify-start px-2"
-                              : "justify-center px-0"
-                          }`}
+              /* Sempre à esquerda com `px-2`: recolhido, o ícone já fica no
+                 centro dos 32px do item pela própria conta (ver a marca, acima).
+                 Trocar para `justify-center` no clique fazia o ícone pular. */
+              className="group relative flex h-8 items-center justify-start gap-2 overflow-hidden rounded-md px-2
+                         transition-colors hover:bg-white/[0.035]
+                         focus-visible:outline-none focus-visible:ring-2
+                         focus-visible:ring-white/25"
             >
               {/* A superfície ativa viaja entre os itens em vez de trocar de lugar —
                   mesma gramática do dock (`layoutId`), para o desktop não
@@ -378,17 +407,15 @@ export default function ColunaDeSecoes({
                     : "text-white/55 group-hover:text-white/80"
                 }`}
               />
-              {expandida && (
-                <span
-                  className={`relative truncate text-sm ${
-                    eAtiva
-                      ? "font-medium text-white"
-                      : "text-white/60 group-hover:text-white/80"
-                  }`}
-                >
-                  {rotulo}
-                </span>
-              )}
+              <span
+                className={`relative whitespace-nowrap text-sm ${rotuloDaColuna} ${
+                  eAtiva
+                    ? "font-medium text-white"
+                    : "text-white/60 group-hover:text-white/80"
+                }`}
+              >
+                {rotulo}
+              </span>
             </button>
           );
         })}

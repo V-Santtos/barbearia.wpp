@@ -5,6 +5,7 @@ import type { OwnerSession } from './LoginScreen';
 import ProfileModal from './ProfileModal';
 import MarcaHubBarber from './shell/MarcaHubBarber';
 import type { Professional } from '../types';
+import { SUPERFICIE_MENU } from './ui/menuFlutuante';
 
 interface UserMenuProps {
   owner: OwnerSession;
@@ -108,7 +109,7 @@ export default function UserMenu({ owner, onLogout, professionals, compacto = fa
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -4 }}
             transition={{ duration: 0.15, ease: 'easeInOut' }}
-            className="menu-dropdown absolute right-0 top-[52px] z-50 w-64 overflow-hidden rounded-xl border border-white/10 bg-[#2a2a2a]/70 text-sm shadow-[0_8px_30px_rgba(0,0,0,0.4)] backdrop-blur-md"
+            className={`menu-dropdown absolute right-0 top-[52px] z-50 w-64 overflow-hidden text-sm ${SUPERFICIE_MENU}`}
           >
             <div className="flex items-center gap-3 border-b border-white/10 p-3">
               <div className="flex size-10 items-center justify-center overflow-hidden rounded-full border border-white/12 bg-primary font-semibold text-primary-foreground shadow-[0_0_0_2px_rgba(86,80,249,0.16)]">

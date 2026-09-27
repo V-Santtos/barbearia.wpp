@@ -13,10 +13,106 @@ Este checkout é uma casca desatualizada em relação ao repositório operado pe
 - **Prioridade:** visual, design e organização de `CALENDARIO/`.
 - **Contexto secundário:** ler o mínimo de `BARBEARIA/` para entender domínio,
   rotas e contratos antigos.
-- **Fora de escopo por padrão:** API, backend, banco e Supabase. O dev conduz essa
-  frente no repositório atual.
-- O Supabase desta cópia está indisponível; `VITE_MOCK=1` permite continuar o
-  trabalho visual sem rede.
+- **Banco provisório (dito pelo dono em 2026-09-26):** o Supabase atual NÃO será o
+  banco de produção. Esta casca tem as regras "como se fosse produção" e as rotas
+  ficam o mais mastigadas possível para ligar no banco novo depois. Regra nova de
+  dado entra no `CALENDARIO/server.js` com SQL defensivo **e** no mundo de teste
+  (`services/mock/rotas.ts`), e é validada pelo mock. Banco fora do ar não bloqueia.
+- O Supabase desta cópia está fora do ar (em 2026-09-26 o host sumiu do DNS e o
+  pooler respondeu "tenant não encontrado": provável projeto pausado).
+  `VITE_MOCK=1` permite trabalhar sem rede.
+
+## Rodada de 2026-09-26 — refinamento visual, modal de agendamento e regras
+
+Sessão longa, tela a tela com o dono. Tudo **não commitado** (ver "Trabalho local não
+commitado"). Verificação: `tsc` limpo nos arquivos tocados e conferência no navegador
+por medição (`getBoundingClientRect`/estilo computado) em 375×812, 600 e 1200 px.
+
+### Identidade e ícones
+
+- **Login:** marca horizontal "H Barber", menor (40/44 px), no lugar do H empilhado de
+  112 px. Campos do login com o fundo original (`FUNDO_CAMPO_LOGIN`).
+- **Favicon** = círculo roxo com H branco; **ícones do PWA** = roxo sólido `#5650f9` com
+  H branco (gerados por `npm run icones`, que agora lê o H de `MarcaHubBarber.tsx`).
+- **Traço único de ícones:** regra em `index.css` (`svg.lucide` 1,5 px com
+  `non-scaling-stroke`) — vence qualquer `strokeWidth` de componente.
+- **Ícones das seções** (dock e coluna): Agenda `CalendarClock`, Conversas
+  `MessageCircle` (também em `ConversasDesktop`), Dashboard `ChartNoAxesColumn`.
+
+### Celular
+
+- Dock: aba ativa chapada (branco 10%, sem degradê); moldura do Kanban desce até o fim
+  da tela e o dock flutua por cima; teto de 200 px na largura mínima do dock.
+- Kanban no celular: saiu a caixa "NOITE" (repetia a aba); régua de 16 px (moldura
+  `mx-4`, conteúdo `px-4`, ícone do menu em x=16).
+- FAB da tesoura: miolo 52 px, anel 76 px (visual intacto), alinhado à borda direita
+  dos cards e 16 px acima do dock.
+- "+" de Mês/Semana na linha do dock, no **meio do vão** entre o dock e a borda
+  (`left: calc(75% + meia-largura-do-dock/2 - 26px)`, acoplado ao `.mb-dock`).
+- Mês no celular/tablet: horário **centralizado** na tarja quando só a hora cabe
+  (volta à esquerda quando o nome aparece — limiar do `@container`).
+
+### Cores
+
+- Moldura grande (Dia, Semana, Mês, Kanban): roxo → branco 8%.
+- **Paleta dos barbeiros** nova, "vibrante" (mesma luz/saturação, sem roxo perto do
+  principal): `lib/coresProfissionais.ts`, usada por Sidebar e HamburgerPanel.
+  Mundo de teste migrado (Lucas céu, Rafael verde, Bruno âmbar). **Pendente:** as cores
+  gravadas no banco real continuam neon — migrar quando o banco novo chegar.
+- **Card presencial:** fio sólido na cor do barbeiro, listras diagonais sutis (sinal de
+  bloqueio), ícone `UserCheck` + "Presencial" em branco, intervalo "19:45–20:30" com
+  pontinho que pulsa enquanto acontece. (Fecha a tarefa 5 antiga.)
+- **Selo "Em atendimento":** só bolinha pulsando + nome + texto, sem pílula/halo.
+
+### Desktop
+
+- Coluna de seções: ícones ficam parados ao recolher (sem troca de `justify`); rótulos
+  continuam montados e esmaecem com a coluna; marca H 20 px + "Barber" 17 px alinhados;
+  "Criar" centralizado, 36 px, palavra encolhe até zero ao recolher; dica nativa só com a
+  coluna recolhida. **Não assistido:** o movimento do "+" do Criar ao recolher (o
+  painel do navegador estava oculto). Se "balançar", alinhar a duração da palavra à mola.
+- Mês desktop: divisores de coluna sobem até o topo da moldura; sem linha dupla na
+  esquerda.
+- **Menus suspensos unificados** em `components/ui/menuFlutuante.ts`
+  (`SUPERFICIE_MENU`: `#1c1c1c`, borda branca 10%, `rounded-xl`, sem desfoque): avatar,
+  "…" do profissional, "Criar", TimeSelect, opções de conversas, seletor de cor mobile.
+
+### Modal "Criar/Editar Evento" (`EventModal.tsx`)
+
+- Receita dos outros modais: `#191919`, borda 10%, sem textura/brilho/sombras internas,
+  véu preto 50%. Teto de altura = tela − 48 px; barra de rolagem fina só quando precisa.
+- Campos com a pele do login (`components/ui/campo.ts`: `CAMPO` + `FUNDO_CAMPO_MODAL`).
+- **Ordem:** Telefone → Nome → Serviço → Profissional → Data → Início. **Descrição
+  saiu** (não gravava nada).
+- **Serviço obrigatório**, do catálogo (`GET /servicos`), com preço. Editando, um
+  serviço antigo fora do catálogo pode ser mantido.
+- **Telefone primeiro com nome automático:** rota nova `GET /clientes/buscar`
+  (protegida por admin; agendamento mais recente → `dados_cliente`; compara dígitos,
+  com e sem nono dígito), espelhada no mock. **Não rodou contra banco real.**
+- **Telefone:** banco sempre canônico com 55 (`lib/telefone.ts`, cópia da regra em
+  `server.js`); tela só DDD + número. Card do agendamento mostra serviço e telefone em
+  linhas próprias.
+- **Data automática:** novo agendamento aberto em hoje pula para o primeiro dia com
+  horário livre (`getPrimeiroDiaLivre` → `/agendamentos/dias-disponiveis`, também no
+  mock), com aviso. Dia escolhido pelo barbeiro é respeitado.
+- Seletores (`BottomSheet`): no desktop viram menu colado ao campo; folha do rodapé só
+  no celular/tablet.
+
+### Tarefas para a próxima sessão
+
+1. **Financeiro no celular, dentro da tela do Dashboard.** Ideia do dono: não criar um
+   quarto ícone no dock; na própria tela de Dashboard, uma opção perto do canto
+   superior direito (à direita do título "Dashboard") troca entre Dashboard e
+   Financeiro. Ainda a pensar juntos qual é a melhor forma de fazer essa troca antes de
+   construir. Retoma a tarefa 4 antiga ("Decidir onde o Financeiro entra no celular").
+2. **Coluna de seções do desktop está vazia embaixo.** Abaixo de Agenda / Conversas /
+   Dashboard / Financeiro sobra quase a altura inteira da coluna. Discutir com o dono
+   se dá para preencher esse espaço **sem criar componente novo nem função que não
+   será usada**, mantendo o layout limpo. Conversa antes de construir.
+3. **Traçar o que mora dentro de Configurações.** A engrenagem da barra superior do
+   desktop (ao lado do avatar) ainda não abre tela nenhuma (`ponytail:` no código).
+   Definir com o dono o conteúdo e a rota dessa tela de configurações antes de
+   desenhar.
 
 ## Grades de agendamento — rodada de 2026-09-21
 
@@ -27,8 +123,9 @@ Rodada de legibilidade das tarjas, do dono, tela a tela. Decisões duráveis em
 ### Onde mora o quê
 
 - `components/agenda/TarjaDeEvento.tsx` — a tarja de Semana e Mês, e o único lugar dos
-  limiares de `@container`. `ancora="hora"` (Mês, alinhado à esquerda) ou `"nome"`
-  (Semana, centralizado).
+  limiares de `@container`. `ancora="hora"` (Mês: à esquerda quando o nome cabe,
+  centralizado quando só a hora cabe — desde 2026-09-26) ou `"nome"` (Semana,
+  centralizado).
 - `components/agenda/FolhaDoDia.tsx` — a página do dia no celular.
 - `lib/empilhamento.ts` — empilhamento por célula de hora, da Semana.
 - `lib/sobreposicao.ts` — agrupamento por colisão, do `DayView`.
@@ -507,9 +604,12 @@ Esses itens são backlog de qualidade, não autorização para redesenhar a inte
 
 ## Trabalho local não commitado
 
-O diff acumulado cobre `App.tsx`, `CalendarHeader.tsx`, `Sidebar.tsx`,
-`UserMenu.tsx`, `index.css`, o shell inteiro, Conversas, Dashboard, Financeiro e a memória.
-Nada foi commitado ainda. Não sobrescrever nem limpar o diff existente.
+Em 2026-09-26, início da sessão, tudo o que estava acumulado foi commitado e a branch
+`casca-de-secoes` subiu para o GitHub (gera Preview na Vercel; a `main` é produção e é
+compartilhada com outro dev). **Todo o trabalho da rodada de 2026-09-26 descrita acima
+está sem commit** — o dono pediu para só commitar depois de lapidar mais. A pasta
+`deploy-to-vercel/` (skill na raiz) ficou de fora do commit de propósito: não passou pela
+curadoria do `docs/skills-log.md`. Não sobrescrever nem limpar o diff existente.
 
 Verificação da rodada de 2026-09-15: `npx tsc --noEmit`, `npm run build`,
 `git diff --check`, detector do Impeccable e inspeção visual em `localhost:3002`
@@ -664,7 +764,8 @@ formulário ao fundo. O desktop preserva a textura existente.
    dentro do Dashboard, ou outra forma. A decisão vem antes de qualquer tela: a regra
    de 2026-09-08 diz que as seções são irmãs, e hoje o celular tem uma a menos.
 
-5. **Lapidar o card “Cliente presencial” no Kanban.** O estado recolhido mostrado
+5. **Concluída em 2026-09-26** (ver a rodada de 2026-09-26). Texto original:
+   **Lapidar o card “Cliente presencial” no Kanban.** O estado recolhido mostrado
    pelo dono em 2026-09-16 está visualmente fraco: o nome aparece truncado cedo e a
    composição de seta, filete roxo tracejado, título e horário parece remendada dentro
    de outra moldura. Rever hierarquia, densidade e relação entre estado recolhido e
@@ -701,8 +802,9 @@ formulário ao fundo. O desktop preserva a textura existente.
    final e mensagens durante o envio) — ver a seção do site público acima.
 0.1. **Celular:** conferir no aparelho a rodada de 2026-09-15, em especial a pílula de
    mês ativa no modo Mês, que ficou sem conferência visual, e a lista de incoerências
-   com o desktop que ainda não foi atacada (moldura roxa da agenda, item ativo branco
-   do hambúrguer, marca ausente depois do login, engrenagem inexistente). Incluir a
+   com o desktop que ainda não foi atacada (item ativo branco do hambúrguer, marca
+   ausente depois do login, engrenagem inexistente; a moldura roxa da agenda virou
+   branca 8% em 2026-09-26). Incluir a
    checklist do Criar Evento registrada acima: fundo imóvel nos três BottomSheets,
    fluidez da Descrição com o teclado e comparação Safari/PWA.
 1. O dono valida a lapidação visual, sobretudo a coluna em `#141414` e as duas
@@ -715,6 +817,6 @@ formulário ao fundo. O desktop preserva a textura existente.
    removida.
 
 Pendências visuais ainda abertas: destino definitivo da gaveta; a engrenagem da
-barra ainda não tem tela (`ponytail:` no código); e "Dashboard" ainda usa ícone
-diferente entre a coluna (`LayoutDashboard`) e o mobile (`BarChart2`). O `Gem` saiu
-junto com o item do menu do avatar, aposentado em 2026-09-17.
+barra ainda não tem tela (`ponytail:` no código). O ícone do Dashboard foi unificado
+em 2026-09-26 (`ChartNoAxesColumn` na coluna e no dock). O `Gem` saiu junto com o item
+do menu do avatar, aposentado em 2026-09-17.

@@ -29,6 +29,8 @@ import { NeonCheckbox } from "./ui/NeonCheckbox";
 import { JANELA_MIN_DIAS, JANELA_MAX_DIAS } from "../lib/utils";
 import { usePolling } from "../hooks/usePolling";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { CORES_PROFISSIONAIS } from "../lib/coresProfissionais";
+import { SUPERFICIE_MENU } from "./ui/menuFlutuante";
 
 interface SidebarProps {
   professionals: Professional[];
@@ -50,17 +52,6 @@ interface SidebarProps {
 }
 
 // ✅ agora são HEX, compatíveis com o restante do app
-const COLORS = [
-  "#FF2A29",
-  "#FF5000",
-  "#2FFF40",
-  "#07FF99",
-  "#07FFF5",
-  "#0047FF",
-  "#8400FF",
-  "#FC00FF",
-];
-
 const WORK_DAYS = [
   { value: 1, label: "Seg" },
   { value: 2, label: "Ter" },
@@ -156,7 +147,7 @@ const toConversation = (
     previewFromMe: item.last_message?.direction === "outbound",
     time: formatConversationTime(item.last_message_at),
     unread: item.unread_count ?? 0,
-    color: COLORS[index % COLORS.length],
+    color: CORES_PROFISSIONAIS[index % CORES_PROFISSIONAIS.length],
   };
 };
 
@@ -188,7 +179,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   );
   const [showAddModal, setShowAddModal] = useState(false);
   const [newProfName, setNewProfName] = useState("");
-  const [newProfColor, setNewProfColor] = useState(COLORS[0]);
+  const [newProfColor, setNewProfColor] = useState(CORES_PROFISSIONAIS[0]);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [showColorPicker, setShowColorPicker] = useState<number | null>(null);
@@ -244,7 +235,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     setShowAddModal(false);
     onExternalAddModalClose?.();
     setNewProfName("");
-    setNewProfColor(COLORS[0]);
+    setNewProfColor(CORES_PROFISSIONAIS[0]);
     setAddStep(1);
     setNewProfId(null);
     setAgendaConfig(DEFAULT_AGENDA);
@@ -682,7 +673,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     {openMenuId === prof.id && (
                       <motion.div
                         role="menu"
-                        className="menu-dropdown fixed z-50 w-[216px] overflow-hidden rounded-[10px] border border-white/10 bg-[#19181d] p-1.5 text-sm shadow-[0_16px_40px_rgba(0,0,0,0.48)]"
+                        className={`menu-dropdown fixed z-50 w-[216px] overflow-hidden p-1.5 text-sm ${SUPERFICIE_MENU}`}
                         style={{ top: menuPos?.top, left: menuPos?.left }}
                         initial={{ opacity: 0, scale: 0.95, y: -4 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -907,7 +898,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <motion.div
               role="menu"
               aria-label="Opções de conversas"
-              className="fixed z-50 w-64 overflow-hidden rounded-[28px] border border-white/[0.14] bg-[#1c1c1c]/90 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.14)]"
+              className={`fixed z-50 w-64 overflow-hidden ${SUPERFICIE_MENU}`}
               style={{
                 top: conversaMenuPos.top,
                 left: conversaMenuPos.left,
@@ -1035,7 +1026,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         Cor
                       </label>
                       <div className="flex gap-2.5 flex-wrap">
-                        {COLORS.map((color) => (
+                        {CORES_PROFISSIONAIS.map((color) => (
                           <button
                             key={color}
                             type="button"
@@ -1464,7 +1455,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <p className="mb-4 text-sm font-semibold text-white md:sr-only">Cor do profissional</p>
             <div className="grid grid-cols-4 justify-center gap-3 md:gap-2">
-              {COLORS.map((color) => (
+              {CORES_PROFISSIONAIS.map((color) => (
                 <button
                   key={color}
                   onClick={() => handleColorChange(showColorPicker, color)}

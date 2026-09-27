@@ -95,7 +95,7 @@ const MOLDES: MoldeProf[] = [
   {
     id: 1,
     nome: "Lucas Costa",
-    cor: "#8b5cf6",
+    cor: "#4DA0EA",
     inicio: 9,
     fim: 19,
     duracaoMin: 40,
@@ -107,7 +107,7 @@ const MOLDES: MoldeProf[] = [
   {
     id: 2,
     nome: "Rafael Dias",
-    cor: "#22c55e",
+    cor: "#5EC46C",
     inicio: 10,
     fim: 20,
     duracaoMin: 30,
@@ -119,7 +119,7 @@ const MOLDES: MoldeProf[] = [
   {
     id: 3,
     nome: "Bruno Sales",
-    cor: "#f59e0b",
+    cor: "#E8973A",
     inicio: 13,
     fim: 21,
     duracaoMin: 45,

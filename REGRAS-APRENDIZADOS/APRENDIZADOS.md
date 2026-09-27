@@ -532,3 +532,25 @@ Formato de cada entrada:
   visibilidade do componente que a hospeda — sai por `createPortal` para o `body`.
   E ao investigar "não abre", checar `display` dos ancestrais antes de suspeitar
   do estado: elemento presente no DOM com caixa de tamanho zero é o sintoma.
+
+## [2026-09-26] `scrollbar-width` desliga o `::-webkit-scrollbar` no Chrome
+
+- O que aconteceu: para afinar a barra do modal de agendamento e do menu de horário,
+  somei `scrollbar-width: thin` / `scrollbar-color` aos `::-webkit-scrollbar` que já
+  estavam lá. O Chrome (121+) passa a obedecer só às propriedades padrão e ignora os
+  pseudo-elementos: voltou a barra do sistema, com setinhas e trilho branco. Errei duas
+  vezes seguidas, no modal e no `BottomSheet`, antes do dono apontar.
+- Correção: neste projeto, barra de rolagem customizada é **só** `::-webkit-scrollbar`
+  (4 px, trilho transparente, polegar `white/15`), sem `scrollbar-width` nem
+  `scrollbar-color`. Conferir pelo estilo computado (`scrollbarWidth: auto`) e pela
+  largura real (`offsetWidth - clientWidth`).
+
+## [2026-09-26] Efeito colateral dentro de `setState(fn)` quebra no modo de desenvolvimento
+
+- O que aconteceu: no preenchimento automático do nome, a decisão (e a escrita num
+  `ref`) morava dentro do `setTitle(atual => ...)`. O React roda essa função duas vezes
+  em desenvolvimento; a primeira rodada mexia no `ref`, a segunda lia o `ref` já
+  alterado e desfazia a decisão — trocar para um número novo não limpava o nome do
+  cliente anterior. Só apareceu porque o teste trocou de número duas vezes.
+- Correção: a função passada ao `setState` fica pura. Estado atual lido de um `ref`
+  espelhado a cada render, decisão fora, `setState(valor)` direto.

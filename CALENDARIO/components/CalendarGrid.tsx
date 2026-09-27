@@ -267,7 +267,12 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({
                   isFirstRow && isMobile ? 'border-t border-white/10' : ''
                 }
                 ${!isLastRow ? 'border-b border-white/10' : ''}
-                ${isFirstCol ? 'border-l border-white/10' : ''}
+                ${
+                  /* Só no celular, onde o mês não tem moldura. No desktop a
+                     borda da moldura já é a linha da esquerda, e esta ficava
+                     colada nela: duas linhas encavaladas na beirada. */
+                  isFirstCol && isMobile ? 'border-l border-white/10' : ''
+                }
                 ${!isLastCol ? 'border-r border-white/10' : ''}
                 ${isMobile ? 'px-1 pb-0.5 pt-0.5' : 'px-2'}`}
             style={
@@ -397,12 +402,18 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({
           {grade}
         </div>
       ) : (
-        <div className="flex flex-1 min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-[28px] border border-accent/45 bg-[#141314]">
+        <div className="flex flex-1 min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-[28px] border border-white/[0.08] bg-[#141314]">
           <div className="grid grid-cols-7">
             {weekdays.map((sigla, i) => (
               <div
                 key={`sigla-${i}`}
-                className="py-1.5 text-center text-[11px] text-gray-400"
+                /* O divisor de coluna sobe até a borda da moldura: sem ele
+                   aqui, as linhas verticais nasciam na primeira semana e
+                   paravam antes do topo. Mesmo traço das células; a última
+                   coluna não tem, porque ali quem fecha é a moldura. */
+                className={`py-1.5 text-center text-[11px] text-gray-400 ${
+                  i < 6 ? 'border-r border-white/10' : ''
+                }`}
               >
                 {sigla}
               </div>

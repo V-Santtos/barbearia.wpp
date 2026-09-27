@@ -43,6 +43,7 @@ import FinanceiroScreen from "./components/financeiro/FinanceiroScreen";
 import FolhaDoDia from "./components/agenda/FolhaDoDia";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { usePolling } from "./hooks/usePolling";
+import { paraCanonico } from "./lib/telefone";
 
 const OWNER_SESSION_KEY = "barbearia-calendar-owner-session";
 
@@ -520,7 +521,10 @@ function App() {
     const desc = eventData.description || "";
     const phoneMatch = desc.match(/Telefone:\s*([^\n]+)/);
     const serviceMatch = desc.match(/Servi[cç]o:\s*([^\n]+)/i);
-    const telefone = phoneMatch ? phoneMatch[1].trim() : "";
+    // Grava sempre o canônico, só dígitos e com o 55 (`lib/telefone.ts`): o
+    // formulário edita "(33) 99022-3209" e mandava assim, com máscara e sem
+    // DDI, enquanto o bot grava `5533990223209`. Dois formatos do mesmo cliente.
+    const telefone = phoneMatch ? paraCanonico(phoneMatch[1]) : "";
     const servico = serviceMatch ? serviceMatch[1].trim() : "";
     const whatsappUrl = telefone ? phoneToWhatsAppUrl(telefone) : "";
 
@@ -1007,8 +1011,12 @@ function App() {
                         ? ""
                         : /* No Dia o conteúdo começa direto embaixo da faixa,
                              sem a fileira de pílulas de mês no meio: sem estes
-                             8 px a moldura do Kanban encosta no avatar. */
-                          "pt-2 pb-16"
+                             8 px a moldura do Kanban encosta no avatar.
+                             No Kanban não há folga embaixo: a moldura desce
+                             até o fim da tela e o dock flutua por cima. */
+                          viewMode === "kanban"
+                            ? "pt-2"
+                            : "pt-2 pb-16"
                   }`}
                   onTouchStart={handleTouchStart}
                   onTouchEnd={handleTouchEnd}
@@ -1171,12 +1179,28 @@ function App() {
                   openModalWithDate(currentDate.toLocaleDateString("en-CA"))
                 }
                 aria-label="Novo agendamento"
-                className="fixed right-5 z-[101] flex h-[52px] w-[52px] items-center
+                /* Na linha do dock (2026-09-26, em teste com o dono): centro na
+                   altura do centro do dock (26px de chão + 34px). No Mês ele
+                   desce para a faixa vazia que a grade já reserva para o dock
+                   -- acima dela cobria duas células da última semana. A Semana
+                   acompanha para o "+" não mudar de lugar entre as duas visões.
+                   Na horizontal ele fica NO MEIO do vão entre a ponta direita
+                   do dock e a borda da tela -- mesma distância para os dois
+                   lados, em qualquer largura. Colado na borda sobrava vão do
+                   lado do dock no tablet; colado no dock sobrava do outro.
+                   Centro = (ponta do dock + 100%) / 2 = 75% + meia-largura/2,
+                   menos 26px (metade do botão). A meia largura do dock é a
+                   mesma conta do `.mb-dock` (10-mobile.css): o maior entre o
+                   conteúdo (178px) e min(50%, 200px). */
+                className={`fixed z-[101] flex h-[52px] w-[52px] items-center
                            justify-center rounded-2xl bg-accent text-white shadow-xl
                            shadow-accent/30 transition-transform active:scale-90
                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30
-                           md:hidden"
-                style={{ bottom: "max(100px, calc(env(safe-area-inset-bottom) + 86px))" }}
+                           md:hidden`}
+                style={{
+                  bottom: "max(34px, calc(env(safe-area-inset-bottom) + 20px))",
+                  left: "calc(75% + max(89px, min(25%, 100px)) / 2 - 26px)",
+                }}
               >
                 <Plus size={26} />
               </button>

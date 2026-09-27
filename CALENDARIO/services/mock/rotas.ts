@@ -13,6 +13,7 @@
  */
 import type { BlockPeriod, DiaBloqueado, WhatsAppMessage } from "../calendarApi";
 import { montarResumoDoMundo } from "./resumo";
+import { variantesDeBusca } from "../../lib/telefone";
 import {
   gradeDoDia,
   hhmm,
@@ -207,8 +208,46 @@ export function responderMock(
     ];
   }
 
+  // ── clientes ─────────────────────────────────────────────────────────────
+  // Mesma regra do `server.js`: o agendamento mais recente daquele telefone
+  // (comparando só dígitos, com e sem o nono dígito) dá o nome; presencial não
+  // conta, porque lá o "cliente" é o rótulo "Atendimento Presencial".
+  if (seg[0] === "clientes" && seg[1] === "buscar" && metodo === "GET") {
+    const variantes = variantesDeBusca(q.get("telefone") ?? "");
+    const achado = [...mundo.agendamentos]
+      .reverse()
+      .find(
+        (a) =>
+          a.source !== "presencial" &&
+          a.cliente?.trim() &&
+          variantes.includes(String(a.telefone ?? "").replace(/\D/g, "")),
+      );
+    return achado
+      ? { encontrado: true, nome: achado.cliente.trim(), telefone: variantes[0] }
+      : { encontrado: false, telefone: variantes[0] };
+  }
+
   // ── agendamentos ─────────────────────────────────────────────────────────
   if (seg[0] === "agendamentos") {
+    if (seg[1] === "dias-disponiveis" && metodo === "GET") {
+      const profId = Number(q.get("professionalId"));
+      const dias = Number(q.get("days") ?? 10);
+      const openDays: { date: string; availableSlotsCount: number; firstSlot: string }[] = [];
+      const disabledDays: string[] = [];
+      for (let i = 0; i < dias; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() + i);
+        const data = iso(d);
+        const livres = horariosDisponiveis(profId, data);
+        if (livres.length) {
+          openDays.push({ date: data, availableSlotsCount: livres.length, firstSlot: livres[0] });
+        } else {
+          disabledDays.push(data);
+        }
+      }
+      return { professionalId: profId, days: dias, openDays, disabledDays };
+    }
+
     if (seg[1] === "horarios-disponiveis" && metodo === "GET") {
       return {
         professionalId: Number(q.get("professionalId")),

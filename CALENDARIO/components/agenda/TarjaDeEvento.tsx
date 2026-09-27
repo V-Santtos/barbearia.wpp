@@ -9,7 +9,7 @@ import React from "react";
      o agendamento dentro do dia, entao ela e a ancora, o nome entra ao lado
      quando a tarja mede o bastante, e o conjunto alinha A ESQUERDA — assim as
      horas de uma celula formam uma coluna, em vez de dancar conforme o
-     comprimento de cada nome.
+     comprimento de cada nome. Quando so a hora cabe, ela centraliza.
    - Na SEMANA a posicao vertical ja e a hora, e a calha da esquerda a repete.
      A tarja mostra SO o nome, CENTRALIZADO, porque ela ocupa a largura inteira
      da coluna e o nome costuma sobrar espaco.
@@ -108,7 +108,12 @@ const TarjaDeEvento: React.FC<TarjaDeEventoProps> = ({
     >
       <span
         className={`flex h-full min-w-0 items-center gap-1 whitespace-nowrap ${
-          mostraHora ? "justify-start" : "justify-center"
+          /* Hora sozinha (a tarja estreita demais para o nome -- o Mês no
+             celular e no tablet) vai CENTRALIZADA: sem nome ao lado, não há
+             coluna a formar, e encostada à esquerda ela sobrava solta dentro
+             da tarja (2026-09-26, a pedido do dono). Quando o nome cabe, volta
+             para a esquerda, pelo mesmo limiar que faz o nome aparecer. */
+          mostraHora ? "justify-center @min-[78px]:justify-start" : "justify-center"
         }`}
       >
         {mostraHora && (

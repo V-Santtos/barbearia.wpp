@@ -89,7 +89,7 @@ const DayView: React.FC<DayViewProps> = ({
   return (
     <div
       className={`flex flex-col flex-1 min-h-0 overflow-hidden bg-[#141314] ${
-        moldura ? 'mx-4 md:mx-0 rounded-[28px] border border-accent/45' : ''
+        moldura ? 'mx-4 md:mx-0 rounded-[28px] border border-white/[0.08]' : ''
       }`}
     >
       <div

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { KeyRound, Lock, Mail, Shield } from 'lucide-react';
 import { StardustButton } from './ui/StardustButton';
 import MarcaHubBarber from './shell/MarcaHubBarber';
+import { CAMPO, FUNDO_CAMPO_LOGIN } from './ui/campo';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 
 export interface OwnerSession {
@@ -29,12 +30,9 @@ const isInitiallyMobile = () =>
    tempo: a coluna estreitou para 330px e o campo subiu para ~52px, o que leva
    a razão para ~5,6:1. Só estreitar deixaria o campo baixo do mesmo jeito.
    `py-3` -> `py-3.5` e `text-sm` -> 15px, que é o corpo de controle do resto
-   do app (o campo de busca de Conversas usa o mesmo). */
-const fieldClassName = `w-full bg-[rgba(25,25,25,0.6)]
-  border border-[rgba(100,100,100,0.4)] rounded-2xl py-3.5 pl-11 pr-4 text-[15px]
-  focus:outline-none focus:border-accent
-  shadow-[inset_0_1px_4px_rgba(255,255,255,0.05),inset_0_-1px_4px_rgba(0,0,0,0.6)]
-  transition-all duration-200 placeholder-gray-400`;
+   do app (o campo de busca de Conversas usa o mesmo). A pele mora em
+   `ui/campo.ts` desde 2026-09-26, compartilhada com o modal de agendamento. */
+const fieldClassName = `${CAMPO} ${FUNDO_CAMPO_LOGIN} py-3.5 pl-11 pr-4 text-[15px] placeholder:text-gray-400`;
 
 /* Centro real: com o campo mais alto, um `top` fixo desalinha o icone. */
 const iconClassName = 'absolute left-4 top-1/2 -translate-y-1/2 text-accent-400';
@@ -452,9 +450,13 @@ function LoginCard({ onLogin }: LoginScreenProps) {
     >
       <div className="my-auto flex w-full max-w-[330px] flex-col items-center gap-5 px-6">
         <div className={`text-center ${enterClassName}`} style={enterStyle(0)}>
-          <div className="mb-8 flex flex-col items-center gap-4 text-white" aria-label="Barber">
-            <MarcaHubBarber className="h-28 w-28 sm:h-32 sm:w-32" />
-            <span className="text-[36px] leading-none sm:text-[40px]" style={{ fontFamily: '"Aclonica", sans-serif' }}>
+          {/* Horizontal, como na coluna de seções: o símbolo é um "H", e empilhado
+              lia "H" e "Barber" separados. Pequena de propósito — no login a marca
+              só confirma onde a pessoa está; o formulário é quem manda. Grande
+              (112px), empurrava o botão Entrar para a borda da tela no celular. */}
+          <div className="mb-6 flex items-center justify-center gap-2.5 text-white" aria-label="Barber">
+            <MarcaHubBarber className="h-10 w-10 sm:h-11 sm:w-11" />
+            <span className="text-[30px] leading-none sm:text-[32px]" style={{ fontFamily: '"Aclonica", sans-serif' }}>
               Barber
             </span>
           </div>

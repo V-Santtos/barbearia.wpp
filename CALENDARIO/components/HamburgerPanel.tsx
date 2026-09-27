@@ -4,11 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, CirclePlus, Calendar, CalendarDays, CalendarRange, Settings, PaintBucket, Trash2 } from 'lucide-react';
 import type { CalendarView, Professional } from '../types';
 import { NeonCheckbox } from './ui/NeonCheckbox';
-
-const COLORS = [
-  '#FF2A29', '#FF5000', '#2FFF40', '#07FF99',
-  '#07FFF5', '#0047FF', '#8400FF', '#FC00FF',
-];
+import { CORES_PROFISSIONAIS } from '../lib/coresProfissionais';
+import { SUPERFICIE_MENU } from './ui/menuFlutuante';
 
 /* O "Criar agendamento" é a mesma peça do "Criar" da coluna do desktop
    (`shell/ColunaDeSecoes.tsx`): pílula branca, texto escuro, "+" roxo como único
@@ -231,7 +228,7 @@ export default function HamburgerPanel({
                       <AnimatePresence>
                         {openMenuId === prof.id && (
                           <motion.div
-                            className="absolute right-0 top-full mt-1 w-52 bg-[#2a2a2a]/90 backdrop-blur-md border border-white/10 rounded-xl shadow-xl z-20 overflow-hidden"
+                            className={`absolute right-0 top-full mt-1 w-52 z-20 overflow-hidden ${SUPERFICIE_MENU}`}
                             initial={{ opacity: 0, scale: 0.95, y: -4 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: -4 }}
@@ -283,7 +280,7 @@ export default function HamburgerPanel({
                 >
                   <p className="mb-4 text-sm font-semibold text-white">Cor do profissional</p>
                   <div className="grid grid-cols-4 justify-center gap-3">
-                    {COLORS.map((color) => (
+                    {CORES_PROFISSIONAIS.map((color) => (
                       <button
                         key={color}
                         onClick={() => { onChangeProfessionalColor(showColorPicker, color); setShowColorPicker(null); }}

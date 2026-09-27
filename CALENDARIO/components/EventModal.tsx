@@ -13,17 +13,18 @@ import React, {
 import type { Event, Professional } from "../types";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
-import { getAgendaConfig, getAvailableSlots, getConfiguredServices, type AgendaConfig, type ConfiguredService } from "../services/calendarApi";
-import cardBgTexture from "../assets/4b5627d79bc66c97c95c39ec56cdaf20.jpg";
+import { buscarClientePorTelefone, getAgendaConfig, getAvailableSlots, getConfiguredServices, getPrimeiroDiaLivre, type AgendaConfig, type ConfiguredService } from "../services/calendarApi";
 import BottomSheet from "./ui/BottomSheet";
+import { CAMPO, FUNDO_CAMPO_MODAL } from "./ui/campo";
+import { paraNacional } from "../lib/telefone";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 
-/* Serviço só existe de verdade com dashboard premium + financeiro (V1 não
-   tem). "Ocultar, nunca apagar": o campo some da tela e composeDescription()
-   para de escrever a linha, mas SERVICE_LINE_RE continua lendo o que já foi
-   gravado -- agendamento antigo não perde o dado, e o campo volta inteiro no
-   dia em que esta constante virar `true`. Ver ANEXO-PLANO-LAPIDACAO 4.2. */
-const SERVICO_HABILITADO = false;
+/* Serviço voltou como campo obrigatório (2026-09-26, com o dono). Ficou
+   oculto no V1 esperando o financeiro existir -- e ele existe: o Financeiro
+   calcula o faturamento cruzando `agendamentos.servico` com o preço do
+   catálogo (`servicos`). Por isso é SELEÇÃO do catálogo, não texto livre: um
+   nome que não bate com o catálogo entra lá como "Serviço não informado", sem
+   preço. */
 
 export interface EventModalHandles {
   deleteCurrent: () => void;
@@ -39,22 +40,19 @@ interface EventModalProps {
   eventToEdit: Event | null;
 }
 
-// ======================
-//  TEXTURA — GLOWING CARD (ravikatiyar style)
-// ======================
-const CARD_TEXTURE = [
-  `linear-gradient(rgba(10,10,14,0.70), rgba(10,10,14,0.70))`,
-  `url(${cardBgTexture})`,
-].join(", ");
-
 const FOCUSABLE_SEL =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+/* Barra neutra e fina, sem trilho (2026-09-26): a roxa com trilho escuro
+   aparecia como uma faixa colorida ao lado dos campos mesmo quando quase não
+   havia o que rolar. Só existe quando o miolo transborda. Sem
+   `scrollbar-width`/`scrollbar-color` de propósito: no Chrome, declarar
+   qualquer um dos dois desliga os `::-webkit-scrollbar` e volta a barra do
+   sistema, com as setinhas em cima e embaixo. */
 const SCROLLBAR_CLASS =
-  "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-[#101014] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-accent/45 hover:[&::-webkit-scrollbar-thumb]:bg-accent/65";
+  "[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/15";
 
 const PHONE_LINE_RE = /Telefone:\s*([^\n]+)/i;
 const SERVICE_LINE_RE = /Servi[cç]o:\s*([^\n]+)/i;
-const NOTES_LINE_RE = /(?:Anota[cç][ãa]o|Observa[cç][õo]es):\s*([\s\S]+)/i;
 
 function hasFirstAndLastName(value: string) {
   return value.trim().split(/\s+/).length >= 2;
@@ -68,14 +66,6 @@ function getPhoneDigitsFromDescription(value: string) {
 function getLineValue(value: string, regex: RegExp) {
   const match = value.match(regex);
   return match ? match[1].trim() : "";
-}
-
-function normalizeText(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
 }
 
 function formatPhoneValue(digits: string) {
@@ -92,17 +82,12 @@ function formatPhoneValue(digits: string) {
   return `(${area}) ${prefix}${suffix ? `-${suffix}` : ""}`;
 }
 
-function composeDescription(phone: string, service: string, notes: string) {
-  // Sem gate de SERVICO_HABILITADO aqui de propósito: com o campo oculto,
-  // `service` só chega não-vazio quando um agendamento antigo já trouxe a
-  // linha (parse no load). Reescrever sem ela apagaria o dado do cliente só
-  // por reabrir e salvar o card -- exatamente o que a regra "nunca apagar"
-  // (4.2) proíbe. Evento novo nunca preenche `service` (campo sem UI), então
-  // a linha simplesmente não nasce.
+function composeDescription(phone: string, service: string) {
+  // O App.tsx lê daqui as linhas "Telefone:" e "Serviço:" e manda cada uma no
+  // seu campo da API (`telefone`, `servico`).
   return [
     phone ? `Telefone: ${phone}` : null,
     service.trim() ? `Serviço: ${service.trim()}` : null,
-    notes.trim() ? `Anotação: ${notes.trim()}` : null,
   ]
     .filter(Boolean)
     .join("\n");
@@ -136,8 +121,9 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
     const [startTime, setStartTime] = useState("");
     const [phone, setPhone] = useState("");
     const [service, setService] = useState("");
-    const [notes, setNotes] = useState("");
     const [serviceOptions, setServiceOptions] = useState<ConfiguredService[]>([]);
+    const [servicesError, setServicesError] = useState(false);
+    const [ancoraServico, setAncoraServico] = useState<HTMLButtonElement | null>(null);
     const [professionalId, setProfessionalId] = useState<number>(
       professionals[0]?.id || 1
     );
@@ -153,13 +139,33 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
     const [isStartOpen, setIsStartOpen] = useState(false);
     const [isDateOpen, setIsDateOpen] = useState(false);
     const [isServiceOpen, setIsServiceOpen] = useState(false);
+    /* Os campos que abrem seleção: no desktop a BottomSheet vira menu colado
+       neles (ver `ui/BottomSheet.tsx`). */
+    const [ancoraProfissional, setAncoraProfissional] = useState<HTMLButtonElement | null>(null);
+    const [ancoraData, setAncoraData] = useState<HTMLButtonElement | null>(null);
+    const [ancoraInicio, setAncoraInicio] = useState<HTMLButtonElement | null>(null);
     const [agendaConfig, setAgendaConfig] = useState<AgendaConfig | null>(null);
 
     const prefersReducedMotion = useReducedMotion();
     const isMobile = useMediaQuery("(max-width: 767px)");
     const titleInputRef = useRef<HTMLInputElement | null>(null);
-    const serviceInputRef = useRef<HTMLInputElement | null>(null);
-    const notesInputRef = useRef<HTMLTextAreaElement | null>(null);
+    const phoneInputRef = useRef<HTMLInputElement | null>(null);
+    /* Telefone primeiro, nome depois (2026-09-26, com o dono): mesmo fluxo do
+       site de agendamento. Número completo dispara a busca; se o cliente já
+       existe, o nome vem preenchido -- mas só por cima de campo vazio ou de um
+       nome que a própria busca pôs (nunca apaga o que o barbeiro digitou). */
+    const [buscaCliente, setBuscaCliente] = useState<"ocioso" | "buscando" | "encontrado" | "novo">("ocioso");
+    const nomeAutopreenchidoRef = useRef("");
+    const tituloRef = useRef("");
+    tituloRef.current = title;
+    const telefoneOriginalRef = useRef("");
+    /* A data que o próprio modal escolheu, e não o barbeiro (2026-09-26, com o
+       dono). Novo agendamento abre em hoje; se hoje não tem horário livre para
+       o profissional, abrir já no primeiro dia que tem, em vez de obrigar a
+       trocar a data à mão. Vale enquanto o barbeiro não mexer na data -- clicou
+       num dia do calendário ou escolheu uma data, fica a dele. */
+    const dataAutomaticaRef = useRef(false);
+    const [dataPulou, setDataPulou] = useState(false);
     const cardRef = useRef<HTMLDivElement>(null);
     const fieldsScrollRef = useRef<HTMLDivElement>(null);
     const revealFieldFrameRef = useRef<number | null>(null);
@@ -243,18 +249,49 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
         setTitle(eventToEdit.title);
         setDate(eventToEdit.date);
         setStartTime(eventToEdit.startTime);
-        setPhone(formatPhoneValue(getPhoneDigitsFromDescription(nextDescription)));
+        // O banco guarda com o 55 (`5533990223209`); o campo edita só DDD +
+        // número. Formatar o canônico direto tratava o 55 como DDD e cortava o
+        // fim: "(55) 33990-2232".
+        setPhone(formatPhoneValue(paraNacional(getPhoneDigitsFromDescription(nextDescription))));
         setService(getLineValue(nextDescription, SERVICE_LINE_RE));
-        setNotes(getLineValue(nextDescription, NOTES_LINE_RE));
         setProfessionalId(eventToEdit.professionalId);
         setError("");
+        telefoneOriginalRef.current = getPhoneDigitsFromDescription(nextDescription);
+        dataAutomaticaRef.current = false;
+        setDataPulou(false);
+        nomeAutopreenchidoRef.current = "";
+        setBuscaCliente("ocioso");
 
         setTimeout(() => titleInputRef.current?.focus(), 0);
       } else {
         resetForm();
-        setTimeout(() => titleInputRef.current?.focus(), 0);
+        // Automática só quando o modal abriu em hoje (o "Criar"); um dia
+        // clicado no calendário é escolha do barbeiro.
+        dataAutomaticaRef.current =
+          !selectedDate || selectedDate === new Date().toLocaleDateString("en-CA");
+        setDataPulou(false);
+        telefoneOriginalRef.current = "";
+        nomeAutopreenchidoRef.current = "";
+        setBuscaCliente("ocioso");
+        setTimeout(() => phoneInputRef.current?.focus(), 0);
       }
     }, [isOpen, eventToEdit, selectedDate]);
+
+    useEffect(() => {
+      if (!isOpen || eventToEdit || !professionalId || !dataAutomaticaRef.current) return;
+      let cancelado = false;
+      getPrimeiroDiaLivre(professionalId)
+        .then((primeiro) => {
+          if (cancelado || !primeiro || !dataAutomaticaRef.current) return;
+          const hoje = new Date().toLocaleDateString("en-CA");
+          setDate(primeiro);
+          setDataPulou(primeiro !== hoje);
+        })
+        .catch(() => undefined);
+      return () => {
+        cancelado = true;
+      };
+    }, [isOpen, eventToEdit, professionalId]);
 
     useEffect(() => {
       if (!isOpen || !professionalId) return;
@@ -314,15 +351,59 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
     }, [isOpen, availableSlots, slotsLoading]);
 
     useEffect(() => {
-      if (!isOpen || !SERVICO_HABILITADO) return;
+      if (!isOpen) return;
+      const digitos = phone.replace(/\D/g, "");
+      // Incompleto, ou (editando) o mesmo número que já estava: não procura.
+      if (digitos.length < 10 || digitos === paraNacional(telefoneOriginalRef.current)) {
+        setBuscaCliente("ocioso");
+        return;
+      }
+      let cancelado = false;
+      setBuscaCliente("buscando");
+      const espera = window.setTimeout(() => {
+        buscarClientePorTelefone(digitos)
+          .then((nome) => {
+            if (cancelado) return;
+            // Decide fora do `setTitle(fn)`: o React roda essa função duas
+            // vezes em desenvolvimento, e mexer no ref lá dentro fazia a
+            // segunda rodada desfazer a primeira.
+            const atual = tituloRef.current;
+            const livre = !atual.trim() || atual === nomeAutopreenchidoRef.current;
+            if (nome && livre) {
+              nomeAutopreenchidoRef.current = nome;
+              setTitle(nome);
+            } else if (!nome && atual && atual === nomeAutopreenchidoRef.current) {
+              // Número novo depois de um que tinha preenchido o nome: o nome
+              // era do outro cliente, sai.
+              nomeAutopreenchidoRef.current = "";
+              setTitle("");
+            }
+            setBuscaCliente(nome ? "encontrado" : "novo");
+          })
+          .catch(() => {
+            if (!cancelado) setBuscaCliente("ocioso");
+          });
+      }, 350);
+      return () => {
+        cancelado = true;
+        window.clearTimeout(espera);
+      };
+    }, [isOpen, phone]);
+
+    useEffect(() => {
+      if (!isOpen) return;
       let cancelled = false;
+      setServicesError(false);
 
       getConfiguredServices()
         .then((items) => {
           if (!cancelled) setServiceOptions(items);
         })
         .catch(() => {
-          if (!cancelled) setServiceOptions([]);
+          if (!cancelled) {
+            setServiceOptions([]);
+            setServicesError(true);
+          }
         });
 
       return () => {
@@ -334,7 +415,6 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
       setTitle("");
       setPhone("");
       setService("");
-      setNotes("");
       setError("");
       setProfessionalId(professionals[0]?.id || 1);
 
@@ -427,20 +507,6 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
       if (error) setError("");
     };
 
-    const handleServiceKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
-      if (e.key !== "Enter") return;
-      e.preventDefault();
-      if (serviceOptions.length > 0 && service.trim()) {
-        const exact = serviceOptions.find(
-          (option) => normalizeText(option.name) === normalizeText(service)
-        );
-        const selected = exact ?? filteredServiceOptions[0];
-        if (selected) setService(selected.name);
-      }
-      setIsServiceOpen(false);
-      notesInputRef.current?.focus();
-    };
-
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       if (!title || !date || !startTime || !professionalId) {
@@ -468,13 +534,18 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
         return;
       }
 
+      if (!service) {
+        setError("Selecione o serviço.");
+        return;
+      }
+      const servicoGravado = eventToEdit
+        ? getLineValue(eventToEdit.description || "", SERVICE_LINE_RE)
+        : "";
       if (
-        SERVICO_HABILITADO &&
-        service &&
-        serviceOptions.length > 0 &&
+        service !== servicoGravado &&
         !serviceOptions.some((option) => option.name === service)
       ) {
-        setError("Selecione um serviço configurado na base.");
+        setError("Selecione um serviço do catálogo.");
         return;
       }
 
@@ -484,7 +555,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
         date,
         startTime,
         endTime: minsToTime(timeToMins(startTime) + (agendaConfig?.duracao_min ?? 60)),
-        description: composeDescription(phone, service, notes),
+        description: composeDescription(phone, service),
         professionalId,
       });
 
@@ -511,13 +582,6 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
     const selectedProfessional = professionals.find(
       (p) => p.id === professionalId
     );
-    const filteredServiceOptions = serviceOptions
-      .filter((option) =>
-        service.trim()
-          ? normalizeText(option.name).includes(normalizeText(service))
-          : false
-      )
-      .slice(0, 6);
 
     const currentSelectedDate = date ? new Date(date + "T12:00:00") : new Date();
     const currentYear = currentSelectedDate.getFullYear();
@@ -544,13 +608,10 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
        cor SÓ no foco -- que é o único momento em que o contorno carrega
        informação ("é aqui que você está digitando"). Com 8 campos na tela,
        contorno permanente não destaca nada, só faz barulho.
-       `p-3` -> `px-3.5 py-3.5` leva o campo a ~52px, o mesmo do login. */
-    const fieldClass =
-      "w-full rounded-xl px-3.5 py-3.5 text-base text-white placeholder:text-white/40 md:text-[15px] " +
-      "bg-white/[0.05] border border-white/[0.10] " +
-      "focus:outline-none focus:border-white/25 focus-visible:ring-2 focus-visible:ring-white/20 " +
-      "shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] " +
-      "transition-all duration-200";
+       `p-3` -> `px-3.5 py-3.5` leva o campo a ~52px, o mesmo do login.
+       Desde 2026-09-26 a pele é a mesma do login (`ui/campo.ts`): afundada,
+       sem ícone -- aqui o rótulo em cima já diz o que é cada campo. */
+    const fieldClass = `${CAMPO} ${FUNDO_CAMPO_MODAL} px-3.5 py-3.5 text-base md:text-[15px]`;
 
     return (
       <AnimatePresence>
@@ -566,11 +627,13 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
              segurança pra telas baixíssimas; quem rola de verdade agora é o
              miolo do card. */
           className="fixed inset-0 z-[110] flex h-dvh items-stretch justify-center overflow-hidden p-0 md:h-auto md:items-center md:overflow-y-auto md:py-6"
+          /* Mesmo véu dos outros modais (Novo profissional, Configurar
+             agenda): preto a 50% com desfoque leve. Era 72% com 8px. */
           style={{
             overscrollBehavior: 'contain',
-            backgroundColor: "rgba(0,0,0,0.72)",
-            backdropFilter: isMobile ? "none" : "blur(8px)",
-            WebkitBackdropFilter: isMobile ? "none" : "blur(8px)",
+            backgroundColor: "rgba(0,0,0,0.5)",
+            backdropFilter: isMobile ? "none" : "blur(3px)",
+            WebkitBackdropFilter: isMobile ? "none" : "blur(3px)",
           }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -595,28 +658,21 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                `my-auto` centraliza enquanto couber e vira topo-do-scroll
                quando não couber -- com `items-center` puro, conteúdo mais
                alto que a tela tem o topo cortado e inalcançável.
-               `max-h-[85vh]` + `flex-col` + `overflow-hidden`: o card virou
+               O teto é a tela menos os 24px de respiro em cima e embaixo (era
+               85vh: numa tela de 900px sobravam ~130px vazios e o miolo já
+               rolava por uns poucos pixels, com barra e tudo).
+               Teto + `flex-col` + `overflow-hidden`: o card virou
                moldura de altura fixa com três fatias (header, miolo rolável,
                rodapé fixo) -- Cancelar/Salvar sempre alcançáveis mesmo num
                dia cheio de campos (4.5). Só dá pra fechar em `overflow-hidden`
                porque os três dropdowns que escapavam do card viraram
                BottomSheet -- nada mais precisa vazar pra fora dele. */
-            className="relative flex h-dvh max-h-dvh w-full max-w-none flex-shrink-0 flex-col overflow-hidden rounded-none border-0 text-white md:my-auto md:h-auto md:max-h-[85vh] md:max-w-md md:rounded-3xl md:border md:border-white/[0.12]"
-            style={{
-              backgroundColor: isMobile ? "#141414" : undefined,
-              backgroundImage: isMobile ? "none" : CARD_TEXTURE,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-              boxShadow: isMobile
-                ? "none"
-                : [
-                    "0 32px 72px rgba(0,0,0,0.85)",
-                    "0 8px 24px rgba(0,0,0,0.55)",
-                    "inset 0 0 80px rgba(0,0,0,0.55)",
-                    "inset 60px 0 80px rgba(0,0,0,0.40)",
-                    "inset -60px 0 80px rgba(0,0,0,0.40)",
-                  ].join(", "),
-            }}
+            /* A receita dos outros modais do app (2026-09-26, com o dono):
+               `#191919` sólido, borda branca a 10%, cantos `rounded-xl` e uma
+               sombra só. Saíram a textura de foto atrás dos campos, o brilho
+               radial do topo e as cinco sombras internas -- era o único modal
+               com material próprio, e lia como peça de outro produto. */
+            className="relative flex h-dvh max-h-dvh w-full max-w-none flex-shrink-0 flex-col overflow-hidden rounded-none border-0 bg-[#191919] text-white shadow-[0_24px_64px_rgba(0,0,0,0.5)] md:my-auto md:h-auto md:max-h-[calc(100dvh-48px)] md:max-w-md md:rounded-xl md:border md:border-white/10"
             initial={
               prefersReducedMotion
                 ? { opacity: 0 }
@@ -646,16 +702,6 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
               }
             }}
           >
-            {/* RAY — glow central vindo do topo */}
-            <div aria-hidden="true" className="hidden md:block" style={{
-              position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
-              width: '380px', height: '160px', pointerEvents: 'none', zIndex: 0,
-              borderTopLeftRadius: 'inherit',
-              borderTopRightRadius: 'inherit',
-              background: 'radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.036) 44%, transparent 72%)',
-            }} />
-
-
             {/* CONTEÚDO -- três fatias dentro do <form>: header fixo, miolo
                 rolável (os campos) e rodapé fixo (Cancelar/Salvar), pra eles
                 nunca saírem de alcance num dia cheio de campos (4.5). */}
@@ -669,16 +715,45 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                     (Conversas, Agenda, Dashboard). Centralizado em 24px era a
                     única tela do app com esse tratamento -- parte do porquê
                     ele lia como peça de outro produto. */}
-                <h2 id="event-modal-title" className="mb-4 text-[22px] font-bold leading-tight tracking-[-0.01em] text-white" style={{ textShadow: "0 1px 12px rgba(0,0,0,0.8), 0 0 32px rgba(0,0,0,0.6)" }}>
+                <h2 id="event-modal-title" className="mb-4 text-[22px] font-bold leading-tight tracking-[-0.01em] text-white">
                   {eventToEdit ? "Editar Evento" : "Criar Evento"}
                 </h2>
-                <div aria-hidden="true" className="h-px w-full" style={{ background: "linear-gradient(to right, transparent, rgba(255,255,255,0.18), transparent)" }} />
+                <div aria-hidden="true" className="h-px w-full bg-white/[0.08]" />
               </div>
 
               {/* Miolo -- só ele rola. `space-y-5` -> `space-y-4`: com 8
                   campos, cada 4px a menos entre eles tira 28px da altura
                   total. */}
               <div ref={fieldsScrollRef} className={`min-h-0 flex-1 scroll-pb-28 space-y-4 overflow-y-auto overscroll-contain px-5 pb-4 pt-5 ${SCROLLBAR_CLASS}`}>
+                {/* Telefone -- primeiro campo (2026-09-26): é por ele que o
+                    cliente já cadastrado é reconhecido e o nome vem sozinho.
+                    Na tela, só DDD + número; o 55 é colocado ao gravar. */}
+                <div>
+                  <label className="mb-1 ml-1 block text-sm font-medium text-white">
+                    Telefone
+                  </label>
+                  <input
+                    ref={phoneInputRef}
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    value={phone}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
+                    placeholder="(33) 99999-9999"
+                    className={fieldClass}
+                    required
+                  />
+                  {buscaCliente !== "ocioso" && (
+                    <p aria-live="polite" className="mt-1.5 ml-1 text-xs text-white/45">
+                      {buscaCliente === "buscando"
+                        ? "Procurando cliente…"
+                        : buscaCliente === "encontrado"
+                          ? "Cliente já cadastrado"
+                          : "Cliente novo: preencha o nome"}
+                    </p>
+                  )}
+                </div>
+
                 {/* Nome */}
                 <div>
                   <label className="mb-1 ml-1 block text-sm font-medium text-white">
@@ -700,26 +775,71 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                   />
                 </div>
 
-                {/* Telefone -- campo próprio, não mais linha dentro da caixa
-                    "Descrição". Sobe pra logo abaixo do nome porque os dois
-                    são a pessoa (ANEXO-PLANO-LAPIDACAO 4.3). O formato
-                    gravado no banco não muda: composeDescription() continua
-                    escrevendo "Telefone: ..." dentro da mesma coluna de
-                    texto que o bot lê (4.1). */}
+                {/* Serviço -- obrigatório, escolhido do catálogo (ver o topo do
+                    arquivo). Mesmo seletor de Profissional: menu colado ao
+                    campo no desktop, folha que sobe do rodapé no celular. */}
                 <div>
                   <label className="mb-1 ml-1 block text-sm font-medium text-white">
-                    Telefone
+                    Serviço
                   </label>
-                  <input
-                    type="tel"
-                    inputMode="numeric"
-                    autoComplete="tel"
-                    value={phone}
-                    onChange={(e) => handlePhoneChange(e.target.value)}
-                    placeholder="(33) 99999-9999"
-                    className={fieldClass}
-                    required
-                  />
+
+                  {servicesError && serviceOptions.length === 0 ? (
+                    <div className={`${fieldClass} text-white/40`}>
+                      Não deu pra carregar os serviços. Feche e abra de novo.
+                    </div>
+                  ) : (
+                    <button
+                      ref={setAncoraServico}
+                      type="button"
+                      onClick={() => {
+                        closeAllDropdowns();
+                        setIsServiceOpen(true);
+                      }}
+                      className={"flex w-full items-center justify-between gap-2 " + fieldClass}
+                    >
+                      <span className={service ? "truncate" : "truncate text-white/40"}>
+                        {service || "Selecionar serviço"}
+                      </span>
+                      <ChevronDown size={16} className="flex-shrink-0" />
+                    </button>
+                  )}
+
+                  <BottomSheet
+                    open={isServiceOpen}
+                    onClose={() => setIsServiceOpen(false)}
+                    title="Serviço"
+                    anchor={ancoraServico}
+                  >
+                    {serviceOptions.map((option) => (
+                      <button
+                        key={option.slug ?? option.id ?? option.name}
+                        type="button"
+                        onClick={() => {
+                          setService(option.name);
+                          setIsServiceOpen(false);
+                          if (error) setError("");
+                        }}
+                        className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3.5 text-left text-[15px] transition hover:bg-white/10 ${
+                          service === option.name ? "bg-white/10" : ""
+                        }`}
+                      >
+                        <span className="min-w-0 truncate">{option.name}</span>
+                        {option.price != null && option.price !== "" && (
+                          <span className="flex-shrink-0 text-[13px] tabular-nums text-white/45">
+                            {/* O catálogo guarda o número puro (35); texto que
+                                já vier formatado passa como está. */}
+                            {Number.isFinite(Number(option.price))
+                              ? Number(option.price).toLocaleString("pt-BR", {
+                                  style: "currency",
+                                  currency: "BRL",
+                                  maximumFractionDigits: 0,
+                                })
+                              : option.price}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </BottomSheet>
                 </div>
 
                 {/* Profissional -- BottomSheet (4.5): folha ancorada no
@@ -732,6 +852,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                   </label>
 
                   <button
+                    ref={setAncoraProfissional}
                     type="button"
                     onClick={() => {
                       closeAllDropdowns();
@@ -759,6 +880,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                     open={isDropdownOpen}
                     onClose={() => setIsDropdownOpen(false)}
                     title="Profissional"
+                    anchor={ancoraProfissional}
                   >
                     {professionals.map((p) => (
                       <button
@@ -793,6 +915,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                   </label>
 
                   <button
+                    ref={setAncoraData}
                     type="button"
                     onClick={() => {
                       closeAllDropdowns();
@@ -805,11 +928,17 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                       : "Selecionar data"}
                     <ChevronDown size={16} />
                   </button>
+                  {dataPulou && (
+                    <p aria-live="polite" className="mt-1.5 ml-1 text-xs text-white/45">
+                      Hoje não tem horário livre: abrimos o próximo dia com vaga.
+                    </p>
+                  )}
 
                   <BottomSheet
                     open={isDateOpen}
                     onClose={() => setIsDateOpen(false)}
                     title={`${monthName} ${currentYear}`}
+                    anchor={ancoraData}
                   >
                     <div className="grid grid-cols-7 gap-1 px-3 text-center text-sm">
                       {modalDays.map((d) => {
@@ -826,6 +955,8 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                             key={d}
                             type="button"
                             onClick={() => {
+                              dataAutomaticaRef.current = false;
+                              setDataPulou(false);
                               setDate(dateValue);
                               setTimeout(() => setIsDateOpen(false), 120);
                             }}
@@ -895,6 +1026,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                   ) : (
                     <>
                       <button
+                        ref={setAncoraInicio}
                         type="button"
                         onClick={() => {
                           closeAllDropdowns();
@@ -910,6 +1042,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                         open={isStartOpen}
                         onClose={() => setIsStartOpen(false)}
                         title="Início"
+                        anchor={ancoraInicio}
                       >
                         {availableSlots.map((time) => (
                           <button
@@ -932,103 +1065,12 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                   )}
                 </div>
 
-                {/* Serviço -- oculto no V1 (4.2), campo próprio pronto pra
-                    religar quando o dashboard premium com financeiro
-                    existir. Nunca apagado: composeDescription() só para de
-                    emitir a linha, SERVICE_LINE_RE continua lendo o que já
-                    foi gravado.
-                    ponytail: dropdown ainda `absolute` (não virou BottomSheet
-                    como Profissional/Data/Início em 4.5) porque fica dormente
-                    -- gatilho de upgrade: no dia de religar SERVICO_HABILITADO,
-                    converter pro mesmo padrão, senão o miolo `overflow-y-auto`
-                    do card corta a lista se o campo cair perto da borda. */}
-                {SERVICO_HABILITADO && (
-                  <div className="relative">
-                    <label className="mb-1 ml-1 block text-sm font-medium text-white">
-                      Serviço
-                    </label>
-                    <input
-                      ref={serviceInputRef}
-                      type="text"
-                      value={service}
-                      onFocus={() => {
-                        if (serviceOptions.length > 0 && service.trim()) setIsServiceOpen(true);
-                      }}
-                      onChange={(e) => {
-                        setService(e.target.value);
-                        setIsServiceOpen(serviceOptions.length > 0 && Boolean(e.target.value.trim()));
-                        if (error) setError("");
-                      }}
-                      onKeyDown={handleServiceKeyDown}
-                      placeholder="opcional"
-                      className={fieldClass}
-                    />
-
-                    <AnimatePresence>
-                      {isServiceOpen && serviceOptions.length > 0 && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -6 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -6 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-white/10 text-sm text-white shadow-[0_8px_30px_rgba(0,0,0,0.45)]"
-                          style={{ backgroundColor: "#1c1c1c" }}
-                        >
-                          <div className={`max-h-48 overflow-y-auto ${SCROLLBAR_CLASS}`}>
-                            {filteredServiceOptions.length > 0 ? (
-                              filteredServiceOptions.map((option) => (
-                                <button
-                                  key={option.slug ?? option.id ?? option.name}
-                                  type="button"
-                                  onMouseDown={(e) => e.preventDefault()}
-                                  onClick={() => {
-                                    setService(option.name);
-                                    setIsServiceOpen(false);
-                                    notesInputRef.current?.focus();
-                                  }}
-                                  className={`w-full px-3 py-2 text-left transition hover:bg-white/10 ${
-                                    service === option.name ? "bg-white/10" : ""
-                                  }`}
-                                >
-                                  <span className="block truncate">{option.name}</span>
-                                  {option.price && (
-                                    <span className="text-[11px] text-white/35">{option.price}</span>
-                                  )}
-                                </button>
-                              ))
-                            ) : (
-                              <div className="px-3 py-2 text-xs text-white/35">
-                                Nenhum serviço encontrado
-                              </div>
-                            )}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                )}
-
-                {/* Descrição -- campo próprio, texto livre e mais nada. Os
-                    rótulos roxos internos ("Telefone:" / "Anotação:") saem
-                    junto com a caixa combinada que os continha (4.3). */}
-                <div>
-                  <label className="mb-1 ml-1 block text-sm font-medium text-white">
-                    Descrição
-                  </label>
-                  <textarea
-                    ref={notesInputRef}
-                    rows={3}
-                    value={notes}
-                    onFocus={revealFocusedField}
-                    onChange={(e) => {
-                      setNotes(e.target.value);
-                      if (error) setError("");
-                    }}
-                    placeholder="Observações (opcional)"
-                    className={`${fieldClass} resize-none`}
-                  />
-                </div>
-
+                {/* Descrição saiu (2026-09-26, com o dono). Ela não guardava
+                    nada: o App.tsx só aproveita as linhas "Telefone:" e
+                    "Serviço:" e a API não tem coluna para observação -- o que se
+                    digitava ali sumia ao salvar. Serviço e telefone têm campo
+                    próprio. Se anotar algo fizer falta, primeiro nasce a coluna
+                    no banco, depois o campo volta. */}
                 {error && (
                   <p role="alert" aria-live="assertive" className="mt-2 text-sm text-red-400">{error}</p>
                 )}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { MessageCircleMore } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { usePolling } from "../../hooks/usePolling";
 import {
   getWhatsAppConversations,
@@ -286,7 +286,7 @@ export default function ConversasDesktop({ busca, ativa }: Props) {
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.045] text-white/35">
-              <MessageCircleMore size={25} strokeWidth={1.6} />
+              <MessageCircle size={25} />
             </span>
             <div>
               <h2 className="text-base font-semibold text-white/85">

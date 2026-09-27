@@ -89,7 +89,7 @@ const WeekView: React.FC<WeekViewProps> = ({
   }, [week]);
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 bg-[#141314] md:border md:border-accent/45 md:rounded-[28px] overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 bg-[#141314] md:border md:border-white/[0.08] md:rounded-[28px] overflow-hidden">
       <div
         className="flex flex-1 min-h-0 overflow-x-auto custom-scrollbar"
         style={{

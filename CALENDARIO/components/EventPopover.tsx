@@ -1,6 +1,7 @@
 // components/EventPopover.tsx
 import React, { useMemo, useRef } from "react";
-import { Pencil, Trash2, X, Clock3, Menu } from "lucide-react";
+import { Pencil, Trash2, X, Clock3, Menu, Scissors, Phone } from "lucide-react";
+import { formatarTelefone } from "../lib/telefone";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Event, Professional } from "../types";
 
@@ -221,8 +222,26 @@ const EventPopover: React.FC<EventPopoverProps> = ({
               </span>
             </div>
 
-            {/* Descrição (ícone centralizado) */}
-            {event.description ? (
+            {/* Serviço e telefone, cada um na sua linha (2026-09-26). Antes
+                era o bloco "Servico: … / Telefone: 5533…" cru, com o número
+                sem máscara. O bloco de texto só aparece para agendamento
+                antigo que não tenha os dois campos do banco. */}
+            {event.servico || event.telefone ? (
+              <div className="mt-3 space-y-1.5 text-[13px] text-white/85 md:text-sm">
+                {event.servico && (
+                  <div className="flex items-center gap-2">
+                    <Scissors className="h-4 w-4 shrink-0 opacity-70" />
+                    <span>{event.servico}</span>
+                  </div>
+                )}
+                {event.telefone && (
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-4 w-4 shrink-0 opacity-70" />
+                    <span className="tabular-nums">{formatarTelefone(event.telefone)}</span>
+                  </div>
+                )}
+              </div>
+            ) : event.description ? (
               <div className="mt-3 flex items-start gap-2">
                 <Menu className="mt-[2px] h-4 w-4 shrink-0 opacity-80" />
                 <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-white/85 md:text-sm">

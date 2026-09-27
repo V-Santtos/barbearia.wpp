@@ -6,16 +6,21 @@
  * componente de navegação.
  *
  * Ícones: o conjunto do template shadcn, tal como ele é — retilíneo e no
- * mesmo par de números da referência (16px, traço 2, sem variação entre ativo
- * e inativo). A regra da "variante redonda" foi revertida com o dono em
- * 2026-09-08: o objetivo passou a ser o minimalismo da sidebar do Studio
+ * tamanho da referência (16px; o traço agora vem da regra única do `index.css`,
+ * 1,5px em qualquer ícone), sem variação entre ativo e inativo. A regra da
+ * "variante redonda" foi revertida com o dono em 2026-09-08: o objetivo passou a ser o minimalismo da sidebar do Studio
  * Admin, e ali o peso vem do tamanho pequeno, não do traço fino.
  *
- * Cada seção pega o ícone do item equivalente da referência: Calendar do
- * "Calendar", MessageSquare do "Chat", LayoutDashboard do "Default" e
- * Banknote do "Finance".
+ * Os ícones foram revistos com o dono em 2026-09-26, cada um pelo que diz:
+ * - Agenda: CalendarClock — calendário com relógio, "horários marcados". Não
+ *   é CalendarDays porque esse já é o "Mês" da gaveta (HamburgerPanel).
+ * - Conversas: MessageCircle — o balão redondo do WhatsApp, de onde vêm as
+ *   conversas. Um balão só no app todo (ConversasDesktop usa o mesmo).
+ * - Dashboard: ChartNoAxesColumn — barras dizem "números"; o LayoutDashboard
+ *   de antes (quatro quadrados) lia como "menu de apps".
+ * - Financeiro: Banknote, do item "Finance" da referência.
  */
-import { Banknote, Calendar, LayoutDashboard, MessageSquare } from "lucide-react";
+import { Banknote, CalendarClock, ChartNoAxesColumn, MessageCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export type IdSecao = "agenda" | "conversas" | "dashboard" | "financeiro";
@@ -34,21 +39,21 @@ export const SECOES: Secao[] = [
   {
     id: "agenda",
     rotulo: "Agenda",
-    Icone: Calendar,
+    Icone: CalendarClock,
     temPainel: true,
     pronta: true,
   },
   {
     id: "conversas",
     rotulo: "Conversas",
-    Icone: MessageSquare,
+    Icone: MessageCircle,
     temPainel: false,
     pronta: true,
   },
   {
     id: "dashboard",
     rotulo: "Dashboard",
-    Icone: LayoutDashboard,
+    Icone: ChartNoAxesColumn,
     temPainel: false,
     pronta: true,
   },

@@ -138,6 +138,7 @@ function shouldAttachAdminToken(path: string, init: RequestInit) {
     path === "agendamentos" ||
     path.startsWith("agendamentos?") ||
     path.startsWith("whatsapp/") ||
+    path.startsWith("clientes/") ||
     path.startsWith("dashboard/")
   );
 }
@@ -216,14 +217,17 @@ function toEvent(raw: any): Event {
     date: raw.dia_marcado ?? raw.date ?? "",
     startTime: raw.startTime ?? raw.hora_marcada ?? "",
     endTime: raw.endTime ?? "",
-    description: raw.servico
-      ? [
-          `Servico: ${raw.servico}`,
-          raw.telefone ? `Telefone: ${raw.telefone}` : "",
-        ]
-          .filter(Boolean)
-          .join("\n")
-      : undefined,
+    // O EventModal lê serviço e telefone daqui. Sem serviço gravado, antes o
+    // texto inteiro sumia -- e o telefone junto, no "Editar Evento".
+    description:
+      raw.servico || raw.telefone
+        ? [
+            raw.servico ? `Servico: ${raw.servico}` : "",
+            raw.telefone ? `Telefone: ${raw.telefone}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n")
+        : undefined,
     professionalId: Number(raw.professional_id ?? raw.professionalId ?? 0),
     // campos do banco preservados
     telefone: raw.telefone,
@@ -352,6 +356,19 @@ export async function removeBlockedDay(
   });
 }
 
+// ─── CLIENTES ─────────────────────────────────────────────────────────────────
+
+/**
+ * O nome de quem já é cliente, a partir do telefone (DDD + número ou já com
+ * DDI -- o servidor normaliza). `null` quando o número é novo.
+ */
+export async function buscarClientePorTelefone(telefone: string): Promise<string | null> {
+  const data = await api<{ encontrado: boolean; nome?: string }>(
+    `clientes/buscar?telefone=${encodeURIComponent(telefone)}`,
+  );
+  return data?.encontrado && data.nome ? data.nome : null;
+}
+
 // ─── EVENTOS (AGENDAMENTOS) ───────────────────────────────────────────────────
 
 export async function getConfiguredServices(): Promise<ConfiguredService[]> {
@@ -422,6 +439,20 @@ export async function getAvailableSlots(
     `agendamentos/horarios-disponiveis?professionalId=${professionalId}&date=${date}`,
   );
   return res.availableSlots ?? [];
+}
+
+/**
+ * O primeiro dia, a partir de hoje, em que o profissional tem ao menos um
+ * horário livre -- ou `null` se não houver nos próximos `dias`.
+ */
+export async function getPrimeiroDiaLivre(
+  professionalId: number,
+  dias = 14,
+): Promise<string | null> {
+  const res = await api<{ openDays?: { date: string }[] }>(
+    `agendamentos/dias-disponiveis?professionalId=${professionalId}&days=${dias}`,
+  );
+  return res.openDays?.[0]?.date ?? null;
 }
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────

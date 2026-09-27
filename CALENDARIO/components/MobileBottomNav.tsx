@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion';
-import { Calendar, LayoutDashboard, MessageSquare } from 'lucide-react';
+import { CalendarClock, ChartNoAxesColumn, MessageCircle } from 'lucide-react';
 import './dashboard/css/index.css';
 
 export type MobileTab = 'calendar' | 'dashboard' | 'conversations';
@@ -13,9 +13,9 @@ interface Props {
 /* Mesmo conjunto da coluna de seções do desktop (`shell/secoes.ts`): uma seção,
    um ícone, nas duas telas. O tamanho é maior (22px) porque aqui é alvo de toque. */
 const tabs = [
-  { id: 'calendar' as MobileTab, label: 'Agenda', icon: Calendar },
-  { id: 'conversations' as MobileTab, label: 'Conversas', icon: MessageSquare },
-  { id: 'dashboard' as MobileTab, label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'calendar' as MobileTab, label: 'Agenda', icon: CalendarClock },
+  { id: 'conversations' as MobileTab, label: 'Conversas', icon: MessageCircle },
+  { id: 'dashboard' as MobileTab, label: 'Dashboard', icon: ChartNoAxesColumn },
 ];
 
 /**

@@ -184,7 +184,7 @@ export default function PresencialFAB({
              principal. Quem dá volume aqui é o anel de luz do próprio blob. */
           'relative flex items-center justify-center rounded-full',
           'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30',
-          isDesktop ? 'h-[65px] w-[65px]' : 'h-[46px] w-[46px]',
+          isDesktop ? 'h-[65px] w-[65px]' : 'h-[52px] w-[52px]',
         ].join(' ')}
         style={{ backgroundColor: 'transparent' }}
       >
@@ -192,15 +192,15 @@ export default function PresencialFAB({
           <div
             className="absolute pointer-events-none animate-blob-cw"
             style={{
-              inset: isDesktop ? '-16px' : '-10px',
-              width: isDesktop ? 97 : 66,
-              height: isDesktop ? 97 : 66,
+              inset: isDesktop ? '-16px' : '-12px',
+              width: isDesktop ? 97 : 76,
+              height: isDesktop ? 97 : 76,
               display: 'grid',
               gridTemplateAreas: "'stack'",
             }}
           >
             {activeBlobs.map((blob, i) => (
-              <span key={i} style={{ ...BLOB_STYLE, ...blob, height: isDesktop ? 97 : 66 }} />
+              <span key={i} style={{ ...BLOB_STYLE, ...blob, height: isDesktop ? 97 : 76 }} />
             ))}
           </div>
         )}
@@ -230,8 +230,8 @@ export default function PresencialFAB({
             >
               <img
                 src={tesouraUrl}
-                width={isDesktop ? 37 : 27}
-                height={isDesktop ? 37 : 27}
+                width={isDesktop ? 37 : 28}
+                height={isDesktop ? 37 : 28}
                 alt="tesoura"
                 style={{ mixBlendMode: 'screen', filter: 'invert(1) drop-shadow(0 0 6px rgba(255,255,255,0.8))', transform: 'rotate(40deg)' }}
               />
@@ -256,7 +256,17 @@ export default function PresencialFAB({
 
       <motion.div
         ref={mobileRef}
-        className="fixed bottom-[102px] right-10 z-50 flex flex-col items-end gap-3 md:hidden"
+        /* Celular (2026-09-26): miolo de 46 -> 52px e anel de 66 -> 76px, com
+           2px de folga entre anel e miolo -- a tesoura ganhou respiro sem o
+           desenho mudar. A borda de fora do anel alinha com a borda direita
+           dos cards, a 32px da tela (44 = 32 + os 12px que o anel passa do
+           miolo). A 16px ela ficava em cima da linha da moldura e o anel
+           parecia encostado nela. A de baixo fica
+           16px acima do topo do dock (26px de chão + 68px de dock), seguindo a
+           área segura igual ao dock. Na mesma linha do dock não cabe em 375px:
+           sobravam ~6px entre anel e pílula. */
+        className="fixed right-[44px] z-50 flex flex-col items-end gap-3 md:hidden"
+        style={{ bottom: 'max(122px, calc(env(safe-area-inset-bottom) + 108px))' }}
         animate={{ opacity: visible ? 1 : 0, pointerEvents: visible ? 'auto' : 'none' }}
         transition={{ duration: 0.25, ease: 'easeInOut' }}
       >

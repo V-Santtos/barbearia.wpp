@@ -158,6 +158,22 @@ body {
   height: 100%;
 }
 
+/* Um traço só para todo ícone Lucide do app (2026-09-26, a pedido do dono).
+   O traço do Lucide é proporcional ao tamanho: `strokeWidth={2}` num ícone de
+   22px (dock) sai com ~1,8px na tela, e num de 16px (menu do avatar) com ~1,3px
+   -- o mesmo desenho parecia de outra família em cada lugar. Com
+   `non-scaling-stroke` a espessura passa a ser medida em pixel de tela, então
+   1,5px vale igual em qualquer tamanho. Vence de propósito qualquer
+   `strokeWidth` passado no componente (CSS ganha de atributo SVG): quem marca
+   ativo é cor e fundo, não traço. SVG desenhado à mão não tem a classe
+   `.lucide` e fica de fora. */
+svg.lucide {
+  stroke-width: 1.5px;
+}
+svg.lucide * {
+  vector-effect: non-scaling-stroke;
+}
+
 button,
 input,
 textarea {

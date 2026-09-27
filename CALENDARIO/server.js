@@ -119,6 +119,25 @@ const rateLimitBuckets = new Map();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Telefone canônico: só dígitos, com DDI (`5533990223209`). 10/11 dígitos é
+// número brasileiro sem o 55. Devolve as formas do mesmo número para procurar,
+// com e sem o nono dígito. Cópia de `lib/telefone.ts` (este arquivo não importa
+// TypeScript) -- mudar lá é mudar aqui.
+function variantesDeBusca(valor) {
+  const digitos = String(valor ?? "").replace(/\D/g, "");
+  if (!digitos) return [];
+  const canonico =
+    digitos.length === 10 || digitos.length === 11 ? `55${digitos}` : digitos;
+  const variantes = new Set([canonico]);
+  if (canonico.startsWith("55") && (canonico.length === 12 || canonico.length === 13)) {
+    const ddd = canonico.slice(2, 4);
+    const resto = canonico.slice(4);
+    if (resto.length === 9 && resto.startsWith("9")) variantes.add(`55${ddd}${resto.slice(1)}`);
+    if (resto.length === 8) variantes.add(`55${ddd}9${resto}`);
+  }
+  return [...variantes];
+}
+
 function fmtTime(val) {
   return String(val ?? "").substring(0, 5);
 }
@@ -1214,6 +1233,66 @@ function buildServer() {
       }
     },
   );
+
+  // ─── CLIENTES ──────────────────────────────────────────────────────────────
+
+  // GET /clientes/buscar?telefone= — o nome de quem já é cliente.
+  //
+  // O modal de agendamento pede o telefone primeiro: se o número já passou por
+  // aqui, o nome vem preenchido; se é novo, o barbeiro digita e o nome fica
+  // gravado no próprio agendamento para a próxima vez. Mesmo fluxo do site de
+  // agendamento.
+  //
+  // Onde o nome mora hoje: em cada agendamento (`agendamentos.cliente`, o mais
+  // recente vence) e, na falta, no cadastro do bot (`dados_cliente.nome`). A
+  // comparação é por DÍGITOS, dos dois lados, porque há telefone gravado com
+  // máscara antiga e sem; e procura também a forma sem/com o nono dígito, que o
+  // WhatsApp às vezes entrega sem. `variantesDeBusca` é a mesma regra de
+  // `lib/telefone.ts` -- mudar lá é mudar aqui.
+  //
+  // ponytail: duas leituras em vez de uma tabela de clientes própria; gatilho
+  // de upgrade: o banco novo ter cadastro de cliente, e esta rota passa a ler só
+  // dele.
+  //
+  // Protegida: devolve nome de pessoa a partir do telefone.
+  fastify.get("/clientes/buscar", { preHandler: requireAdmin }, async (request, reply) => {
+    const variantes = variantesDeBusca(request.query?.telefone);
+    if (!variantes.length)
+      return reply.status(400).send({ error: "telefone é obrigatório." });
+
+    try {
+      const { rows } = await pool.query(
+        `SELECT cliente AS nome
+           FROM public.agendamentos
+          WHERE regexp_replace(coalesce(telefone, ''), '\\D', '', 'g') = ANY($1)
+            AND coalesce(trim(cliente), '') <> ''
+            AND coalesce(source, '') <> 'presencial'
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [variantes],
+      );
+      let nome = rows[0]?.nome?.trim();
+
+      if (!nome) {
+        const cadastro = await pool.query(
+          `SELECT nome
+             FROM public.dados_cliente
+            WHERE regexp_replace(coalesce(telefone, ''), '\\D', '', 'g') = ANY($1)
+              AND coalesce(trim(nome), '') <> ''
+            LIMIT 1`,
+          [variantes],
+        );
+        nome = cadastro.rows[0]?.nome?.trim();
+      }
+
+      return nome
+        ? { encontrado: true, nome, telefone: variantes[0] }
+        : { encontrado: false, telefone: variantes[0] };
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: "Erro ao buscar cliente." });
+    }
+  });
 
   // ─── AGENDAMENTOS ──────────────────────────────────────────────────────────
 

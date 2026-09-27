@@ -59,7 +59,7 @@ export default defineConfig(() => {
               type: 'image/png',
               purpose: 'any',
             },
-            /* Arquivo próprio, com a tesoura menor e o fundo sangrando até a
+            /* Arquivo próprio, com o H menor e o roxo sangrando até a
                borda. Reaproveitar o ícone comum aqui era buraco na certa: o
                Android recorta o `maskable` na forma do sistema. */
             {

@@ -130,7 +130,7 @@ const CalendarHeader: React.FC<Props> = ({
         <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={onMenuOpen}
-            className="p-2.5 -ml-1.5 rounded-xl hover:bg-white/[0.08] transition-colors flex-shrink-0"
+            className="p-2.5 -ml-2.5 rounded-xl hover:bg-white/[0.08] transition-colors flex-shrink-0"
             aria-label="Abrir menu"
           >
             <Menu size={24} className="text-white/80" />
@@ -171,19 +171,10 @@ const CalendarHeader: React.FC<Props> = ({
               return (
                 <motion.div
                   key={profId}
-                  className="flex items-center gap-2 rounded-full px-3 py-[5px]"
-                  style={{
-                    background: `${prof.color}08`,
-                    border: `1px solid ${prof.color}70`,
-                  }}
-                  animate={prefersReducedMotion ? undefined : {
-                    boxShadow: [
-                      `0 0 0 2px ${prof.color}12, 0 0 8px ${prof.color}38`,
-                      `0 0 0 2px ${prof.color}28, 0 0 18px ${prof.color}60`,
-                      `0 0 0 2px ${prof.color}12, 0 0 8px ${prof.color}38`,
-                    ],
-                  }}
-                  transition={prefersReducedMotion ? undefined : { duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                  className="flex items-center gap-2 py-[5px]"
+                  /* Sem pílula, contorno nem halo (2026-09-26, a pedido do dono): gritava
+                     e tinha cara de interface gerada por IA. O que continua vivo é só a
+                     bolinha. */
                 >
                   <span className="relative flex h-[6px] w-[6px] flex-shrink-0">
                     <span
@@ -195,10 +186,10 @@ const CalendarHeader: React.FC<Props> = ({
                       style={{ backgroundColor: prof.color }}
                     />
                   </span>
-                  <span className="text-[11px] font-semibold tracking-[0.04em]" style={{ color: prof.color }}>
+                  <span className="text-[12px] font-semibold tracking-[0.02em]" style={{ color: prof.color }}>
                     {firstName}
                   </span>
-                  <span className="text-[11px] font-medium tracking-[0.04em] text-white/55">
+                  <span className="text-[12px] font-medium tracking-[0.02em] text-white/55">
                     · Em atendimento
                   </span>
                 </motion.div>
@@ -260,19 +251,10 @@ const CalendarHeader: React.FC<Props> = ({
                   transition={{ duration: prefersReducedMotion ? 0 : 0.28, ease: [0.16, 1, 0.3, 1] }}
                 >
                   <motion.div
-                    className="flex items-center gap-2 rounded-full px-4 py-[6px]"
-                    style={{
-                      background: `${prof.color}08`,
-                      border: `1px solid ${prof.color}70`,
-                    }}
-                    animate={prefersReducedMotion ? undefined : {
-                      boxShadow: [
-                        `0 0 0 3px ${prof.color}12, 0 0 10px ${prof.color}38, 0 0 24px ${prof.color}15`,
-                        `0 0 0 3px ${prof.color}28, 0 0 22px ${prof.color}68, 0 0 46px ${prof.color}30`,
-                        `0 0 0 3px ${prof.color}12, 0 0 10px ${prof.color}38, 0 0 24px ${prof.color}15`,
-                      ],
-                    }}
-                    transition={prefersReducedMotion ? undefined : { duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                    className="flex items-center gap-2 py-[6px]"
+                    /* Sem pílula, contorno nem halo (2026-09-26, a pedido do dono): gritava
+                       e tinha cara de interface gerada por IA. O que continua vivo é só a
+                       bolinha. */
                   >
                     <span className="relative flex h-[7px] w-[7px] flex-shrink-0">
                       <span
