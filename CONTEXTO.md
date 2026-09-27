@@ -24,8 +24,8 @@ Este checkout é uma casca desatualizada em relação ao repositório operado pe
 
 ## Rodada de 2026-09-26 — refinamento visual, modal de agendamento e regras
 
-Sessão longa, tela a tela com o dono. Tudo **não commitado** (ver "Trabalho local não
-commitado"). Verificação: `tsc` limpo nos arquivos tocados e conferência no navegador
+Sessão longa, tela a tela com o dono. Commitado e enviado na branch `casca-de-secoes`
+no fim da sessão (ver "Trabalho local não commitado"). Verificação: `tsc` limpo nos arquivos tocados e conferência no navegador
 por medição (`getBoundingClientRect`/estilo computado) em 375×812, 600 e 1200 px.
 
 ### Identidade e ícones
@@ -606,8 +606,8 @@ Esses itens são backlog de qualidade, não autorização para redesenhar a inte
 
 Em 2026-09-26, início da sessão, tudo o que estava acumulado foi commitado e a branch
 `casca-de-secoes` subiu para o GitHub (gera Preview na Vercel; a `main` é produção e é
-compartilhada com outro dev). **Todo o trabalho da rodada de 2026-09-26 descrita acima
-está sem commit** — o dono pediu para só commitar depois de lapidar mais. A pasta
+compartilhada com outro dev). No fim da sessão, a rodada de 2026-09-26 descrita acima
+também foi commitada e enviada na mesma branch; nada foi para a `main`. A pasta
 `deploy-to-vercel/` (skill na raiz) ficou de fora do commit de propósito: não passou pela
 curadoria do `docs/skills-log.md`. Não sobrescrever nem limpar o diff existente.
 
