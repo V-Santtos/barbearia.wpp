@@ -11,14 +11,15 @@ import type { Event, Professional } from "../../types";
 
 export type PeriodoFinanceiro =
   | "hoje"
-  | "15-dias"
+  | "7-dias"
   | "mes"
   | "6-meses"
   | "ano";
 
-export type TipoMovimentoFinanceiro = "receita" | "saida" | "ajuste";
+export type TipoMovimentoFinanceiro = "receita" | "entrada" | "saida";
 export type OrigemMovimentoFinanceiro = "automatico" | "manual";
-export type OrigemPrecoServico = "configurado" | "fallback" | "indisponivel";
+/** `fechamento`: total confirmado pelo barbeiro ao concluir, com o preço do dia. */
+export type OrigemPrecoServico = "fechamento" | "configurado" | "fallback" | "indisponivel";
 
 export interface DetalhesAtendimentoFinanceiro {
   atendimentoId: number;
@@ -28,6 +29,10 @@ export interface DetalhesAtendimentoFinanceiro {
   servico: string;
   horario?: string;
   origemPreco: OrigemPrecoServico;
+  /** Serviços do fechamento, cada um com o preço do dia. */
+  itens?: { nome: string; valor: number }[];
+  /** Acréscimo (positivo) ou desconto (negativo) do fechamento. */
+  ajuste?: number;
 }
 
 export interface MovimentoFinanceiro {
@@ -38,12 +43,12 @@ export interface MovimentoFinanceiro {
   data: string;
   descricao: string;
   categoria: string;
-  /**
-   * Receita e saída guardam magnitude positiva; o tipo define o impacto.
-   * Ajustes preservam o sinal para poder corrigir o resultado nos dois sentidos.
-   */
+  /** Sempre magnitude positiva; o tipo define se soma ou subtrai. */
   valor: number;
   atendimento?: DetalhesAtendimentoFinanceiro;
+  /** Barbeiro que recebeu a comissão, em saídas manuais dessa categoria. */
+  profissionalId?: number;
+  profissional?: string;
   /** Identifica exclusivamente a massa visual; não deve ser persistido. */
   demonstrativo?: boolean;
 }
@@ -54,6 +59,8 @@ export interface LancamentoManual {
   valor: number;
   data: string;
   descricao: string;
+  profissionalId?: number;
+  profissional?: string;
 }
 
 export interface IntervaloFinanceiro {
@@ -63,9 +70,12 @@ export interface IntervaloFinanceiro {
 }
 
 export interface ResumoFinanceiro {
+  /** Atendimentos concluídos + entradas manuais (2026-09-27, com o dono). */
   faturamento: number;
+  /** Só a parte que veio da agenda; base do ticket médio. */
+  faturamentoAtendimentos: number;
+  entradasManuais: number;
   saidas: number;
-  ajustes: number;
   resultado: number;
   atendimentos: number;
   ticketMedio: number;
@@ -106,8 +116,8 @@ export interface PontoSerieFinanceira {
   inicio: string;
   fim: string;
   faturamento: number;
+  entradasManuais: number;
   saidas: number;
-  ajustes: number;
   resultado: number;
   atendimentos: number;
 }
@@ -134,7 +144,7 @@ export const ROTULOS_PERIODOS_FINANCEIROS: Readonly<
   Record<PeriodoFinanceiro, string>
 > = {
   hoje: "Hoje",
-  "15-dias": "15 dias",
+  "7-dias": "7 dias",
   mes: "Mês",
   "6-meses": "6 meses",
   ano: "Ano",
@@ -393,7 +403,13 @@ export function converterEventosEmReceitas(
         evento.profissional ??
         "",
     ).trim() || "Profissional não informado";
-    const preco = resolverPreco(servico, precosConfigurados, precosFallback);
+    const fechamento = evento.fechamento;
+    const preco = fechamento
+      ? { valor: fechamento.total, origem: "fechamento" as const }
+      : resolverPreco(servico, precosConfigurados, precosFallback);
+    const ajuste = fechamento?.ajuste
+      ? fechamento.ajuste.valor * (fechamento.ajuste.tipo === "desconto" ? -1 : 1)
+      : 0;
 
     return [
       {
@@ -412,6 +428,10 @@ export function converterEventosEmReceitas(
           servico,
           horario: evento.hora_marcada ?? evento.startTime ?? undefined,
           origemPreco: preco.origem,
+          ...(fechamento && {
+            itens: fechamento.servicos.map((item) => ({ nome: item.nome, valor: item.preco })),
+            ...(ajuste !== 0 && { ajuste }),
+          }),
         },
       },
     ];
@@ -540,21 +560,21 @@ const MOLDES_DESPESAS: readonly MoldeDespesaDemonstrativa[] = [
   {
     id: "aluguel",
     descricao: "Aluguel do ponto",
-    categoria: "Estrutura",
+    categoria: "Contas mensais",
     dia: 5,
     valores: [1850],
   },
   {
     id: "materiais",
     descricao: "Produtos e materiais de trabalho",
-    categoria: "Materiais",
+    categoria: "Produtos e materiais",
     dia: 9,
     valores: [580, 720, 640, 810, 690, 760],
   },
   {
     id: "contas",
     descricao: "Água, energia e internet",
-    categoria: "Contas",
+    categoria: "Contas mensais",
     dia: 14,
     valores: [390, 425, 410, 448, 405, 432],
   },
@@ -568,7 +588,7 @@ const MOLDES_DESPESAS: readonly MoldeDespesaDemonstrativa[] = [
   {
     id: "manutencao",
     descricao: "Manutenção de máquinas e cadeiras",
-    categoria: "Manutenção",
+    categoria: "Outras saídas",
     dia: 21,
     valores: [280, 360, 240],
     aCadaMeses: 3,
@@ -576,7 +596,7 @@ const MOLDES_DESPESAS: readonly MoldeDespesaDemonstrativa[] = [
   {
     id: "equipamentos",
     descricao: "Investimento em equipamentos",
-    categoria: "Investimentos",
+    categoria: "Outras saídas",
     dia: 24,
     valores: [620, 890],
     aCadaMeses: 6,
@@ -644,10 +664,11 @@ export function criarMovimentoManual(
     data: normalizarDataIso(lancamento.data) ?? lancamento.data,
     descricao: lancamento.descricao.trim(),
     categoria: lancamento.categoria.trim(),
-    valor:
-      lancamento.tipo === "saida"
-        ? Math.abs(arredondarMoeda(lancamento.valor))
-        : arredondarMoeda(lancamento.valor),
+    valor: Math.abs(arredondarMoeda(lancamento.valor)),
+    ...(lancamento.profissionalId !== undefined && {
+      profissionalId: lancamento.profissionalId,
+      profissional: lancamento.profissional,
+    }),
   };
 }
 
@@ -694,8 +715,10 @@ export function obterIntervaloAtual(
   switch (periodo) {
     case "hoje":
       return intervalo(hoje, hoje);
-    case "15-dias":
-      return intervalo(somarDias(hoje, -14), hoje);
+    // 7 e não 15 (2026-09-26, pedido do dono): a semana é o ciclo da
+    // barbearia -- fim de semana contra meio de semana. 15 dias misturava duas.
+    case "7-dias":
+      return intervalo(somarDias(hoje, -6), hoje);
     case "mes":
       return intervalo(inicioDoMes(hoje), hoje);
     case "6-meses":
@@ -720,8 +743,8 @@ export function obterIntervaloAnterior(
       const ontem = somarDias(hoje, -1);
       return intervalo(ontem, ontem);
     }
-    case "15-dias":
-      return intervalo(somarDias(hoje, -29), somarDias(hoje, -15));
+    case "7-dias":
+      return intervalo(somarDias(hoje, -13), somarDias(hoje, -7));
     case "mes": {
       const inicio = inicioDoMes(hoje, -1);
       const fim = dataLimitadaAoMes(
@@ -859,32 +882,34 @@ export function filtrarMovimentosPorPeriodo(
 export function resumirMovimentosFinanceiros(
   movimentos: MovimentoFinanceiro[],
 ): ResumoFinanceiro {
-  let faturamento = 0;
+  let faturamentoAtendimentos = 0;
+  let entradasManuais = 0;
   let saidas = 0;
-  let ajustes = 0;
   let atendimentos = 0;
 
   for (const movimento of movimentos) {
     const centavos = paraCentavos(movimento.valor);
     if (movimento.tipo === "receita") {
-      faturamento += Math.max(0, centavos);
+      faturamentoAtendimentos += Math.max(0, centavos);
       if (movimento.atendimento) atendimentos += 1;
-    } else if (movimento.tipo === "saida") {
-      saidas += Math.abs(centavos);
+    } else if (movimento.tipo === "entrada") {
+      entradasManuais += Math.max(0, centavos);
     } else {
-      ajustes += centavos;
+      saidas += Math.abs(centavos);
     }
   }
 
-  const resultado = faturamento - saidas + ajustes;
+  const faturamento = faturamentoAtendimentos + entradasManuais;
+  const resultado = faturamento - saidas;
   return {
     faturamento: deCentavos(faturamento),
+    faturamentoAtendimentos: deCentavos(faturamentoAtendimentos),
+    entradasManuais: deCentavos(entradasManuais),
     saidas: deCentavos(saidas),
-    ajustes: deCentavos(ajustes),
     resultado: deCentavos(resultado),
     atendimentos,
     ticketMedio:
-      atendimentos > 0 ? deCentavos(Math.round(faturamento / atendimentos)) : 0,
+      atendimentos > 0 ? deCentavos(Math.round(faturamentoAtendimentos / atendimentos)) : 0,
   };
 }
 
@@ -983,8 +1008,8 @@ function criarPontosVazios(
         inicio: paraIsoLocal(inicioPonto),
         fim: paraIsoLocal(fimPonto),
         faturamento: 0,
+        entradasManuais: 0,
         saidas: 0,
-        ajustes: 0,
         resultado: 0,
         atendimentos: 0,
       });
@@ -1000,13 +1025,57 @@ function criarPontosVazios(
       inicio: data,
       fim: data,
       faturamento: 0,
+      entradasManuais: 0,
       saidas: 0,
-      ajustes: 0,
       resultado: 0,
       atendimentos: 0,
     });
   }
   return pontos;
+}
+
+const formatadorMesCurto = new Intl.DateTimeFormat("pt-BR", { month: "short" });
+
+/**
+ * Junta a série diária em semanas de segunda a domingo -- a lista do Mês no
+ * celular e no tablet (2026-09-26): 31 linhas de dia viravam uma lista sem fim;
+ * 4 ou 5 semanas cabem numa olhada. A primeira e a última semana podem ser
+ * parciais, porque o intervalo do Mês começa no dia 1 e termina hoje.
+ */
+export function agruparPorSemana(
+  pontos: PontoSerieFinanceira[],
+): PontoSerieFinanceira[] {
+  const semanas: PontoSerieFinanceira[] = [];
+  for (const ponto of pontos) {
+    const dia = deIsoLocal(ponto.inicio);
+    if (!dia) continue;
+    const atual = semanas[semanas.length - 1];
+    // getDay(): domingo é 0. A semana vira na segunda.
+    if (!atual || dia.getDay() === 1) {
+      semanas.push({ ...ponto, chave: `semana-${ponto.inicio}` });
+      continue;
+    }
+    atual.fim = ponto.fim;
+    atual.faturamento = arredondarMoeda(atual.faturamento + ponto.faturamento);
+    atual.entradasManuais = arredondarMoeda(atual.entradasManuais + ponto.entradasManuais);
+    atual.saidas = arredondarMoeda(atual.saidas + ponto.saidas);
+    atual.resultado = arredondarMoeda(atual.resultado + ponto.resultado);
+    atual.atendimentos += ponto.atendimentos;
+  }
+  for (const semana of semanas) {
+    const inicio = deIsoLocal(semana.inicio);
+    const fim = deIsoLocal(semana.fim);
+    if (!inicio || !fim) continue;
+    const mesInicio = limparPontoDeMes(formatadorMesCurto.format(inicio));
+    const mesFim = limparPontoDeMes(formatadorMesCurto.format(fim));
+    semana.rotulo =
+      semana.inicio === semana.fim
+        ? `${fim.getDate()} ${mesFim}`
+        : mesInicio === mesFim
+          ? `${inicio.getDate()}–${fim.getDate()} ${mesFim}`
+          : `${inicio.getDate()} ${mesInicio} – ${fim.getDate()} ${mesFim}`;
+  }
+  return semanas;
 }
 
 export function agruparSerieFinanceira(
@@ -1031,17 +1100,18 @@ export function agruparSerieFinanceira(
         ponto.faturamento + Math.max(0, movimento.valor),
       );
       if (movimento.atendimento) ponto.atendimentos += 1;
-    } else if (movimento.tipo === "saida") {
-      ponto.saidas = arredondarMoeda(ponto.saidas + Math.abs(movimento.valor));
+    } else if (movimento.tipo === "entrada") {
+      // Soma no faturamento e fica registrada à parte para o detalhe mostrar.
+      const valor = Math.max(0, movimento.valor);
+      ponto.faturamento = arredondarMoeda(ponto.faturamento + valor);
+      ponto.entradasManuais = arredondarMoeda(ponto.entradasManuais + valor);
     } else {
-      ponto.ajustes = arredondarMoeda(ponto.ajustes + movimento.valor);
+      ponto.saidas = arredondarMoeda(ponto.saidas + Math.abs(movimento.valor));
     }
   }
 
   for (const ponto of pontos) {
-    ponto.resultado = arredondarMoeda(
-      ponto.faturamento - ponto.saidas + ponto.ajustes,
-    );
+    ponto.resultado = arredondarMoeda(ponto.faturamento - ponto.saidas);
   }
   return pontos;
 }
@@ -1077,12 +1147,39 @@ function agruparComposicao(
     .sort((a, b) => b.valor - a.valor || a.nome.localeCompare(b.nome, "pt-BR"));
 }
 
+/**
+ * Atendimento fechado conta cada serviço pelo preço do dia. Sem fechamento, o
+ * atendimento inteiro conta pelo texto do serviço, como antes. O acréscimo ou
+ * desconto fica fora daqui (vai para a rosca, que não aceita fatia negativa);
+ * ele sai em `somarAjustesDeAtendimento`.
+ */
 export function comporFaturamentoPorServico(
   movimentos: MovimentoFinanceiro[],
 ): ItemComposicaoFinanceira[] {
+  const receitas = movimentos.filter((movimento) => movimento.tipo === "receita");
+  const porServico = receitas.flatMap<MovimentoFinanceiro>((movimento) =>
+    movimento.atendimento?.itens
+      ? movimento.atendimento.itens.map((item) => ({
+          ...movimento,
+          valor: item.valor,
+          atendimento: { ...movimento.atendimento!, servico: item.nome },
+        }))
+      : [movimento],
+  );
   return agruparComposicao(
-    movimentos.filter((movimento) => movimento.tipo === "receita"),
+    porServico,
     (movimento) => movimento.atendimento?.servico ?? "Serviço não informado",
+  );
+}
+
+/** Soma, com sinal, dos acréscimos e descontos dados ao fechar atendimentos. */
+export function somarAjustesDeAtendimento(movimentos: MovimentoFinanceiro[]): number {
+  return deCentavos(
+    movimentos.reduce(
+      (soma, movimento) =>
+        movimento.tipo === "receita" ? soma + paraCentavos(movimento.atendimento?.ajuste ?? 0) : soma,
+      0,
+    ),
   );
 }
 

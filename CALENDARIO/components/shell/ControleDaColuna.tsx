@@ -22,6 +22,7 @@ interface Props {
   rotuloBusca?: string;
   owner: OwnerSession;
   onLogout: () => void;
+  onOpenSettings: () => void;
   professionals: Professional[];
 }
 
@@ -33,6 +34,7 @@ export default function ControleDaColuna({
   rotuloBusca = "Pesquisar",
   owner,
   onLogout,
+  onOpenSettings,
   professionals,
 }: Props) {
   const Icone = expandida ? PanelLeftClose : PanelLeft;
@@ -80,11 +82,9 @@ export default function ControleDaColuna({
       </label>
 
       <div className="ml-auto flex flex-shrink-0 items-center gap-1.5 pl-4">
-        {/* Sem ação ainda — a engrenagem só mudou de lugar; ela já era um item
-            sem destino dentro do menu do avatar.
-            ponytail: botão inerte, gatilho de upgrade é a tela de ajustes. */}
         <button
           type="button"
+          onClick={onOpenSettings}
           title="Configurações"
           aria-label="Configurações"
           className="flex h-9 w-9 items-center justify-center rounded-lg text-white/65

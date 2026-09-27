@@ -27,6 +27,7 @@ import type {
   WhatsAppConversation,
   WhatsAppMessage,
 } from "../calendarApi";
+import type { FechamentoDoAtendimento } from "../../lib/fechamento";
 
 // ─── Sorteio com semente ──────────────────────────────────────────────────────
 
@@ -155,6 +156,7 @@ export interface AgendamentoMock {
   servico: string;
   status: string;
   source: string;
+  fechamento?: FechamentoDoAtendimento | null;
   created_at: string;
   updated_at: string;
 }

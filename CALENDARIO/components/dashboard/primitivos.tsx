@@ -7,7 +7,7 @@
  * que faz os ícones do dashboard envelhecerem junto com os das outras telas.
  */
 import React from "react";
-import { ChevronDown, Filter } from "lucide-react";
+import { ChevronDown, Filter, type LucideIcon } from "lucide-react";
 
 interface PanelProps {
   title?: string;
@@ -68,11 +68,15 @@ export const KpiCard: React.FC<{
   sub?: string;
   destaque?: boolean;
   compact?: boolean;
-}> = ({ label, value, sub, destaque, compact }) => (
+  Icone?: LucideIcon;
+}> = ({ label, value, sub, destaque, compact, Icone }) => (
   <div
     className={`kpi ${compact ? "kpi--compact" : ""} ${destaque ? "kpi--destaque" : ""}`}
   >
-    <span className="kpi__label">{label}</span>
+    <span className="kpi__label">
+      <span>{label}</span>
+      {Icone && <Icone size={16} aria-hidden />}
+    </span>
     <div className="kpi__value">{value}</div>
     {sub && <div className="kpi__sub">{sub}</div>}
   </div>

@@ -3,8 +3,12 @@ import { useState } from "react";
 export interface PontoFluxo {
   chave: string;
   rotulo: string;
+  /** Ponto de um dia só: a lista escreve o dia da semana ("sáb 26 set"). */
+  diario?: boolean;
   faturamento: number;
+  entradasManuais?: number;
   saidas: number;
+  resultado?: number;
 }
 
 export interface ItemComposicao {
@@ -191,7 +195,7 @@ export function GraficoFluxo({ dados }: { dados: PontoFluxo[] }) {
           const centro = esquerda + passo * indice + passo / 2;
           const alturaEntrada = ponto.faturamento * escala;
           const alturaSaida = ponto.saidas * escala;
-          const resultado = ponto.faturamento - ponto.saidas;
+          const resultado = ponto.resultado ?? ponto.faturamento - ponto.saidas;
           const ativo = indiceAtivo === indice;
           return (
             <g
@@ -199,7 +203,7 @@ export function GraficoFluxo({ dados }: { dados: PontoFluxo[] }) {
               className={`fin-fluxo__grupo${ativo ? " is-active" : ""}`}
               role="img"
               tabIndex={0}
-              aria-label={`${ponto.rotulo}. Faturamento ${moeda.format(ponto.faturamento)}. Saídas ${moeda.format(ponto.saidas)}. Resultado ${moeda.format(resultado)}.`}
+              aria-label={`${ponto.rotulo}. Faturamento ${moeda.format(ponto.faturamento)}. Entradas manuais ${moeda.format(ponto.entradasManuais ?? 0)}. Saídas ${moeda.format(ponto.saidas)}. Resultado ${moeda.format(resultado)}.`}
               onPointerEnter={() => setIndiceAtivo(indice)}
               onPointerLeave={() => setIndiceAtivo(null)}
               onFocus={() => setIndiceAtivo(indice)}
@@ -268,10 +272,16 @@ export function GraficoFluxo({ dados }: { dados: PontoFluxo[] }) {
             <span>Saídas</span>
             <b>{moeda.format(pontoAtivo.saidas)}</b>
           </div>
+          {Boolean(pontoAtivo.entradasManuais) && (
+            <div className="fin-fluxo__tooltip-linha">
+              <span>Entradas manuais (no faturamento)</span>
+              <b>{moeda.format(pontoAtivo.entradasManuais ?? 0)}</b>
+            </div>
+          )}
           <div className="fin-fluxo__tooltip-resultado">
             <span>Resultado</span>
-            <b className={pontoAtivo.faturamento - pontoAtivo.saidas < 0 ? "is-negative" : ""}>
-              {moeda.format(pontoAtivo.faturamento - pontoAtivo.saidas)}
+            <b className={(pontoAtivo.resultado ?? pontoAtivo.faturamento - pontoAtivo.saidas) < 0 ? "is-negative" : ""}>
+              {moeda.format(pontoAtivo.resultado ?? pontoAtivo.faturamento - pontoAtivo.saidas)}
             </b>
           </div>
         </div>
@@ -351,6 +361,69 @@ export function ComposicaoServicos({ dados }: { dados: ItemComposicao[] }) {
         ))}
       </div>
     </div>
+  );
+}
+
+const formatadorDiaSemana = new Intl.DateTimeFormat("pt-BR", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+});
+
+/** "sáb., 26 de set." -> "sáb 26 set": o dia da semana é o que importa em 7 dias. */
+function rotuloDoDia(iso: string) {
+  const [ano, mes, dia] = iso.split("-").map(Number);
+  return formatadorDiaSemana
+    .format(new Date(ano, mes - 1, dia))
+    .replace(/\./g, "")
+    .replace(/,?\s+de\s+/g, " ")
+    .replace(",", "");
+}
+
+/**
+ * Faturamento e saídas no celular e no tablet (2026-09-26, com o dono).
+ *
+ * O gráfico vertical (`GraficoFluxo`) só entrega o valor no hover, e com 31
+ * dias em 300px as colunas tinham 8px -- não dava para ler nem para tocar.
+ * Aqui cada período é uma linha com os dois valores ESCRITOS, então não há
+ * nada a tocar para ler. Barra roxa e salmão numa escala só (o maior valor da
+ * lista), do mais recente para o mais antigo. Quem escolhe o agrupamento (dia,
+ * semana, mês) é a tela, não esta lista.
+ */
+export function ListaFluxo({ dados }: { dados: PontoFluxo[] }) {
+  const maior = Math.max(1, ...dados.flatMap((p) => [p.faturamento, p.saidas]));
+  const linhas = [...dados].reverse();
+
+  return (
+    <ul className="fin-lista-fluxo">
+      {linhas.map((ponto) => (
+        <li
+          key={ponto.chave}
+          className="fin-lista-fluxo__item"
+          aria-label={`${ponto.rotulo}: faturamento ${moeda.format(ponto.faturamento)}, saídas ${moeda.format(ponto.saidas)}`}
+        >
+          <span className="fin-lista-fluxo__rotulo" aria-hidden="true">
+            {ponto.diario ? rotuloDoDia(ponto.chave) : ponto.rotulo}
+          </span>
+          <span className="fin-lista-fluxo__trilho" aria-hidden="true">
+            <span
+              className="fin-lista-fluxo__barra fin-lista-fluxo__barra--entrada"
+              style={{ width: `${(ponto.faturamento / maior) * 100}%` }}
+            />
+          </span>
+          <strong aria-hidden="true">{moeda.format(ponto.faturamento)}</strong>
+          <span className="fin-lista-fluxo__trilho" aria-hidden="true">
+            <span
+              className="fin-lista-fluxo__barra fin-lista-fluxo__barra--saida"
+              style={{ width: `${(ponto.saidas / maior) * 100}%` }}
+            />
+          </span>
+          <span className="fin-lista-fluxo__saida" aria-hidden="true">
+            {ponto.saidas ? `− ${moeda.format(ponto.saidas)}` : "—"}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

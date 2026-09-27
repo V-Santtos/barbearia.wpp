@@ -17,7 +17,7 @@ import {
   getEvents,
   createEvent,
   updateEvent,
-  updateEventStatus,
+  concluirAtendimento,
   deleteEvent,
   getProfessionals,
   createProfessional,
@@ -25,6 +25,7 @@ import {
   deleteProfessional,
   getAvailableSlots,
   getAgendaConfig,
+  type ConcluirAtendimentoPayload,
 } from "./services/calendarApi";
 import PresencialFAB from "./components/PresencialFAB";
 import { toast, Toaster } from "./components/Toast";
@@ -40,7 +41,9 @@ import LimiteDeErro from "./components/dashboard/LimiteDeErro";
 import ConversasDesktop from "./components/conversations/ConversasDesktop";
 import MolduraDeSecao from "./components/shell/MolduraDeSecao";
 import FinanceiroScreen from "./components/financeiro/FinanceiroScreen";
+import SeletorDePainel, { type PainelDoDashboard } from "./components/shell/SeletorDePainel";
 import FolhaDoDia from "./components/agenda/FolhaDoDia";
+import BookingSiteSettings from "./components/settings/BookingSiteSettings";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { usePolling } from "./hooks/usePolling";
 import { paraCanonico } from "./lib/telefone";
@@ -108,7 +111,12 @@ function App() {
   // aposentado em 2026-09-17 — não existe mais um segundo caminho para a mesma
   // tela. O dashboard continua sendo camada, não visualização: `view` não é
   // tocado, então voltar devolve a agenda como estava.
-  const dashboardVisivel = isMobile && mobileTab === "dashboard";
+  //
+  // O Financeiro no celular mora dentro da aba Dashboard (2026-09-26): o título
+  // troca entre os dois, e a escolha dura enquanto o app está aberto.
+  const [painelMobile, setPainelMobile] = useState<PainelDoDashboard>("dashboard");
+  const abaDashboard = isMobile && mobileTab === "dashboard";
+  const dashboardVisivel = abaDashboard && painelMobile === "dashboard";
 
   const fecharDashboard = useCallback(() => {
     setMobileTab((atual) => (atual === "dashboard" ? "calendar" : atual));
@@ -168,6 +176,7 @@ function App() {
 
   const [settingsProfessional, setSettingsProfessional] =
     useState<Professional | null>(null);
+  const [siteSettingsOpen, setSiteSettingsOpen] = useState(false);
 
   // presencialIds: professionalId → bookingId do agendamento presencial ativo
   // presencialIntervals: professionalId → intervalo_duracao_min do profissional
@@ -208,7 +217,9 @@ function App() {
     }
   }, [isMobile]);
 
-  // Auto-expiração: destravar e remover o card presencial em endTime - intervalo_duracao_min.
+  // Auto-expiração: destravar o FAB em endTime - intervalo_duracao_min.
+  // O card presencial NÃO é mais apagado (2026-09-27, com o dono): aquele corte
+  // aconteceu e só entra no Financeiro quando o barbeiro marca como feito.
   useEffect(() => {
     if (presencialIds.size === 0) return;
 
@@ -218,14 +229,12 @@ function App() {
       const today = now.toLocaleDateString("en-CA");
       const next = new Map(presencialIds);
       const nextIntervals = new Map(presencialIntervals);
-      const expiredBookingIds: number[] = [];
       let changed = false;
 
       for (const [profId, bookingId] of presencialIds.entries()) {
         const expire = () => {
           next.delete(profId);
           nextIntervals.delete(profId);
-          expiredBookingIds.push(bookingId);
           changed = true;
         };
 
@@ -249,22 +258,6 @@ function App() {
 
       setPresencialIds(next);
       setPresencialIntervals(nextIntervals);
-      setEvents((prev) =>
-        prev.filter((event) => !expiredBookingIds.includes(event.id)),
-      );
-      void Promise.allSettled(
-        expiredBookingIds.map((bookingId) => deleteEvent(bookingId)),
-      ).then((results) => {
-        results.forEach((result, index) => {
-          if (result.status === "rejected") {
-            console.error(
-              "Erro ao remover atendimento presencial expirado:",
-              expiredBookingIds[index],
-              result.reason,
-            );
-          }
-        });
-      });
     };
 
     check();
@@ -272,55 +265,8 @@ function App() {
     return () => clearInterval(id);
   }, [presencialIds, presencialIntervals, events]);
 
-  // Auto-conclusão: marca 'concluido' (e some do front) quando o horário de
-  // término já passou. Usa o endTime calculado pelo backend (duração do PROFISSIONAL).
-  // Não-destrutivo: registro permanece no banco como histórico/CRM.
-  useEffect(() => {
-    const ATIVOS = new Set(["agendado", "confirmado"]);
-
-    const check = () => {
-      const now = new Date();
-      const today = now.toLocaleDateString("en-CA"); // 'YYYY-MM-DD'
-      const nowMins = now.getHours() * 60 + now.getMinutes();
-
-      const expirados = events.filter((evt) => {
-        if (!evt.status || !ATIVOS.has(evt.status)) return false; // só ativos
-        if (!evt.endTime) return false; // sem fim calculável
-        if (evt.date > today) return false; // futuro: ignora
-        if (evt.date < today) return true; // dia passado: já terminou
-        const [h, m] = evt.endTime.split(":").map(Number); // hoje: compara horário
-        return nowMins >= h * 60 + m;
-      });
-
-      if (expirados.length === 0) return;
-
-      const ids = expirados.map((e) => e.id);
-      // Otimista: esconde já (filteredEvents exclui 'concluido')
-      setEvents((prev) =>
-        prev.map((e) =>
-          ids.includes(e.id) ? { ...e, status: "concluido" } : e,
-        ),
-      );
-      // Persiste no banco
-      void Promise.allSettled(
-        ids.map((id) => updateEventStatus(id, "concluido")),
-      ).then((results) => {
-        results.forEach((r, i) => {
-          if (r.status === "rejected") {
-            console.error(
-              "Erro ao concluir agendamento expirado:",
-              ids[i],
-              r.reason,
-            );
-          }
-        });
-      });
-    };
-
-    check();
-    const id = setInterval(check, 60_000); // re-checa a cada 60s
-    return () => clearInterval(id);
-  }, [events]);
+  // Sem conclusão automática (2026-09-27, com o dono): o card espera o barbeiro
+  // tocar em "Marcar como feito", porque até lá ele pode trocar o serviço.
 
   const [popoverEvent, setPopoverEvent] = useState<Event | null>(null);
   const [popoverAnchor, setPopoverAnchor] = useState<{
@@ -376,40 +322,18 @@ function App() {
             }),
           );
 
-          // Filtra com a regra correta: destravar em endTime - intervalMin
+          // Destrava em endTime - intervalMin. O card vencido continua na
+          // agenda; ele só não volta a travar o FAB.
           const restoredMap = new Map<number, number>();
-          const expiredBookingIds: number[] = [];
           for (const [profId, bookingId] of candidates.entries()) {
             const evt = evts.find((e) => e.id === bookingId);
             if (!evt) continue;
             if (evt.endTime) {
               const [h, m] = evt.endTime.split(":").map(Number);
               const intervalMin = intervalsMap.get(profId) ?? 0;
-              if (nowMins >= h * 60 + m - intervalMin) {
-                expiredBookingIds.push(bookingId);
-                continue; // já expirou
-              }
+              if (nowMins >= h * 60 + m - intervalMin) continue;
             }
             restoredMap.set(profId, bookingId);
-          }
-
-          if (expiredBookingIds.length > 0) {
-            setEvents((prev) =>
-              prev.filter((event) => !expiredBookingIds.includes(event.id)),
-            );
-            void Promise.allSettled(
-              expiredBookingIds.map((bookingId) => deleteEvent(bookingId)),
-            ).then((results) => {
-              results.forEach((result, index) => {
-                if (result.status === "rejected") {
-                  console.error(
-                    "Erro ao remover atendimento presencial expirado:",
-                    expiredBookingIds[index],
-                    result.reason,
-                  );
-                }
-              });
-            });
           }
 
           if (restoredMap.size > 0) {
@@ -485,6 +409,13 @@ function App() {
   const handleSaveEvent = async (
     eventData: Omit<Event, "id"> & { id?: number },
   ) => {
+    // Card de exemplo do Kanban (id negativo): o modal abre para ver, mas não grava.
+    if (typeof eventData.id === "number" && eventData.id < 0) {
+      setIsModalOpen(false);
+      setEditingEvent(null);
+      toast.info("Card de exemplo: nada foi salvo.");
+      return;
+    }
     const start = toMinutes(eventData.startTime);
     const end = toMinutes(eventData.endTime);
 
@@ -576,6 +507,12 @@ function App() {
   };
 
   const handleDeleteEvent = async (eventId: number) => {
+    if (eventId < 0) {
+      setIsModalOpen(false);
+      setEditingEvent(null);
+      toast.info("Card de exemplo: nada foi excluído.");
+      return;
+    }
     try {
       await deleteEvent(eventId);
       setEvents((prev) => prev.filter((e) => e.id !== eventId));
@@ -587,16 +524,31 @@ function App() {
     setEditingEvent(null);
   };
 
-  const handleCompleteEvent = async (eventId: number) => {
-    try {
-      await updateEventStatus(eventId, "concluido");
-      setEvents((prev) =>
-        prev.map((e) => (e.id === eventId ? { ...e, status: "concluido" } : e)),
-      );
-    } catch (err) {
-      console.error(err);
-      window.alert("Erro ao marcar como concluído.");
+  // "Marcar como feito" passa pelo resumo (2026-09-27): grava serviços, ajuste
+  // e, no presencial, o cliente. Erro sobe para o resumo mostrar.
+  const handleConcluirAtendimento = async (
+    evento: Event,
+    payload: ConcluirAtendimentoPayload,
+  ) => {
+    const atualizado = await concluirAtendimento(evento.id, payload);
+    if (evento.source === "presencial") {
+      setPresencialIds((prev) => {
+        if (prev.get(evento.professionalId) !== evento.id) return prev;
+        const next = new Map(prev);
+        next.delete(evento.professionalId);
+        return next;
+      });
     }
+    // Espera o card deslizar para fora (220ms no DayKanban) antes de sumir.
+    window.setTimeout(() => {
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.id === evento.id
+            ? { ...e, ...atualizado, professionalId: e.professionalId, status: "concluido" }
+            : e,
+        ),
+      );
+    }, 240);
   };
 
   const handleAddProfessional = async (
@@ -818,7 +770,7 @@ function App() {
               selectedProfessionals={selectedProfessionals}
               onProfessionalToggle={handleProfessionalToggle}
               onEventClick={handleEventClick}
-              onCompleteEvent={handleCompleteEvent}
+              onConcluirAtendimento={handleConcluirAtendimento}
             />
           </motion.div>
         ) : (
@@ -938,6 +890,7 @@ function App() {
               }
               owner={ownerSession}
               onLogout={handleLogout}
+              onOpenSettings={() => setSiteSettingsOpen(true)}
               professionals={professionals}
             />
 
@@ -993,6 +946,7 @@ function App() {
                   }
                   owner={ownerSession}
                   onLogout={handleLogout}
+                  onOpenSiteSettings={() => setSiteSettingsOpen(true)}
                   professionals={professionals}
                   presencialIds={presencialIds}
                   onMenuOpen={() => setHamburgerOpen(true)}
@@ -1148,6 +1102,7 @@ function App() {
             professional={settingsProfessional}
             onClose={() => setSettingsProfessional(null)}
           />
+          {siteSettingsOpen && <BookingSiteSettings onClose={() => setSiteSettingsOpen(false)} />}
           <Toaster />
           <PresencialFAB
             professionals={professionals}
@@ -1221,8 +1176,38 @@ function App() {
               aberto={dashboardVisivel}
               isMobile={isMobile}
               onFechar={fecharDashboard}
+              titulo={
+                <SeletorDePainel
+                  atual="dashboard"
+                  onTrocar={setPainelMobile}
+                  classeTitulo="db-pagehead__title"
+                />
+              }
             />
           </LimiteDeErro>
+
+          {/* O Financeiro móvel abre o lançamento no próprio cabeçalho;
+              solicitações externas continuam reservadas ao desktop. */}
+          {abaDashboard && painelMobile === "financeiro" && (
+            <div className="fin-celular">
+              <LimiteDeErro onFechar={fecharDashboard}>
+                <FinanceiroScreen
+                  eventos={events}
+                  profissionais={professionals}
+                  busca=""
+                  solicitacaoNovoLancamento={0}
+                  chaveSessao={ownerSession.email.trim().toLocaleLowerCase("pt-BR")}
+                  titulo={
+                    <SeletorDePainel
+                      atual="financeiro"
+                      onTrocar={setPainelMobile}
+                      classeTitulo="fin-pagehead__title"
+                    />
+                  }
+                />
+              </LimiteDeErro>
+            </div>
+          )}
 
           {/* Trocar de aba fecha a gaveta. O dock vive em z-index 100 e o
               backdrop da gaveta em z-60, então o dedo SEMPRE alcançou os

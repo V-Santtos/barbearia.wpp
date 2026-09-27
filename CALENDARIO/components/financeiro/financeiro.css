@@ -67,25 +67,6 @@
   letter-spacing: -0.02em;
 }
 
-.fin-pagehead__sub {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 4px 0 0;
-  color: var(--fin-text-muted);
-  font-size: 12px;
-}
-
-.fin-pagehead__sub::before {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 999px;
-  background: var(--fin-primary-soft);
-  box-shadow: 0 0 9px rgba(154, 150, 252, 0.55);
-  content: "";
-}
-
 .fin-pagehead__actions,
 .fin-toolbar,
 .fin-panel__actions,
@@ -183,13 +164,6 @@
   background: var(--fin-panel-raised);
   color: var(--fin-text-strong);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 1px 0 rgba(0, 0, 0, 0.22);
-}
-
-.fin-definicao {
-  max-width: 440px;
-  color: var(--fin-text-muted);
-  font-size: 11px;
-  text-align: right;
 }
 
 .fin-kpis {
@@ -471,6 +445,51 @@
 .fin-rosca__miolo span { max-width: 80px; margin-top: 4px; color: var(--fin-text-muted); font-size: 9px; }
 
 .fin-ranking,
+/* Lista de faturamento e saídas (celular e tablet). Duas barras por linha na
+   mesma escala; o valor fica escrito ao lado de cada uma, em cor de texto --
+   a cor identifica a barra, nunca o número. */
+.fin-lista-fluxo {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 4px 18px 18px;
+  list-style: none;
+}
+.fin-lista-fluxo__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 5px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--fin-border);
+}
+.fin-lista-fluxo__item:last-child { border-bottom: 0; padding-bottom: 0; }
+.fin-lista-fluxo__rotulo {
+  grid-column: 1 / -1;
+  color: var(--fin-text);
+  font-size: 12px;
+  font-weight: 520;
+}
+.fin-lista-fluxo__trilho {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+}
+.fin-lista-fluxo__barra { display: block; height: 100%; min-width: 0; border-radius: inherit; }
+.fin-lista-fluxo__barra--entrada { background: #7772fb; }
+.fin-lista-fluxo__barra--saida { background: var(--fin-negative); }
+.fin-lista-fluxo__item strong,
+.fin-lista-fluxo__saida {
+  min-width: 76px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.fin-lista-fluxo__item strong { color: var(--fin-text-strong); font-size: 13px; font-weight: 600; }
+.fin-lista-fluxo__saida { color: var(--fin-text-muted); font-size: 12px; }
+
 .fin-despesas-lista { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .fin-ranking__item { min-width: 0; }
 .fin-ranking__linha {
@@ -604,7 +623,8 @@
 .fin-overlay {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  /* Acima do dock do celular (z 100); abaixo das listas de seleção (120). */
+  z-index: 110;
   display: grid;
   place-items: center;
   padding: 18px;
@@ -697,6 +717,10 @@
 .fin-campo input[aria-invalid="true"],
 .fin-campo textarea[aria-invalid="true"] { border-color: rgba(240, 160, 138, 0.7); }
 .fin-campo__erro { color: #ffb7a8; font-size: 10px; line-height: 1.4; }
+.fin-campo__opcional { color: var(--fin-text-muted); font-weight: 450; }
+.fin-categoria-nova { display: flex; align-items: center; gap: 6px; }
+.fin-categoria-nova input:not([type="hidden"]) { flex: 1; min-width: 0; }
+.fin-categoria-nova .fin-btn { min-height: 40px; flex-shrink: 0; }
 .fin-ajuda {
   display: block;
   width: 100%;
@@ -708,7 +732,7 @@
 
 .fin-tipo-lancamento {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 .fin-tipo-lancamento button {
@@ -948,6 +972,7 @@
 
 .fin-alerta-motivo { margin-top: 14px; }
 
+
 @media (max-width: 1180px) {
   .fin-panel--fluxo,
   .fin-panel--servicos,
@@ -958,7 +983,6 @@
 @media (max-width: 920px) {
   .fin-pagehead { align-items: flex-start; flex-direction: column; }
   .fin-toolbar { align-items: flex-start; flex-direction: column; }
-  .fin-definicao { max-width: none; text-align: left; }
   .fin-kpis { grid-template-columns: 1fr 1fr; }
   .fin-kpi:nth-child(2) { border-right: 0; }
   .fin-kpi:nth-child(-n + 2) { border-bottom: 1px solid var(--fin-border); }
@@ -977,15 +1001,22 @@
 
 @media (max-width: 700px) {
   .fin-pagehead { padding: 18px 16px 14px; }
+  .fin-pagehead__actions { width: 100%; }
+  .fin-pagehead__actions .fin-btn { min-height: 44px; flex: 1; }
+  .fin-tipo-lancamento button { min-height: 44px; padding: 0 9px; }
   .fin-resumo { padding: 0 16px 12px; }
   .fin-grid { padding: 0 16px 24px; }
   .fin-periodos { width: 100%; overflow-x: auto; }
   .fin-periodos button { flex: 1; white-space: nowrap; }
   .fin-controles-periodo { width: 100%; flex-wrap: wrap; }
   .fin-ano { margin-left: auto; }
-  .fin-kpis { grid-template-columns: 1fr; }
-  .fin-kpi { border-right: 0; border-bottom: 1px solid var(--fin-border); }
-  .fin-kpi:last-child { border-bottom: 0; }
+  /* 2x2 no celular, o mesmo padrão dos KPIs do Dashboard (2026-09-26): a
+     grade de 920px continua valendo; aqui só a densidade encolhe para o
+     valor em dinheiro do filtro Ano caber em ~135px sem cortar. */
+  .fin-kpi { min-height: 118px; padding: 14px; display: flex; flex-direction: column; }
+  .fin-kpi__top { font-size: 12px; gap: 8px; align-items: flex-start; }
+  .fin-kpi__value { font-size: 22px; }
+  .fin-kpi__bottom { flex-wrap: wrap; row-gap: 5px; margin-top: auto; padding-top: 8px; }
   .fin-composicao { grid-template-columns: 1fr; }
   .fin-form__grid { grid-template-columns: 1fr; }
   .fin-campo--inteiro { grid-column: auto; }
@@ -996,8 +1027,64 @@
   .fin-drawer { width: 100%; height: min(82dvh, 760px); border-width: 1px 0 0; border-radius: 18px 18px 0 0; }
 }
 
+/* O Financeiro dentro da aba Dashboard do celular (2026-09-26). Mesma casca do
+   `.dash-mobile`: tela cheia atrás do dock, topo com o piso de 44px da área
+   segura, e o título na mesma altura e tamanho do "Dashboard" — trocar de
+   painel não pode fazer o título pular. */
+.fin-celular {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  padding-top: max(44px, env(safe-area-inset-top));
+  background: #1c1c1c;
+}
+.fin-celular .fin-pagehead { padding-top: 6px; }
+.fin-celular .fin-pagehead__title { font-size: 22px; line-height: 1.15; font-weight: 700; }
+/* Chão para o dock, que flutua por cima da rolagem (o mesmo do Dashboard). */
+.fin-celular .fin-grid { padding-bottom: 104px; }
+
 @media (prefers-reduced-motion: reduce) {
   .fin-root *,
   .fin-root *::before,
   .fin-root *::after { scroll-behavior: auto !important; transition-duration: 0.001ms !important; }
 }
+
+/* Janelas do Financeiro como folha (celular e tablet, 2026-09-26). Sobe do rodapé,
+   encosta nas bordas de baixo e dos lados (no tablet para em 640px, centrada),
+   e as ações respeitam a área segura. Vem DEPOIS das regras de 700px para
+   ganhar delas sem `!important`. */
+.fin-overlay--folha { place-items: end center; padding: 0; }
+.fin-dialog--folha,
+.fin-drawer--folha {
+  width: min(640px, 100vw);
+  height: auto;
+  max-height: min(88dvh, 760px);
+  border-width: 1px 1px 0;
+  border-radius: 18px 18px 0 0;
+}
+.fin-dialog--folha .fin-dialog__body { padding: 16px 20px; }
+.fin-drawer--folha .fin-drawer__footer,
+.fin-dialog--folha .fin-dialog__actions {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 14px);
+}
+.fin-dialog--folha .fin-comparacao-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+.fin-dialog--folha .fin-comparacao-card { padding: 13px; }
+.fin-dialog--folha .fin-comparacao-card strong { font-size: 19px; white-space: nowrap; }
+.fin-dialog--folha .fin-detalhe-bloco { margin-top: 18px; }
+
+@media (max-width: 1023px) {
+  .fin-dialog--lancamento.fin-dialog--folha { height: min(88dvh, 760px); }
+  .fin-dialog--lancamento form { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+  .fin-dialog--lancamento .fin-dialog__body { flex: 1; min-height: 0; overflow-y: auto; }
+  .fin-dialog--lancamento .fin-dialog__actions { flex: none; }
+  .fin-dialog--lancamento .fin-campo input:not([type="hidden"]),
+  .fin-dialog--lancamento .fin-campo textarea,
+  .fin-dialog--lancamento .ui-select-trigger,
+  .fin-dialog--lancamento .ui-date-trigger { font-size: 16px; }
+}
+
+/* Na janela de comparar, o segmentado ocupa a linha toda. */
+.fin-segmentado--cheio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.fin-segmentado--cheio button { justify-content: center; }

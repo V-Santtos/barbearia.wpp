@@ -97,6 +97,31 @@ roxo saturado, lê como plástico — e preenchimento contraria a regra do site 
 um seletor, **tirar peso do seletor**, não encher a ação. O fundo de ondas do login é
 moldura da tela e fica como está; véus e escurecimentos sobre ele foram recusados.
 
+## [2026-09-27] Agendamento público e painel: um produto, controles coerentes
+
+Decidido com Victor na comparação das duas interfaces e no refinamento do modal de
+Configurações do site público. As telas servem pessoas diferentes, mas pertencem à
+mesma marca; reutilizar material, cor de ação e comportamento quando o controle tem a
+mesma função.
+
+- No site público, o CTA principal tomou a linguagem escura e arredondada do login do
+  painel; seu tamanho acompanha o título em telas estreitas. Os cartões de serviço
+  usam superfície escura mais sólida e menos vidro; títulos ficam em Poppins e
+  descrições em Inter. O degradê roxo no nome da barbearia foi mantido por escolha
+  explícita do dono. A revisão geral de tipografia entre as duas camadas foi adiada.
+- No modal administrativo, campos de texto, seleção e descrição reutilizam `CAMPO`
+  com `FUNDO_CAMPO_MODAL`. Checkbox de categoria reutiliza `NeonCheckbox` e recebe
+  a cor pelo token do produto. O menu chama a primeira área de **Página inicial**;
+  o título interno pode continuar **Página de agendamento**.
+- Não empilhar contorno do modal, divisor da lateral, borda de card e borda de campo
+  quando tom de fundo e espaço já separam as áreas. No desktop, lateral e conteúdo
+  compartilham a superfície e começam na mesma altura. O ícone do cabeçalho fica
+  maior e sem bolha de fundo. O rodapé não exibe “Tudo atualizado” quando o estado
+  está ocioso; mensagens de alteração, salvamento e erro continuam visíveis quando
+  necessárias.
+- O clique de cada serviço rumo à segunda etapa e seu identificador pertencem ao
+  contrato de integração do dev; a rodada visual não define esse roteamento.
+
 ## [2026-09-15] Site público de agendamento: padrões visuais validados pelo dono
 
 Vale para `SITE-BARB-PROF-UNICO` (`localhost:3001`). Decidido tela a tela com o dono,
@@ -111,8 +136,10 @@ por print do celular, buscando o sistema mais minimalista possível.
   (`hooks/useFillAdvance.ts`). "Agendando…" já nasce cheio. Não voltar a ter botão
   principal cheio numa etapa e contornado em outra.
 - **Calendário mostra só a janela aberta pelo barbeiro,** em semanas inteiras e sequência
-  contínua. Na virada de mês o dia 1 leva a sigla do mês; o destaque grande acompanha o
-  dia selecionado. Setas de mês só existem no modo de reserva (sem disponibilidade
+  contínua. **Revisão de 2026-09-27, aprovada por Victor:** na virada, todos os dias
+  do mês seguinte levam a sigla discreta do mês; isso substitui a regra de 2026-09-15
+  que marcava apenas o dia 1. O destaque grande acompanha o dia selecionado.
+  Setas de mês só existem no modo de reserva (sem disponibilidade
   carregada). Hoje = escuro com contorno roxo; selecionado = roxo cheio com borda clara.
 - **Seleção muda na hora; animação é enfeite.** Nenhum `onComplete`/`animationend` decide
   se um toque vale.
@@ -163,6 +190,10 @@ etapa só reabre exatamente a inconsistência que a rodada fechou.
 - **Horários livres** é o resumo de capacidade; o painel de próximos horários livres
   é o detalhe acionável. Não substituir o card por “primeira vaga” ou “vagas restantes
   hoje”, pois isso duplicaria o painel logo abaixo e quebraria os filtros mais longos.
+
+## [2026-09-27] Entrada manual altera o resultado, não o faturamento dos atendimentos
+
+Victor confirmou que uma entrada lançada manualmente soma ao **Resultado operacional** e não ao KPI **Faturamento**, reservado aos atendimentos concluídos. O formulário do Financeiro oferece Entrada, Saída e Ajuste no desktop e no mobile; o lançamento manual ainda vive só na memória desta casca. Esta decisão amplia a lista de fatos manuais da regra de 2026-09-08, sem transformar a entrada em confirmação de pagamento de um atendimento.
 
 ## [2026-09-15] Financeiro preserva semântica temporal e reduz decoração
 
@@ -886,6 +917,10 @@ quando há texto (`src/whatsapp/enviar.ts`).
 
 ## [2026-08-02] Financeiro fica fora do V1, e já tem endereço reservado
 
+**Histórico, substituído em 2026-09-08:** o Financeiro ganhou seção própria na
+coluna desktop; no celular, entrou na aba Dashboard em 2026-09-26. A regra atual de
+escopo funcional está em “Financeiro V1 não cria um ritual manual de pagamento”.
+
 **Regra:** o módulo financeiro não entra nesta fase do dashboard. O lugar dele já
 está decidido: seção própria no rodapé da página, sem mexer em nada acima do que já
 foi validado.
@@ -898,6 +933,9 @@ KPIs) está aprovado e não é reaberto para caber financeiro.
 redesenha o que está acima.
 
 ## [2026-08-04] O Dashboard entra como camada sobre a agenda, não como tela nova
+
+**Histórico, substituído em 2026-09-08:** no desktop, Dashboard é seção irmã da
+Agenda, conforme “O painel navega por SEÇÕES”. No celular, segue na aba do dock.
 
 **Regra:** no desktop o dashboard é um overlay por cima do calendário — véu escuro
 com `backdrop-filter`, modal a ~94% de largura e 90% de altura, e três saídas: `X`,
@@ -1397,3 +1435,65 @@ dashboard de referência em `localhost:3000` e critérios consultados em
 **Como aplicar:** antes de criar outra pílula ou superfície roxa, identificar a
 função do controle. Se for seleção secundária, começar por superfície neutra +
 indicador; se for campo/menu, começar por raio de 8–10 px e espaçamento interno.
+
+## 2026-09-26 — Toda barra de rolagem é a mesma, e nasce pronta
+
+Pedido do dono, ao ver a barra do sistema (trilho branco + setinhas) no corpo das
+janelas do Financeiro: "essa mesma barra, padronizada, para todas as barras".
+
+- **O padrão mora no `CALENDARIO/index.css`, em `*::-webkit-scrollbar`:** 4 px,
+  polegar branco 15% (24% no hover), sem trilho, sem setas. Vale para qualquer
+  área que role, criada hoje ou amanhã — ninguém precisa lembrar de estilizar.
+- **Não declarar `scrollbar-width`/`scrollbar-color` para ESTILIZAR.** No Chrome,
+  qualquer um dos dois desliga os `::-webkit-scrollbar` e devolve a barra do
+  sistema; e `scrollbar-color` herda, então no `html` ele estragaria o app
+  inteiro. O Firefox recebe o equivalente só via `@supports not
+  selector(::-webkit-scrollbar)`.
+- **Esconder continua permitido** onde a rolagem é gesto e não leitura (dock de
+  pílulas, carrossel do Kanban, histórico da conversa):
+  `[&::-webkit-scrollbar]:hidden` + `scrollbar-width: none`.
+- **Barra nova não se escreve à mão.** As receitas locais antigas (`EventModal`,
+  `BottomSheet`, `ProfileModal`, `AgendaSettingsModal`, `.custom-scrollbar`,
+  `.fin-scroll`, `.mb-scroll`) ficaram como estavam; quando uma delas for tocada,
+  apagar a receita local e deixar o padrão agir.
+
+**Como aplicar:** criou um `overflow-y-auto`? Não faça nada com a barra. Se ela
+precisar sumir, use o par de esconder acima; se precisar de outra aparência,
+converse antes — a regra é ser uma só.
+
+## 2026-09-27 — Financeiro: dois mundos, rótulos separados
+
+Decidido com o dono, uma pergunta por vez.
+
+- **Dois mundos no mesmo Financeiro.** O corte concluído na agenda gera a
+  receita sozinho; entradas e saídas manuais são o segundo mundo, sempre
+  rotuladas ("Entrada manual", "Saída"). Faturamento soma atendimentos +
+  entradas manuais e o detalhe mostra as duas partes; Resultado = Faturamento −
+  Saídas. O **ticket médio usa só os atendimentos**.
+- **Lançamento manual tem só Entrada e Saída.** O Ajuste saiu: correção se faz
+  editando o lançamento, e não há mais valor negativo em campo.
+- **Categorias mínimas, o resto o barbeiro cria.** Entrada: Venda de produtos,
+  Outras entradas. Saída: Comissão de barbeiro, Produtos e materiais, Contas
+  mensais, Marketing, Outras saídas. "+ Nova categoria" no próprio campo.
+  Comissão pede o barbeiro. Gorjeta e Retirada saíram da lista de fábrica.
+- **Valor em dinheiro usa a máscara de maquininha** (`components/ui/CurrencyField.tsx`):
+  dígitos entram pela direita, sem vírgula ou ponto para errar.
+- **Descrição de lançamento é opcional**; sem ela, a categoria vira o texto.
+- **Comparar períodos escolhe Semana, Mês ou Ano dentro da própria janela.**
+
+## 2026-09-27 — Atendimento só conclui quando o barbeiro confere
+
+- **Nenhum card é concluído automaticamente.** "Marcar como feito" abre o
+  resumo "Fechar atendimento": serviços (vários, da tabela), acréscimo ou
+  desconto com motivo opcional e total. No presencial o serviço é obrigatório e
+  o cliente (nome e telefone) é opcional.
+- **O preço fica guardado no dia da conclusão** (`evento.fechamento`); reajuste
+  na tabela não muda o passado. Atendimento antigo sem fechamento usa a tabela.
+- **Produto não entra no resumo.** Vai como "Venda de produtos" no Financeiro.
+- **O card presencial não se apaga.** Perto do fim do horário ele só libera o
+  FAB; o cancelamento pelo FAB continua apagando.
+- **Vários serviços viajam em `servico` separados por ", "**, porque nomes de
+  combo usam "+".
+
+**Como aplicar:** mudança de valor de um atendimento passa pelo fechamento, não
+por lançamento manual; ver `docs/superpowers/specs/2026-09-27-fechar-atendimento-design.md`.

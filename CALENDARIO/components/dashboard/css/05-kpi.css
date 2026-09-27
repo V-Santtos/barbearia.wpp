@@ -45,13 +45,18 @@
 /* O rotulo e o que IDENTIFICA o card -- e era o texto menos legivel dele
    (10px, caixa alta, branco/42 = 4,08:1, reprovado em AA). */
 .kpi__label {
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 13px;
   font-weight: 500;
   color: rgba(255,255,255,0.70);
   line-height: 1.3;
   margin-bottom: 7px;
 }
+/* Ícone no canto superior direito, como no Financeiro: 16px, cinza de apoio. */
+.kpi__label svg { flex: none; color: var(--text-muted); }
 .kpi__value {
   font-size: 34px;
   line-height: 1;

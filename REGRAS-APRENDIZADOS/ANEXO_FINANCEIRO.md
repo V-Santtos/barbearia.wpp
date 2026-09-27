@@ -348,7 +348,11 @@ mês anterior”. Percentual solto induz interpretação errada.
 Para períodos curtos, agrupar por dia. Para 6 meses e ano, agrupar por mês. A
 granularidade muda; a definição financeira não.
 
-## Mapeamento do dashboard-espelho em localhost:3000
+## Mapeamento do dashboard-espelho
+
+Referência externa guardada em `C:\Users\victo\Desktop\Referencias\dashboard-shadcn-admin`
+(registro em `docs/skills-log.md`). Os links `localhost:3000` abaixo são rotas para
+quando esse template estiver rodando; não apontam para o painel da barbearia.
 
 O template é Next/Tailwind/shadcn/Recharts, enquanto `CALENDARIO/` é React/Vite
 com tokens CSS próprios. A regra existente continua valendo: aproveitar estrutura,

@@ -19,8 +19,9 @@ procurando esse nome na tabela de serviços. O valor real do atendimento nunca
    passado.
 4. **O lápis também permite vários serviços.** A mudança pode ser feita antes;
    o resumo abre com ela.
-5. **Produto vendido na hora entra pelo acréscimo.** Soma no atendimento. O
-   Financeiro continua tendo "Venda de produtos" para vendas sem corte.
+5. **Produto não entra no resumo.** O ajuste serve só para mudar o preço do
+   serviço. Produto vendido na hora vai como entrada manual em "Venda de
+   produtos", no Financeiro, separado do corte.
 
 Já feito na mesma rodada: o presencial não se apaga sozinho e nenhum card é
 concluído automaticamente. Todo card espera o "Marcar como feito".
@@ -76,9 +77,10 @@ interface FechamentoDoAtendimento {
 }
 ```
 
-- Antes de concluir, `Event.servicos` guarda a lista escolhida (agendamento ou
-  lápis). `Event.servico` continua existindo, com os nomes unidos por " + ",
-  para as telas que só leem texto.
+- Antes de concluir, a lista escolhida (agendamento ou lápis) viaja no próprio
+  `Event.servico`, com os nomes separados por ", " ("Corte, Sobrancelha").
+  Vírgula e não " + ", porque nomes de combo já usam "+" ("Corte + Barba").
+  As telas que só leem texto continuam funcionando sem mudança.
 - Ao concluir, `Event.fechamento` é gravado com os preços daquele momento.
 - Presencial com cliente grava nome e telefone no próprio atendimento.
 

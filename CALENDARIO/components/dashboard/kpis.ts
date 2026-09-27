@@ -7,6 +7,7 @@
  * "hoje" informa, porque ele ignora o chip.
  */
 import type { AgregadoDashboard, PeriodoDashboard } from "../../services/calendarApi";
+import { CalendarDays, CalendarPlus, Clock, Gauge, type LucideIcon } from "lucide-react";
 import { plural, type ProfVm } from "./modelo";
 
 export interface CartaoKpi {
@@ -15,6 +16,8 @@ export interface CartaoKpi {
   value: string | number;
   sub: string;
   destaque?: boolean;
+  /** Mesmo lugar e peso dos ícones dos KPIs do Financeiro (2026-09-26). */
+  Icone: LucideIcon;
 }
 
 const DIAS_DO_PERIODO: Record<PeriodoDashboard, number> = {
@@ -42,6 +45,7 @@ export function montarKpis(
     {
       chave: "agendamentos",
       label: "Agendamentos",
+      Icone: CalendarDays,
       value: ag.agendamentos.total,
       sub: ehHoje
         ? [
@@ -54,6 +58,7 @@ export function montarKpis(
     {
       chave: "ocupacao",
       label: "Ocupação",
+      Icone: Gauge,
       value: `${ag.ocupacao.pct}%`,
       // "2 profissionais ativos" já esteve escrito à mão aqui, e viraria mentira
       // no dia que entrasse um terceiro.
@@ -69,6 +74,7 @@ export function montarKpis(
     {
       chave: "livres",
       label: "Horários livres",
+      Icone: Clock,
       value: ag.livres.total,
       // Este é o único dos quatro que olha para FRENTE, e o rótulo tem que dizer
       // isso: horário livre que já passou não existe, então contá-lo para trás
@@ -80,6 +86,7 @@ export function montarKpis(
     {
       chave: "marcacoes",
       label: "Marcações recebidas",
+      Icone: CalendarPlus,
       value: ag.marcacoes.total,
       // Vem de `created_at`, não de `dia_marcado`: conta quantas vezes alguém
       // marcou, não quantos atendimentos o dia tem. É o único número da tela que

@@ -1,6 +1,6 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LogOut, Moon, Sun, User } from 'lucide-react';
+import { LogOut, Moon, Settings, Sun, User } from 'lucide-react';
 import type { OwnerSession } from './LoginScreen';
 import ProfileModal from './ProfileModal';
 import MarcaHubBarber from './shell/MarcaHubBarber';
@@ -11,6 +11,7 @@ interface UserMenuProps {
   owner: OwnerSession;
   onLogout: () => void;
   professionals: Professional[];
+  onOpenSiteSettings?: () => void;
   /** Na barra superior o avatar divide 56px com os outros botões: 36px, como eles. */
   compacto?: boolean;
 }
@@ -30,7 +31,7 @@ function temaGuardado(): Tema {
   return window.localStorage.getItem('tema') === 'claro' ? 'claro' : 'escuro';
 }
 
-export default function UserMenu({ owner, onLogout, professionals, compacto = false }: UserMenuProps) {
+export default function UserMenu({ owner, onLogout, professionals, onOpenSiteSettings, compacto = false }: UserMenuProps) {
   const [open, setOpen] = React.useState(false);
   const [profileOpen, setProfileOpen] = React.useState(false);
   const [displayName, setDisplayName] = React.useState<string>(owner.name);
@@ -157,6 +158,20 @@ export default function UserMenu({ owner, onLogout, professionals, compacto = fa
                 {tema === 'escuro' ? <Sun size={16} /> : <Moon size={16} />}
                 <span>{tema === 'escuro' ? 'Tema claro' : 'Tema escuro'}</span>
               </button>
+              {onOpenSiteSettings && (
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onOpenSiteSettings();
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-200 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                >
+                  <Settings size={16} />
+                  <span>Configurações do site</span>
+                </button>
+              )}
             </div>
 
             <div className="border-t border-white/10 p-2">

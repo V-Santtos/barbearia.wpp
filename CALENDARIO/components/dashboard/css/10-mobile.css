@@ -136,16 +136,19 @@
   border-radius: 14px;
   overflow: hidden;
 }
+/* Células no mesmo tom da faixa do Financeiro (2026-09-26, pedido do dono):
+   lá é branco 2,5% sobre o #1c1c1c da tela, o que dá #222. Aqui a célula
+   precisa ser opaca, porque a divisória é o `gap` de 1px mostrando o fundo. */
 .mb-kpis > .kpi {
   border-radius: 0;
-  background: var(--panel);
+  background: #222222;
   padding: 14px;
   min-height: 118px;
   display: flex;
   flex-direction: column;
 }
 .mb-kpis > .kpi--destaque {
-  background: linear-gradient(rgba(86,80,249,0.12), rgba(86,80,249,0.12)), var(--panel);
+  background: linear-gradient(rgba(86,80,249,0.12), rgba(86,80,249,0.12)), #222222;
   box-shadow: none;
 }
 /* Hierarquia: rotulo (apoio) -> numero (destaque) -> linha de apoio. O apoio

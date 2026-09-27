@@ -188,6 +188,46 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Barra de rolagem padrão do app inteiro (2026-09-26, pedido do dono; regra
+   em REGRAS.md). Fina (4px), polegar branco 15%, sem trilho, sem setinhas --
+   toda área que rola nasce com ela, sem precisar lembrar de estilizar. A barra
+   do sistema (trilho branco + setas) apareceu nas janelas do Financeiro
+   justamente porque ninguém tinha lembrado.
+
+   Só `::-webkit-scrollbar` no Chrome/Safari: declarar `scrollbar-width` ou
+   `scrollbar-color` desliga esses seletores no Chrome e devolve a barra do
+   sistema -- e `scrollbar-color` HERDA, então pô-lo no `html` estragaria o
+   app inteiro. O Firefox, que não tem `::-webkit-scrollbar`, recebe o
+   equivalente padrão pelo `@supports`. Quem precisa esconder a barra continua
+   usando `[&::-webkit-scrollbar]:hidden` + `scrollbar-width: none`, que vencem
+   esta regra. */
+*::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+@supports not selector(::-webkit-scrollbar) {
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  }
+}
+
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: #4b4b4b transparent;

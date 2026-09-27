@@ -1,14 +1,15 @@
 # REGRAS-APRENDIZADOS
 
-Memória viva do projeto SaaS Barbearia. Diferente de `docs/skills-log.md` (que só
-registra veredito de skills/repositórios avaliados para instalação), esta pasta guarda
-**conhecimento e decisões** que precisam ser lembrados ao longo do projeto, venham de
-onde vierem (vídeos, artigos, repositórios, conversas, erros cometidos).
+Memória curada **deste produto**. Leia apenas as entradas ligadas à tarefa. O estado
+atual fica em `../CONTEXTO.md`; avaliações de skills e repositórios ficam em
+`../docs/skills-log.md`. Estratégia, conteúdo, aulas e conhecimento geral do Victor
+pertencem ao Atlas Victor, conforme o `AGENTS.md` global — confirme o destino antes
+de gravar.
 
 ## Estrutura
 
-- **`REGRAS.md`** — decisões duráveis e restrições do projeto. Coisas que valem em
-  qualquer momento futuro, até serem explicitamente revistas.
+- **`REGRAS.md`** — decisões do produto, com data. Uma decisão posterior pode substituir
+  uma anterior; confira a regra recente e a implementação antes de aplicá-la.
 - **`APRENDIZADOS.md`** — log de erros (meus, do Claude, ou de abordagens que não
   funcionaram) e o que fazer diferente da próxima vez.
 - **`ANEXO_<TEMA>.md`** — base de conhecimento por assunto (ex.: `ANEXO_ARQUITETURA.md`,
@@ -20,14 +21,8 @@ onde vierem (vídeos, artigos, repositórios, conversas, erros cometidos).
 
 ## Mecanismo (obrigatório antes de adicionar algo novo)
 
-1. **Buscar primeiro**: antes de processar um repositório, vídeo ou conhecimento novo,
-   procurar nesta pasta se já existe algo relacionado (mesmo tema, tecnologia ou
-   decisão).
-2. **Se não há sobreposição**: adicionar o conhecimento novo no `ANEXO_<TEMA>.md`
-   correspondente (criando o arquivo se o tema for novo), com fonte e data.
-3. **Se há sobreposição/conflito**: não decidir sozinho. Apresentar as duas fontes
-   (a antiga registrada aqui + a nova) e abrir debate explícito com o usuário sobre
-   qual fica, qual é complementar, ou se as duas coexistem para contextos diferentes.
-   Registrar a decisão final no anexo correspondente.
-4. Cada entrada deve indicar a **fonte** (link, vídeo, repo) e a **data**, para que
-   decisões antigas possam ser revisitadas com contexto.
+1. Confirmar que o assunto pertence a este produto e buscar sobreposição aqui.
+2. Registrar apenas a conclusão reutilizável no arquivo da camada correta, com fonte
+   e data; não copiar transcrições, histórico de execução ou o mesmo fato entre camadas.
+3. Se duas fontes ou decisões conflitarem, apresentar a diferença ao Victor antes de
+   substituir uma decisão durável. Marcar explicitamente a decisão superada.

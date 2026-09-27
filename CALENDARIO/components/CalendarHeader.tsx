@@ -18,6 +18,7 @@ interface Props {
   onToggleKanban?: () => void;
   owner: OwnerSession;
   onLogout: () => void;
+  onOpenSiteSettings: () => void;
   professionals: Professional[];
   presencialIds: Map<number, number>;
   onMenuOpen?: () => void;
@@ -37,6 +38,7 @@ const CalendarHeader: React.FC<Props> = ({
   onToggleKanban,
   owner,
   onLogout,
+  onOpenSiteSettings,
   professionals,
   presencialIds,
   onMenuOpen,
@@ -150,7 +152,7 @@ const CalendarHeader: React.FC<Props> = ({
 
         {/* Direita: conta. A busca volta quando houver uma ação real ligada a ela. */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          <UserMenu owner={owner} onLogout={onLogout} professionals={professionals} />
+          <UserMenu owner={owner} onLogout={onLogout} professionals={professionals} onOpenSiteSettings={onOpenSiteSettings} />
         </div>
       </div>
 

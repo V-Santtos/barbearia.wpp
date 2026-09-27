@@ -65,6 +65,7 @@ export const DashboardMobile: React.FC<Props> = ({
             value={k.value}
             sub={k.sub}
             destaque={k.destaque}
+            Icone={k.Icone}
           />
         ))}
       </div>

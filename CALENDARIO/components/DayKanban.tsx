@@ -6,13 +6,16 @@ import { Scissors, Sun, Sunset, Moon, ChevronRight, Pencil, Check, UserCheck } f
 import { NeonCheckbox } from './ui/NeonCheckbox';
 import { CASCA_BACKGROUND, CASCA_BORDER } from './ui/vidro';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import FecharAtendimentoModal from './FecharAtendimentoModal';
+import type { ConcluirAtendimentoPayload } from '../services/calendarApi';
 
 interface DayKanbanProps {
   currentDate: Date;
   events: Event[];
   professionals: Professional[];
   onEventClick: (event: Event) => void;
-  onCompleteEvent: (id: number) => void;
+  /** Grava o fechamento. Rejeitar mostra o erro dentro do resumo. */
+  onConcluirAtendimento: (evento: Event, payload: ConcluirAtendimentoPayload) => Promise<void>;
   selectedProfessionals?: Set<number>;
   onProfessionalToggle?: (id: number) => void;
 }
@@ -39,18 +42,22 @@ const DayKanban: React.FC<DayKanbanProps> = ({
   events,
   professionals,
   onEventClick,
-  onCompleteEvent,
+  onConcluirAtendimento,
   selectedProfessionals,
   onProfessionalToggle,
 }) => {
   const isMobile = useMediaQuery('(max-width: 767px)');
   const [completingIds, setCompletingIds] = useState<Set<number>>(() => new Set());
   const [liveMessage, setLiveMessage] = useState('');
+  /* Card cujo "Marcar como feito" abriu o resumo (2026-09-27). */
+  const [emFechamento, setEmFechamento] = useState<Event | null>(null);
   const [activePeriod, setActivePeriod] = useState<Period>(currentPeriod);
   /* Acordeão exclusivo (decidido com o dono): só um chip aberto por vez em
      todo o dia, não por coluna -- é o que garante que nenhuma coluna volta a
      crescer pros ~445px que a Frente 1 existe pra resolver. */
   const [openId, setOpenId] = useState<number | null>(null);
+  /* Exemplos "marcados como feitos": somem só na tela, até recarregar. */
+  const [exemplosFeitos, setExemplosFeitos] = useState<Set<number>>(() => new Set());
   const toggleOpen = (id: number) =>
     setOpenId((prev) => (prev === id ? null : id));
 
@@ -113,8 +120,8 @@ const DayKanban: React.FC<DayKanbanProps> = ({
         servico: 'Corte + barba',
         source: 'bot',
       },
-    ];
-  }, [currentDate, professionals]);
+    ].filter((exemplo) => !exemplosFeitos.has(exemplo.id));
+  }, [currentDate, professionals, exemplosFeitos]);
 
   const eventosDaNoite = filteredEvents.filter((e) => getPeriod(e.startTime) === 'night');
 
@@ -149,11 +156,16 @@ const DayKanban: React.FC<DayKanbanProps> = ({
     if (p !== activePeriod) setActivePeriod(p);
   }, [activePeriod]);
 
-  const handleMarkAsDone = (event: Event) => {
+  /* Só depois do fechamento gravado o card desliza para fora. O real some
+     quando o App troca o status (ele espera a animação); o exemplo não existe
+     no banco e sai só da tela, sem chamar a API. */
+  const concluirFechamento = async (event: Event, payload: ConcluirAtendimentoPayload) => {
+    if (event.id > 0) await onConcluirAtendimento(event, payload);
+    setEmFechamento(null);
     setCompletingIds((prev) => new Set(prev).add(event.id));
-    setLiveMessage(`${event.title} marcado como feito`);
+    setLiveMessage(`${event.source === 'presencial' ? 'Presencial' : event.title} marcado como feito`);
     setTimeout(() => {
-      onCompleteEvent(event.id);
+      if (event.id < 0) setExemplosFeitos((prev) => new Set(prev).add(event.id));
       setCompletingIds((prev) => {
         const next = new Set(prev);
         next.delete(event.id);
@@ -168,12 +180,10 @@ const DayKanban: React.FC<DayKanbanProps> = ({
     const profColor = professional?.color || '#5650f9';
     const isCompleting = completingIds.has(event.id);
     const isPresencial = event.source === 'presencial';
-    /* Card de exemplo (id negativo): desenha igual, mas não abre modal e não
-       conclui -- não existe no banco, então qualquer uma das duas ações
-       falharia contra a API. Continua podendo abrir/fechar (é só estado
-       local), só perde as duas ações de dentro. */
+    /* Card de exemplo (id negativo): ações iguais às de um card real, para o
+       dono testar o fluxo (2026-09-27). O lápis abre o modal, que não grava;
+       "Marcar como feito" tira o card só da tela. Nada chega à API. */
     const isPlaceholder = event.id < 0;
-    const inerte = isPresencial || isPlaceholder;
     const isOpen = openId === event.id;
     /* Presencial é um BLOQUEIO, não um cliente: nasce da tesoura, quando o
        barbeiro avisa que está atendendo alguém sem hora marcada. Por isso ele
@@ -302,7 +312,7 @@ const DayKanban: React.FC<DayKanbanProps> = ({
                       passou a abrir/fechar em vez de abrir o EventModal
                       direto (Frente 1, decidido com o dono). Mesmo gate de
                       antes: presencial e placeholder continuam sem edição. */}
-                  {!inerte && (
+                  {!isPresencial && (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -318,12 +328,11 @@ const DayKanban: React.FC<DayKanbanProps> = ({
                     </button>
                   )}
 
-                  {!isPlaceholder && (
-                    <button
+                  <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleMarkAsDone(event);
+                        setEmFechamento(event);
                       }}
                       disabled={isCompleting}
                       /* Ação operacional, não CTA global: largura pelo conteúdo,
@@ -339,7 +348,6 @@ const DayKanban: React.FC<DayKanbanProps> = ({
                       <Check aria-hidden="true" size={15} strokeWidth={2.25} style={{ color: profColor }} />
                       {isCompleting ? 'Marcando...' : 'Marcar como feito'}
                     </button>
-                  )}
                 </div>
               </div>
             </motion.div>
@@ -420,6 +428,13 @@ const DayKanban: React.FC<DayKanbanProps> = ({
                  overflow-hidden px-4 pt-4 pb-0 md:px-5 md:pt-5 md:pb-5"
     >
       <div aria-live="polite" aria-atomic="true" className="sr-only">{liveMessage}</div>
+
+      <FecharAtendimentoModal
+        evento={emFechamento}
+        profissional={professionals.find((p) => p.id === emFechamento?.professionalId)}
+        onFechar={() => setEmFechamento(null)}
+        onConcluir={concluirFechamento}
+      />
 
       {/* Barra de filtros */}
       <div className="flex items-center gap-5 mb-4 flex-shrink-0">

@@ -1,7 +1,35 @@
 # Skills Log — SaaS Barbearia
 
-Registro de toda skill/repositório/conhecimento avaliado para entrar em `.claude/skills/`.
-Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbearia-design.md`.
+Histórico de avaliações. As entradas antigas registram decisões da época; o inventário
+abaixo define o que está instalado agora.
+
+## [2026-09-26] Limpeza das skills locais
+
+Pedido do Victor: manter apenas habilidades usadas diretamente na casca do agendamento
+e no painel. Permanecem em `.agents/skills/`:
+
+- `frontend-design` — direção visual;
+- `mobile-ux-patterns` — PWA e interação no celular;
+- `web-design-guidelines` — revisão de acessibilidade e interface.
+
+Permanece em `.claude/skills/` somente `ponytail-debt`, porque o projeto usa
+marcações `ponytail:` para revisar simplificações deliberadas.
+
+Saíram do carregamento do projeto: `impeccable` (sobreposição com as skills visuais,
+153 arquivos), `mobile-app-ux-auditor` (foco nativo e sobreposição no PWA),
+`improve-codebase-architecture` e `codebase-design` (auditoria ampla fora da etapa),
+`supabase` e `supabase-postgres-best-practices` (backend e banco conduzidos pelo dev),
+`ponytail-audit` (auditoria genérica), `skill-creator` (capacidade já disponível fora
+deste repo) e a skill não commitada `deploy-to-vercel` (deploy fora da etapa).
+
+Os arquivos retirados estão guardados fora do repositório em
+`C:\Users\victo\Desktop\Referencias\skills-retiradas-saas`; as cópias versionadas
+também podem ser recuperadas pelo Git. `skills-lock.json` foi retirado por não restar
+skill instalada por esse gerenciador. As junctions antigas de `.claude/skills/`
+apontavam para um caminho anterior do projeto e também foram retiradas.
+
+Processo histórico descrito em
+`docs/superpowers/specs/2026-07-29-ambiente-skills-barbearia-design.md`.
 
 ## [2026-09-16] UI/UX mobile para o calendário
 
@@ -68,8 +96,10 @@ Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbeari
 - Veredito: ✂️ Adotado parcial — só **vocabulário de ícone** e **gramática de layout**.
   Zero código, zero dependência, nada instalado.
 - Motivo: trazido pelo dono para adiantar o painel (dashboard/analytics + financeiro).
-  Clonado fora do repo, em `%TEMP%/claude/eval/shadcn-admin` (caminho curto de
-  propósito: no scratchpad da sessão o checkout falhou com `Filename too long`).
+  A cópia original ficava em `%TEMP%/claude/eval/shadcn-admin` e perdeu os arquivos
+  de origem. Em 2026-09-26, Victor pediu para guardar a referência fora do produto;
+  clone íntegro recuperado em `C:\Users\victo\Desktop\Referencias\dashboard-shadcn-admin`
+  (commit `4728475584809adebe7775b05ab2ff4eb342b276`).
   Next 16 + Turbopack + React 19 + Tailwind v4 + shadcn; `npm ci` em 35s, sobe em
   3,5s, sem `.env` — é template estático com dado mock.
   - **O que NÃO dá para aproveitar, e é a maior parte:** a stack é incompatível.
@@ -92,8 +122,8 @@ Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbeari
   - **O que foi deliberadamente NÃO copiado:** o conjunto de ícones inteiro. Ele é
     retilíneo (`MessageSquare`, `LayoutDashboard`, `Banknote`) e este app é
     pílula/círculo. Ver a regra do conjunto em `REGRAS.md` (2026-09-08).
-- Ação: nada instalado no repo. O clone é descartável — some com o `%TEMP%` e
-  reclonar custa 40s. Se for revisitado, é como referência visual, não como base.
+- Ação: nada instalado no repo do produto. A cópia estável acima é apenas
+  referência visual; não importar sua stack ou tratá-la como base do sistema.
 
 ## [2026-08-04] callstack/liquid-glass
 - Fonte: https://github.com/callstack/liquid-glass

@@ -11,9 +11,16 @@
  * De propósito: mock silencioso que responde qualquer coisa esconde endpoint
  * novo em vez de mostrar que ele não foi coberto.
  */
-import type { BlockPeriod, DiaBloqueado, WhatsAppMessage } from "../calendarApi";
+import type { BlockPeriod, BookingSiteSettings, DiaBloqueado, WhatsAppMessage } from "../calendarApi";
 import { montarResumoDoMundo } from "./resumo";
 import { variantesDeBusca } from "../../lib/telefone";
+import {
+  calcularTotais,
+  juntarServicos,
+  validarFechamento,
+  type ClientePresencial,
+  type ServicoDoAtendimento,
+} from "../../lib/fechamento";
 import {
   gradeDoDia,
   hhmm,
@@ -25,6 +32,26 @@ import {
 
 /** Sentinela: "esta rota não é minha". `undefined` seria resposta válida. */
 export const SEM_MOCK = Symbol("sem-mock");
+
+const siteMock: BookingSiteSettings = {
+  home: { heroLine1: "Bem-vindo à", heroName: "Barbearia", ctaLabel: "Agendar" },
+  categories: {
+    filtersEnabled: true,
+    items: [
+      { id: "cabelo", label: "Cabelo", active: true },
+      { id: "barba", label: "Barba", active: true },
+      { id: "combos", label: "Combos", active: true },
+      { id: "outros", label: "Outros", active: true },
+    ],
+  },
+  services: [
+    { id: 1, slug: "corte", category: "cabelo", name: "Corte", desc: "Corte e acabamento.", price: "35" },
+    { id: 2, slug: "corte-barba", category: "combos", name: "Corte + Barba", desc: "Corte e barba completos.", price: "55" },
+    { id: 3, slug: "barba", category: "barba", name: "Barba", desc: "Modelagem e acabamento.", price: "25" },
+    { id: 4, slug: "pezinho", category: "cabelo", name: "Pezinho", desc: "Acabamento do contorno.", price: "15" },
+    { id: 5, slug: "sobrancelha", category: "outros", name: "Sobrancelha", desc: "Alinhamento natural.", price: "15" },
+  ],
+};
 
 const OCUPA = (status: string) => status !== "cancelado";
 
@@ -107,6 +134,21 @@ export function responderMock(
   const metodo = String(init.method ?? "GET").toUpperCase();
   const { seg, q } = partes(caminho);
   const dados = corpo(init);
+
+  if (seg[0] === "configuracao" && seg[1] === "home") {
+    if (metodo === "GET") return { ...siteMock.home };
+    if (metodo === "PUT") {
+      siteMock.home = { ...dados };
+      return siteMock.home;
+    }
+  }
+  if (seg[0] === "categorias-servicos") {
+    if (metodo === "GET") return structuredClone(siteMock.categories);
+    if (metodo === "PUT") {
+      siteMock.categories = structuredClone(dados);
+      return siteMock.categories;
+    }
+  }
 
   // ── profissionais ────────────────────────────────────────────────────────
   if (seg[0] === "profissionais") {
@@ -198,14 +240,12 @@ export function responderMock(
   // ── servicos ─────────────────────────────────────────────────────────────
   // `price` sai como string porque no banco `servicos.preco` é `text` — ver
   // `ANEXO_BANCO`. Devolver número aqui esconderia a migração que falta.
-  if (seg[0] === "servicos" && seg.length === 1 && metodo === "GET") {
-    return [
-      { id: 1, slug: "corte", category: "Cabelo", name: "Corte", price: "35" },
-      { id: 2, slug: "corte-barba", category: "Combo", name: "Corte + Barba", price: "55" },
-      { id: 3, slug: "barba", category: "Barba", name: "Barba", price: "25" },
-      { id: 4, slug: "pezinho", category: "Cabelo", name: "Pezinho", price: "15" },
-      { id: 5, slug: "sobrancelha", category: "Estética", name: "Sobrancelha", price: "15" },
-    ];
+  if (seg[0] === "servicos" && seg.length === 1) {
+    if (metodo === "GET") return structuredClone(siteMock.services);
+    if (metodo === "PUT") {
+      siteMock.services = structuredClone(dados);
+      return siteMock.services;
+    }
   }
 
   // ── clientes ─────────────────────────────────────────────────────────────
@@ -306,6 +346,37 @@ export function responderMock(
 
     const id = Number(seg[1]);
     const i = mundo.agendamentos.findIndex((a) => a.id === id);
+
+    if (seg[2] === "concluir" && metodo === "POST") {
+      if (i < 0) throw new Error("Agendamento não encontrado.");
+      const servicos: ServicoDoAtendimento[] = Array.isArray(dados.servicos) ? dados.servicos : [];
+      const ajuste = dados.ajuste ?? null;
+      const cliente: ClientePresencial | null = dados.cliente ?? null;
+      const erros = validarFechamento({ servicos, ajuste, cliente });
+      const primeiro = Object.values(erros)[0];
+      if (primeiro) throw new Error(primeiro);
+
+      const atual = mundo.agendamentos[i];
+      const agora = new Date().toISOString();
+      const nomeCliente = cliente?.nome.trim();
+      mundo.agendamentos[i] = {
+        ...atual,
+        status: "concluido",
+        servico: juntarServicos(servicos.map((item) => item.nome)),
+        ...(atual.source === "presencial" && {
+          cliente: nomeCliente || "Cliente presencial",
+          telefone: String(cliente?.telefone ?? "").replace(/\D/g, ""),
+        }),
+        fechamento: {
+          servicos,
+          ajuste,
+          total: calcularTotais(servicos, ajuste).total,
+          concluidoEm: agora,
+        },
+        updated_at: agora,
+      };
+      return { event: linhaCrua(mundo.agendamentos[i]) };
+    }
 
     if (seg[2] === "status" && metodo === "PATCH") {
       if (i >= 0) {

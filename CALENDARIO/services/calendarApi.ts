@@ -1,4 +1,5 @@
 import type { Professional, Event, CreateEventRequest } from "../types";
+import type { AjusteDeValor, ClientePresencial, ServicoDoAtendimento } from "../lib/fechamento";
 
 // Sem `VITE_CALENDAR_API_URL` (o caso do deploy), a API e a funcao servida pelo
 // mesmo dominio, em `/api` — mesma origem, sem CORS no meio. No local a variavel
@@ -115,6 +116,36 @@ export interface ConfiguredService {
   name: string;
   desc?: string;
   price?: string;
+}
+
+export interface SiteCategory {
+  id: string;
+  label: string;
+  active: boolean;
+}
+
+export interface BookingSiteSettings {
+  home: { heroLine1: string; heroName: string; ctaLabel: string };
+  categories: { filtersEnabled: boolean; items: SiteCategory[] };
+  services: ConfiguredService[];
+}
+
+/** Contrato do site público. O backend do dev ainda precisa expor as escritas. */
+export async function getBookingSiteSettings(): Promise<BookingSiteSettings> {
+  const [home, categories, services] = await Promise.all([
+    api<BookingSiteSettings["home"]>("configuracao/home"),
+    api<BookingSiteSettings["categories"]>("categorias-servicos"),
+    getConfiguredServices(),
+  ]);
+  return { home, categories, services };
+}
+
+export async function saveBookingSiteSettings(settings: BookingSiteSettings): Promise<void> {
+  // Cada recurso tem endpoint próprio. Salvar em sequência permite apontar
+  // exatamente qual etapa falhou; atomicidade depende do backend do dev.
+  await api("configuracao/home", { method: "PUT", body: JSON.stringify(settings.home) });
+  await api("categorias-servicos", { method: "PUT", body: JSON.stringify(settings.categories) });
+  await api("servicos", { method: "PUT", body: JSON.stringify(settings.services) });
 }
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -238,6 +269,7 @@ function toEvent(raw: any): Event {
     hora_marcada: raw.hora_marcada,
     status: raw.status,
     source: raw.source,
+    fechamento: raw.fechamento ?? null,
     created_at: raw.created_at,
     updated_at: raw.updated_at,
   };
@@ -423,6 +455,30 @@ export async function updateEventStatus(
     method: "PATCH",
     body: JSON.stringify({ status }),
   });
+}
+
+export interface ConcluirAtendimentoPayload {
+  servicos: ServicoDoAtendimento[];
+  ajuste: AjusteDeValor | null;
+  /** Só no presencial. Sem nome, o atendimento fica como "Cliente presencial". */
+  cliente?: ClientePresencial | null;
+}
+
+/**
+ * Conclui gravando o fechamento (spec 2026-09-27-fechar-atendimento-design).
+ * Substitui `updateEventStatus(id, "concluido")` no "Marcar como feito". O
+ * servidor recalcula o total a partir dos itens e rejeita desconto maior que o
+ * subtotal.
+ */
+export async function concluirAtendimento(
+  id: number,
+  payload: ConcluirAtendimentoPayload,
+): Promise<Event> {
+  const data = await api<{ event: any }>(`agendamentos/${id}/concluir`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return toEvent(data.event);
 }
 
 export async function deleteEvent(id: number): Promise<void> {

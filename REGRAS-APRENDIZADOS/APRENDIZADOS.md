@@ -46,6 +46,17 @@ Formato de cada entrada:
 - Correção: <o que fazer diferente da próxima vez>
 ```
 
+## [2026-09-27] Validar o modal no desktop antes de concluir a rodada responsiva
+
+- O que aconteceu: refinei o modal de Configurações olhando primeiro a janela estreita.
+  Os campos e abas ficaram coerentes ali, mas no desktop a lateral manteve um bloco de
+  cor que começava abaixo do cabeçalho e terminava antes do rodapé. A navegação também
+  começava 16 px acima do título do conteúdo. Victor apontou a quebra no print.
+- Correção: em modais que mudam de navegação horizontal para lateral, conferir **as
+  duas composições renderizadas** antes de anunciar a entrega. Comparar fundo da
+  lateral com cabeçalho e rodapé e medir o topo do primeiro item contra o título do
+  conteúdo. Build e teste de tipos não substituem essa verificação visual.
+
 ## [2026-09-17] `max()` com área segura devolve zero de folga
 
 - O que aconteceu: todo rodapé ancorado do celular usava

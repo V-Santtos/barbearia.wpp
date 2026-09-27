@@ -15,6 +15,8 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { buscarClientePorTelefone, getAgendaConfig, getAvailableSlots, getConfiguredServices, getPrimeiroDiaLivre, type AgendaConfig, type ConfiguredService } from "../services/calendarApi";
 import BottomSheet from "./ui/BottomSheet";
+import { SeletorDeServicos } from "./ui/SeletorDeServicos";
+import { juntarServicos, separarServicos } from "../lib/fechamento";
 import { CAMPO, FUNDO_CAMPO_MODAL } from "./ui/campo";
 import { paraNacional } from "../lib/telefone";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -534,16 +536,20 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
         return;
       }
 
-      if (!service) {
-        setError("Selecione o serviço.");
+      // Vários serviços (2026-09-27): o texto guarda os nomes separados por
+      // vírgula. Nome que já estava gravado pode continuar mesmo fora da tabela.
+      const escolhidos = separarServicos(service);
+      if (escolhidos.length === 0) {
+        setError("Selecione pelo menos um serviço.");
         return;
       }
-      const servicoGravado = eventToEdit
-        ? getLineValue(eventToEdit.description || "", SERVICE_LINE_RE)
-        : "";
+      const gravados = new Set(
+        separarServicos(eventToEdit ? getLineValue(eventToEdit.description || "", SERVICE_LINE_RE) : ""),
+      );
       if (
-        service !== servicoGravado &&
-        !serviceOptions.some((option) => option.name === service)
+        escolhidos.some(
+          (nome) => !gravados.has(nome) && !serviceOptions.some((option) => option.name === nome),
+        )
       ) {
         setError("Selecione um serviço do catálogo.");
         return;
@@ -798,7 +804,7 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                       className={"flex w-full items-center justify-between gap-2 " + fieldClass}
                     >
                       <span className={service ? "truncate" : "truncate text-white/40"}>
-                        {service || "Selecionar serviço"}
+                        {service || "Selecionar serviços"}
                       </span>
                       <ChevronDown size={16} className="flex-shrink-0" />
                     </button>
@@ -807,38 +813,28 @@ const EventModal = forwardRef<EventModalHandles, EventModalProps>(
                   <BottomSheet
                     open={isServiceOpen}
                     onClose={() => setIsServiceOpen(false)}
-                    title="Serviço"
+                    title="Serviços"
                     anchor={ancoraServico}
                   >
-                    {serviceOptions.map((option) => (
+                    {/* Vários serviços (2026-09-27): a folha fica aberta enquanto
+                        ele marca; "Pronto" fecha. */}
+                    <SeletorDeServicos
+                      opcoes={serviceOptions}
+                      selecionados={separarServicos(service)}
+                      onChange={(nomes) => {
+                        setService(juntarServicos(nomes));
+                        if (error) setError("");
+                      }}
+                    />
+                    <div className="px-1 pt-1">
                       <button
-                        key={option.slug ?? option.id ?? option.name}
                         type="button"
-                        onClick={() => {
-                          setService(option.name);
-                          setIsServiceOpen(false);
-                          if (error) setError("");
-                        }}
-                        className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3.5 text-left text-[15px] transition hover:bg-white/10 ${
-                          service === option.name ? "bg-white/10" : ""
-                        }`}
+                        onClick={() => setIsServiceOpen(false)}
+                        className="h-11 w-full rounded-xl bg-white/10 text-[14px] font-semibold text-white transition hover:bg-white/15"
                       >
-                        <span className="min-w-0 truncate">{option.name}</span>
-                        {option.price != null && option.price !== "" && (
-                          <span className="flex-shrink-0 text-[13px] tabular-nums text-white/45">
-                            {/* O catálogo guarda o número puro (35); texto que
-                                já vier formatado passa como está. */}
-                            {Number.isFinite(Number(option.price))
-                              ? Number(option.price).toLocaleString("pt-BR", {
-                                  style: "currency",
-                                  currency: "BRL",
-                                  maximumFractionDigits: 0,
-                                })
-                              : option.price}
-                          </span>
-                        )}
+                        Pronto
                       </button>
-                    ))}
+                    </div>
                   </BottomSheet>
                 </div>
 

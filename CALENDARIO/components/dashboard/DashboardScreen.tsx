@@ -48,6 +48,8 @@ interface Props {
    * dois lugares para consertar o mesmo número errado.
    */
   variante?: "modal" | "secao";
+  /** Substitui o `<h1>` — no celular é o seletor Dashboard/Financeiro. */
+  titulo?: React.ReactNode;
 }
 
 function useResumo(ativo: boolean) {
@@ -98,6 +100,7 @@ export const DashboardScreen: React.FC<Props> = ({
   isMobile,
   onFechar,
   variante = "modal",
+  titulo,
 }) => {
   const naSecao = variante === "secao";
   const [filtro, setFiltro] = React.useState<FiltroProf>("all");
@@ -143,7 +146,7 @@ export const DashboardScreen: React.FC<Props> = ({
   const cabecalho = (
     <div className="db-pagehead">
       <div className="db-pagehead__left">
-        <h1 className="db-pagehead__title">Dashboard</h1>
+        {titulo ?? <h1 className="db-pagehead__title">Dashboard</h1>}
         {/* `db-pagehead__sub` é `nowrap`, e no celular a linha inteira não cabe:
             no primeiro teste em 375px ela cortava no meio de "atualizado".
             "Resumo do calendário" é a parte que o título já implica, então é ela
