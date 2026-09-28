@@ -8,21 +8,26 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "node server.js",
-    "icones": "node ferramentas/icones.mjs"
+    "icones": "node ferramentas/icones.mjs",
+    "verificar": "node --env-file=.env ferramentas/verificar-isolamento.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "@fastify/cors": "^10.0.1",
+    "@fontsource/aclonica": "^5.3.0",
     "@supabase/supabase-js": "^2.116.0",
+    "date-fns": "^4.4.0",
     "dotenv": "^16.4.5",
     "fastify": "^5.8.5",
     "framer-motion": "^12.38.0",
     "jose": "^6.2.12",
     "lucide-react": "0.552.0",
     "pg": "^8.13.1",
+    "radix-ui": "^1.6.7",
     "react": "^19.2.0",
+    "react-day-picker": "^10.0.1",
     "react-dom": "^19.2.0",
     "three": "0.160.0"
   },

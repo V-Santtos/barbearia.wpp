@@ -40,8 +40,17 @@
 .relo__hora--ancora { fill: var(--text-strong); font-weight: 650; }
 .relo__hora-palavra { fill: var(--text-faint); font-size: 9px; font-weight: 500; }
 
-/* A costura: traco mais forte exatamente no meio do vao entre fechamento e
-   abertura -- e o corte que diz "aqui a volta emenda", nao meio-dia. */
+/* Abertura e fechamento encostam na mesma emenda, agora na lateral esquerda,
+   separados verticalmente. Os dois terminam antes do anel e crescem para fora;
+   assim não cobrem os arcos nem imprimem um sobre o outro.
+
+   Depende de vir DEPOIS de `.relo__hora` no arquivo -- mesma especificidade,
+   quem ganha e a ultima. */
+.relo__hora--abre  { text-anchor: end; }
+.relo__hora--fecha { text-anchor: end; }
+
+/* A costura fica na lateral esquerda. O topo volta a significar 12h, como no
+   repertorio visual de um relógio comum. */
 .relo__costura { stroke: rgba(255,255,255,0.55); stroke-width: 2; stroke-linecap: round; }
 
 /* O ponteiro do agora: a unica linha branca cheia do desenho. Fora do

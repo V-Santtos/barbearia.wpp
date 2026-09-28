@@ -1,6 +1,6 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Menu, Search } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { ChevronLeft, ChevronRight, Menu } from 'lucide-react';
 import type { CalendarView, Professional } from '../types';
 import type { OwnerSession } from './LoginScreen';
 import UserMenu from './UserMenu';
@@ -18,11 +18,11 @@ interface Props {
   onToggleKanban?: () => void;
   owner: OwnerSession;
   onLogout: () => void;
+  onOpenSiteSettings: () => void;
   professionals: Professional[];
   presencialIds: Map<number, number>;
   onMenuOpen?: () => void;
   onNavigateToDate?: (date: Date) => void;
-  onOpenDashboard?: () => void;
 }
 
 type HeaderView = 'day' | 'kanban' | 'week' | 'month';
@@ -38,12 +38,13 @@ const CalendarHeader: React.FC<Props> = ({
   onToggleKanban,
   owner,
   onLogout,
+  onOpenSiteSettings,
   professionals,
   presencialIds,
   onMenuOpen,
   onNavigateToDate,
-  onOpenDashboard,
 }) => {
+  const prefersReducedMotion = useReducedMotion();
   const getTitle = () => {
     const monthName = currentDate.toLocaleString('pt-BR', { month: 'long' });
     const year = currentDate.getFullYear();
@@ -120,14 +121,18 @@ const CalendarHeader: React.FC<Props> = ({
 
       {/* ── MOBILE LAYOUT ── */}
       <div
-        className="md:hidden flex items-center justify-between px-4 pb-3"
-        style={{ paddingTop: 'max(44px, env(safe-area-inset-top))' }}
+        className="md:hidden flex items-center justify-between px-4 pb-1"
+        /* Um respiro só para as três visões: a área segura do aparelho, com um
+           mínimo discreto no navegador. Nasceu no Mês, onde cada pixel do topo
+           vira altura de célula, e vale igual em Dia e Semana — a faixa é a
+           mesma peça, não pode mudar de altura conforme a visão. */
+        style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}
       >
         {/* Esquerda: hambúrguer + mês atual */}
         <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={onMenuOpen}
-            className="p-2.5 -ml-1.5 rounded-xl hover:bg-white/[0.08] transition-colors flex-shrink-0"
+            className="p-2.5 -ml-2.5 rounded-xl hover:bg-white/[0.08] transition-colors flex-shrink-0"
             aria-label="Abrir menu"
           >
             <Menu size={24} className="text-white/80" />
@@ -145,15 +150,9 @@ const CalendarHeader: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Direita: lupa + avatar */}
+        {/* Direita: conta. A busca volta quando houver uma ação real ligada a ela. */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          <button
-            className="p-2 rounded-xl hover:bg-white/[0.08] transition-colors"
-            aria-label="Pesquisar"
-          >
-            <Search size={20} className="text-white/55" />
-          </button>
-          <UserMenu owner={owner} onLogout={onLogout} professionals={professionals} onOpenDashboard={onOpenDashboard} />
+          <UserMenu owner={owner} onLogout={onLogout} professionals={professionals} onOpenSiteSettings={onOpenSiteSettings} />
         </div>
       </div>
 
@@ -162,10 +161,10 @@ const CalendarHeader: React.FC<Props> = ({
         {presencialIds.size > 0 && (
           <motion.div
             className="md:hidden flex flex-wrap gap-2 px-4 pb-2"
-            initial={{ opacity: 0, height: 0 }}
+            initial={prefersReducedMotion ? false : { opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
           >
             {Array.from(presencialIds.keys()).map((profId) => {
               const prof = professionals.find((p) => p.id === profId);
@@ -174,23 +173,14 @@ const CalendarHeader: React.FC<Props> = ({
               return (
                 <motion.div
                   key={profId}
-                  className="flex items-center gap-2 rounded-full px-3 py-[5px]"
-                  style={{
-                    background: `${prof.color}08`,
-                    border: `1px solid ${prof.color}70`,
-                  }}
-                  animate={{
-                    boxShadow: [
-                      `0 0 0 2px ${prof.color}12, 0 0 8px ${prof.color}38`,
-                      `0 0 0 2px ${prof.color}28, 0 0 18px ${prof.color}60`,
-                      `0 0 0 2px ${prof.color}12, 0 0 8px ${prof.color}38`,
-                    ],
-                  }}
-                  transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                  className="flex items-center gap-2 py-[5px]"
+                  /* Sem pílula, contorno nem halo (2026-09-26, a pedido do dono): gritava
+                     e tinha cara de interface gerada por IA. O que continua vivo é só a
+                     bolinha. */
                 >
                   <span className="relative flex h-[6px] w-[6px] flex-shrink-0">
                     <span
-                      className="absolute inline-flex h-full w-full animate-ping rounded-full"
+                      className={`absolute inline-flex h-full w-full rounded-full ${prefersReducedMotion ? '' : 'animate-ping'}`}
                       style={{ backgroundColor: prof.color, opacity: 0.65 }}
                     />
                     <span
@@ -198,10 +188,10 @@ const CalendarHeader: React.FC<Props> = ({
                       style={{ backgroundColor: prof.color }}
                     />
                   </span>
-                  <span className="text-[11px] font-semibold tracking-[0.04em]" style={{ color: prof.color }}>
+                  <span className="text-[12px] font-semibold tracking-[0.02em]" style={{ color: prof.color }}>
                     {firstName}
                   </span>
-                  <span className="text-[11px] font-medium tracking-[0.04em] text-white/55">
+                  <span className="text-[12px] font-medium tracking-[0.02em] text-white/55">
                     · Em atendimento
                   </span>
                 </motion.div>
@@ -217,7 +207,10 @@ const CalendarHeader: React.FC<Props> = ({
       )}
 
       {/* ── DESKTOP LAYOUT ── */}
-      <div className="hidden md:flex items-center justify-between px-6 pt-11 pb-4 md:px-8 lg:px-10">
+      {/* O padding lateral é o mesmo da `ControleDaColuna` de propósito: o "Mês"
+          desta linha e o avatar da barra de cima ficam na mesma vertical.
+          Mexeu aqui, mexe lá. */}
+      <div className="hidden md:flex items-center justify-between px-6 pt-5 pb-4 md:px-8 lg:px-10">
         <div className="flex items-center gap-3">
           <button
             onClick={onToday}
@@ -254,29 +247,20 @@ const CalendarHeader: React.FC<Props> = ({
                 <motion.div
                   key={profId}
                   className="ml-10"
-                  initial={{ opacity: 0, scale: 0.88 }}
+                  initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.88 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.88 }}
-                  transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                  exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.88 }}
+                  transition={{ duration: prefersReducedMotion ? 0 : 0.28, ease: [0.16, 1, 0.3, 1] }}
                 >
                   <motion.div
-                    className="flex items-center gap-2 rounded-full px-4 py-[6px]"
-                    style={{
-                      background: `${prof.color}08`,
-                      border: `1px solid ${prof.color}70`,
-                    }}
-                    animate={{
-                      boxShadow: [
-                        `0 0 0 3px ${prof.color}12, 0 0 10px ${prof.color}38, 0 0 24px ${prof.color}15`,
-                        `0 0 0 3px ${prof.color}28, 0 0 22px ${prof.color}68, 0 0 46px ${prof.color}30`,
-                        `0 0 0 3px ${prof.color}12, 0 0 10px ${prof.color}38, 0 0 24px ${prof.color}15`,
-                      ],
-                    }}
-                    transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                    className="flex items-center gap-2 py-[6px]"
+                    /* Sem pílula, contorno nem halo (2026-09-26, a pedido do dono): gritava
+                       e tinha cara de interface gerada por IA. O que continua vivo é só a
+                       bolinha. */
                   >
                     <span className="relative flex h-[7px] w-[7px] flex-shrink-0">
                       <span
-                        className="absolute inline-flex h-full w-full animate-ping rounded-full"
+                        className={`absolute inline-flex h-full w-full rounded-full ${prefersReducedMotion ? '' : 'animate-ping'}`}
                         style={{ backgroundColor: prof.color, opacity: 0.65 }}
                       />
                       <span
@@ -325,8 +309,8 @@ const CalendarHeader: React.FC<Props> = ({
                         layoutId="view-indicator"
                         className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full"
                         style={{
-                          background: '#6B3EFF',
-                          boxShadow: '0 0 6px rgba(107,62,255,0.9), 0 0 14px rgba(107,62,255,0.5)',
+                          background: '#5650f9',
+                          boxShadow: '0 0 6px rgba(86,80,249,0.9), 0 0 14px rgba(86,80,249,0.5)',
                         }}
                         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
                       />
@@ -356,8 +340,8 @@ const CalendarHeader: React.FC<Props> = ({
                       layoutId="view-indicator"
                       className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full"
                       style={{
-                        background: '#6B3EFF',
-                        boxShadow: '0 0 6px rgba(107,62,255,0.9), 0 0 14px rgba(107,62,255,0.5)',
+                        background: '#5650f9',
+                        boxShadow: '0 0 6px rgba(86,80,249,0.9), 0 0 14px rgba(86,80,249,0.5)',
                       }}
                       transition={{ type: 'spring', stiffness: 380, damping: 32 }}
                     />
@@ -366,8 +350,9 @@ const CalendarHeader: React.FC<Props> = ({
               </React.Fragment>
             ))}
           </div>
-
-          <UserMenu owner={owner} onLogout={onLogout} professionals={professionals} onOpenDashboard={onOpenDashboard} />
+          {/* O avatar saiu daqui em 2026-09-08: subiu para a `ControleDaColuna`,
+              onde ele acompanha todas as seções. No celular ele continua no
+              bloco de cima desta mesma tela. */}
         </div>
       </div>
     </header>

@@ -10,11 +10,26 @@
   --color-panel: #141314;
   --color-panel-soft: #202124;
   --color-muted: #9ca3af;
-  --color-border: rgba(168, 85, 247, 0.25);
-  --color-ring: #a78bfa;
-  --color-primary: #6a3dff;
+  --color-border: rgba(86, 80, 249, 0.25);
+  --color-ring: #9a96fc;
+  --color-primary: #5650f9;
   --color-primary-foreground: #ffffff;
-  --color-primary-soft: #a78bfa;
+  --color-primary-soft: #9a96fc;
+
+  /* Roxo do sistema — mesma escala, mesmos nomes e valores do site público de
+     agendamento (`SITE-BARB-PROF-UNICO/styles.css`, validado em 2026-09-15).
+     É um sistema só: mudar aqui é mudar lá. Regra de uso: roxo só onde a
+     pessoa age; informação fica em branco. `primary` e `primary-soft` apontam
+     para esta mesma escala (base e 300); os roxos das cores de profissional são
+     dado escolhido pelo barbeiro e ficam fora dela. */
+  --color-accent: #5650f9;
+  --color-accent-hover: #4842e5;
+  --color-accent-pressed: #3d38cc;
+  --color-accent-400: #7772fb;
+  --color-accent-300: #9a96fc;
+  --color-accent-200: #c1befd;
+  --color-accent-100: #e5e4ff;
+  --color-accent-50: #f4f3ff;
 
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
@@ -22,7 +37,7 @@
   --radius-xl: 1rem;
   --radius-2xl: 1.5rem;
 
-  --shadow-calendar-glow: 0 0 24px rgba(106, 61, 255, 0.22);
+  --shadow-calendar-glow: 0 0 24px rgba(86, 80, 249, 0.22);
   --animate-soft-enter: soft-enter 0.7s cubic-bezier(0.25, 0.1, 0.25, 1);
 
   @keyframes soft-enter {
@@ -35,6 +50,33 @@
       transform: translateY(0) scale(1);
     }
   }
+}
+
+/**
+ * Tema claro: só os tokens de cor, redefinidos no `<html data-tema="claro">`.
+ *
+ * Funciona porque `bg-background` e companhia compilam para `var(--color-...)`
+ * — trocar a variável troca tudo que passa por ela, sem uma segunda folha de
+ * estilo. A marca (`--color-primary`) não muda: ela é a identidade, não o fundo.
+ *
+ * ponytail: cobre só o que usa token. Cores escritas à mão pelo app
+ * (`bg-[#191919]`, `text-white/55`, os CSS do dashboard) continuam escuras e
+ * precisam de uma passada própria — gatilho de upgrade: o dono aprovar a
+ * paleta clara e pedir a varredura.
+ */
+[data-tema="claro"] {
+  color-scheme: light;
+
+  --color-background: #f5f5f7;
+  --color-foreground: #17171a;
+  --color-surface: rgba(255, 255, 255, 0.72);
+  --color-surface-strong: rgba(255, 255, 255, 0.94);
+  --color-panel: #ffffff;
+  --color-panel-soft: #f1f1f4;
+  --color-muted: #6b7280;
+  --color-border: rgba(86, 80, 249, 0.18);
+  --color-ring: #5650f9;
+  --color-primary-soft: #7772fb;
 }
 
 @keyframes ring-pulse {
@@ -116,6 +158,22 @@ body {
   height: 100%;
 }
 
+/* Um traço só para todo ícone Lucide do app (2026-09-26, a pedido do dono).
+   O traço do Lucide é proporcional ao tamanho: `strokeWidth={2}` num ícone de
+   22px (dock) sai com ~1,8px na tela, e num de 16px (menu do avatar) com ~1,3px
+   -- o mesmo desenho parecia de outra família em cada lugar. Com
+   `non-scaling-stroke` a espessura passa a ser medida em pixel de tela, então
+   1,5px vale igual em qualquer tamanho. Vence de propósito qualquer
+   `strokeWidth` passado no componente (CSS ganha de atributo SVG): quem marca
+   ativo é cor e fundo, não traço. SVG desenhado à mão não tem a classe
+   `.lucide` e fica de fora. */
+svg.lucide {
+  stroke-width: 1.5px;
+}
+svg.lucide * {
+  vector-effect: non-scaling-stroke;
+}
+
 button,
 input,
 textarea {
@@ -128,6 +186,46 @@ button {
 
 button:disabled {
   cursor: not-allowed;
+}
+
+/* Barra de rolagem padrão do app inteiro (2026-09-26, pedido do dono; regra
+   em REGRAS.md). Fina (4px), polegar branco 15%, sem trilho, sem setinhas --
+   toda área que rola nasce com ela, sem precisar lembrar de estilizar. A barra
+   do sistema (trilho branco + setas) apareceu nas janelas do Financeiro
+   justamente porque ninguém tinha lembrado.
+
+   Só `::-webkit-scrollbar` no Chrome/Safari: declarar `scrollbar-width` ou
+   `scrollbar-color` desliga esses seletores no Chrome e devolve a barra do
+   sistema -- e `scrollbar-color` HERDA, então pô-lo no `html` estragaria o
+   app inteiro. O Firefox, que não tem `::-webkit-scrollbar`, recebe o
+   equivalente padrão pelo `@supports`. Quem precisa esconder a barra continua
+   usando `[&::-webkit-scrollbar]:hidden` + `scrollbar-width: none`, que vencem
+   esta regra. */
+*::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+@supports not selector(::-webkit-scrollbar) {
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  }
 }
 
 .custom-scrollbar {
@@ -154,11 +252,11 @@ button:disabled {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: #6b3eff;
+  background-color: #5650f9;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:active {
-  background-color: #8c6dff;
+  background-color: #7772fb;
 }
 
 .custom-scrollbar::-webkit-scrollbar-button {
@@ -173,6 +271,11 @@ button:disabled {
 
 @layer components {
   .stardust-btn {
+    /* Superfície escura, não roxo cheio: o relevo deste botão é vidro sobre
+       preto — sobre roxo saturado as luzes internas leem como plástico. A
+       hierarquia contra a aba "Entrar" foi resolvida tirando peso DA ABA, não
+       preenchendo a ação (regra do site público, 2026-09-15: traço roxo marca
+       escolha, preenchimento não). Tentativa de 2026-09-17, revertida com o dono. */
     --bg: #1a1a1a;
     --radius: 100px;
     position: relative;
@@ -218,7 +321,7 @@ button:disabled {
     overflow: hidden;
     border-radius: inherit;
     padding: 18px 46px;
-    color: var(--color-primary-soft);
+    color: var(--color-accent-300);
     font-size: 18px;
     font-weight: 600;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);

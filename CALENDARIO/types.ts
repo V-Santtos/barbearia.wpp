@@ -1,3 +1,5 @@
+import type { FechamentoDoAtendimento } from "./lib/fechamento";
+
 // -----------------------------------------
 // EVENTO DO BANCO (calendar_events)
 // -----------------------------------------
@@ -21,6 +23,8 @@ export interface Event {
   hora_marcada?: string;   // 'HH:MM'
   status?: string;
   source?: string | null;
+  /** Gravado ao concluir: serviços com o preço do dia, ajuste e total. */
+  fechamento?: FechamentoDoAtendimento | null;
   created_at?: string;
   updated_at?: string;
 }

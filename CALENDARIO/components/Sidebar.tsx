@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { Professional } from "../types";
 import { useCalendar } from "../hooks/useCalendar";
 import { AnimatePresence, motion } from "framer-motion";
@@ -24,11 +25,14 @@ import {
   type AgendaConfig,
 } from "../services/calendarApi";
 import TimeSelect from "./ui/TimeSelect";
+import { NeonCheckbox } from "./ui/NeonCheckbox";
 import { JANELA_MIN_DIAS, JANELA_MAX_DIAS } from "../lib/utils";
 import { usePolling } from "../hooks/usePolling";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { CORES_PROFISSIONAIS } from "../lib/coresProfissionais";
+import { SUPERFICIE_MENU } from "./ui/menuFlutuante";
 
 interface SidebarProps {
-  onAddEvent: () => void;
   professionals: Professional[];
   selectedProfessionals: Set<number>;
   onProfessionalToggle: (id: number) => void;
@@ -47,36 +51,7 @@ interface SidebarProps {
   onExternalAddModalClose?: () => void;
 }
 
-// ✅ Ícone "+" fixo roxo
-const PlusIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="#6B3EFF"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <line x1="12" y1="5" x2="12" y2="19"></line>
-    <line x1="5" y1="12" x2="19" y2="12"></line>
-  </svg>
-);
-
 // ✅ agora são HEX, compatíveis com o restante do app
-const COLORS = [
-  "#FF2A29",
-  "#FF5000",
-  "#2FFF40",
-  "#07FF99",
-  "#07FFF5",
-  "#0047FF",
-  "#8400FF",
-  "#FC00FF",
-];
-
 const WORK_DAYS = [
   { value: 1, label: "Seg" },
   { value: 2, label: "Ter" },
@@ -172,12 +147,11 @@ const toConversation = (
     previewFromMe: item.last_message?.direction === "outbound",
     time: formatConversationTime(item.last_message_at),
     unread: item.unread_count ?? 0,
-    color: COLORS[index % COLORS.length],
+    color: CORES_PROFISSIONAIS[index % CORES_PROFISSIONAIS.length],
   };
 };
 
 const Sidebar: React.FC<SidebarProps> = ({
-  onAddEvent,
   professionals,
   selectedProfessionals,
   onProfessionalToggle,
@@ -205,8 +179,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   );
   const [showAddModal, setShowAddModal] = useState(false);
   const [newProfName, setNewProfName] = useState("");
-  const [newProfColor, setNewProfColor] = useState(COLORS[0]);
+  const [newProfColor, setNewProfColor] = useState(CORES_PROFISSIONAIS[0]);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [showColorPicker, setShowColorPicker] = useState<number | null>(null);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -228,6 +203,20 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [addingProfLoading, setAddingProfLoading] = useState(false);
   const [addingSaving, setAddingSaving] = useState(false);
   const [agendaFeedback, setAgendaFeedback] = useState<string | null>(null);
+  const isMobile = useMediaQuery("(max-width: 767px)");
+
+  useEffect(() => {
+    if (isMobile && mobilePanel !== "conversations") {
+      setSelectedConv(null);
+    }
+  }, [isMobile, mobilePanel]);
+
+  useEffect(() => {
+    if (!showAddModal) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [showAddModal]);
 
   usePolling(
     async () => {
@@ -246,7 +235,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     setShowAddModal(false);
     onExternalAddModalClose?.();
     setNewProfName("");
-    setNewProfColor(COLORS[0]);
+    setNewProfColor(CORES_PROFISSIONAIS[0]);
     setAddStep(1);
     setNewProfId(null);
     setAgendaConfig(DEFAULT_AGENDA);
@@ -293,8 +282,29 @@ const Sidebar: React.FC<SidebarProps> = ({
     }));
   };
 
-  const toggleMenu = (id: number) =>
-    setOpenMenuId(openMenuId === id ? null : id);
+  /**
+   * O menu é `fixed` e posicionado por medida, não `absolute` dentro da lista.
+   *
+   * Motivo: a `GavetaDeSecao` é `overflow-hidden` — precisa ser, para recortar
+   * o miolo de 288px enquanto a moldura encolhe na animação. Um filho
+   * `absolute` que passe dos 288px é cortado na borda da gaveta, e era isso
+   * que estava acontecendo. Mesma solução que o menu de conversas aqui do lado
+   * já usava (`openConversaMenu`).
+   */
+  const toggleMenu = (id: number, alvo: HTMLElement) => {
+    if (openMenuId === id) {
+      setOpenMenuId(null);
+      return;
+    }
+    const r = alvo.getBoundingClientRect();
+    const LARGURA = 216;
+    const left = Math.min(
+      r.left + r.width / 2 + 8,
+      window.innerWidth - LARGURA - 8,
+    );
+    setMenuPos({ top: r.bottom + 4, left });
+    setOpenMenuId(id);
+  };
 
   const handleDelete = (id: number) => {
     onDeleteProfessional(id);
@@ -363,9 +373,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   const convLinha = convGrande
     ? "w-full flex items-center gap-3.5 px-2 py-3"
     : "w-full flex items-center gap-3 px-2 py-2.5";
+  /* Celular e desktop seguem o padrão da seção Conversas: círculo neutro com a
+     inicial, e a cor do cliente reduzida a um ponto no canto. No celular o
+     avatar fica em 52px (o filete de 74px abaixo depende disso) e o ponto sobe
+     para 12px, na proporção do círculo maior. */
   const convAvatar = convGrande
-    ? "w-[52px] h-[52px] rounded-full flex-shrink-0 flex items-center justify-center text-[17px] font-bold text-white"
-    : "w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-[13px] font-bold text-white";
+    ? "relative w-[52px] h-[52px] rounded-full flex-shrink-0 flex items-center justify-center bg-white/[0.07] text-[16px] font-semibold text-white/70 ring-1 ring-inset ring-white/[0.08]"
+    : "relative w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center bg-white/[0.07] text-[13px] font-semibold text-white/70 ring-1 ring-inset ring-white/[0.08]";
+  const convPonto = convGrande ? "h-3 w-3" : "h-2.5 w-2.5";
   const convNome = convGrande ? "text-[16px]" : "text-[13px]";
   const convHora = convGrande ? "text-[12px]" : "text-[11px]";
   const convPrevia = convGrande ? "text-[14px]" : "text-xs";
@@ -398,13 +413,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     <aside
       className={
         mobilePanel
-          ? /* bottom-16 pra bater com o pb-16 do <main> na visão do dia
-               (App.tsx) -- os dois pararam de ser 28 juntos em 2026-08-04,
-               quando o card do dia esticou. Divergir aqui deixa a agenda
-               aparecer atrás do painel de Conversas, na faixa que sobra
-               entre os dois valores. */
-            "fixed inset-x-0 top-0 bottom-16 z-50 bg-[#1c1c1c] flex flex-col"
-          : "hidden md:flex w-72 pt-8 pb-4 px-4 bg-[#1c1c1c] flex-col gap-6 min-h-0"
+          ? /* O painel cobre a viewport inteira; o dock flutua acima dele.
+               Terminar em bottom-16 deixava a Agenda vazar atrás da navegação
+               em aparelhos baixos. */
+            "fixed inset-0 z-50 bg-[#1c1c1c] flex flex-col pb-[calc(4rem+env(safe-area-inset-bottom))]"
+          : "hidden md:flex w-72 flex-1 pt-8 pb-4 px-4 bg-[#1c1c1c] flex-col gap-6 min-h-0"
       }
     >
       {/* Header do painel "Equipe" -- layout original, não tocado. */}
@@ -415,7 +428,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         >
           <button
             onClick={onCloseMobilePanel}
-            className="rounded-xl p-1.5 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+            aria-label="Voltar para a agenda"
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
           >
             <ChevronLeft size={20} />
           </button>
@@ -423,7 +437,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <button
             onClick={() => setShowAddModal(true)}
             aria-label="Adicionar profissional"
-            className="ml-auto rounded-xl p-1.5 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -456,7 +470,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           O respiro do topo caiu de 3.5rem para 2.25rem no mesmo dia: os
           "..." ficavam soltos no meio do vão da status bar. O `max()` com o
           `safe-area` continua, que é quem protege o notch. */}
-      {mobilePanel === "conversations" && (
+      {mobilePanel === "conversations" && !selectedConv && (
         <div
           className="px-4 pb-3 flex-shrink-0"
           style={{ paddingTop: "max(2.25rem, env(safe-area-inset-top))" }}
@@ -479,7 +493,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               onClick={onCloseMobilePanel}
               aria-label="Voltar"
-              className="rounded-xl p-1.5 -ml-1.5 text-gray-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+              className="-ml-1.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
             >
               <ChevronLeft size={22} />
             </button>
@@ -507,17 +521,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             />
           </div>
         </div>
-      )}
-
-      {/* Botão "Create" - apenas no desktop */}
-      {!mobilePanel && (
-        <button
-          onClick={onAddEvent}
-          className="mt-2 flex w-full items-center justify-center rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-black shadow-[0_4px_14px_rgba(0,0,0,0.30)] transition hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-        >
-          <PlusIcon />
-          <span className="ml-2">Criar</span>
-        </button>
       )}
 
       {/* Mini Calendar - apenas no desktop */}
@@ -566,7 +569,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => onDateChange(new Date(day.date + "T00:00:00"))}
                 className={`w-8 h-8 flex items-center justify-center rounded-full
                   ${!day.isCurrentMonth ? "text-gray-600" : "text-gray-200"}
-                  ${day.isToday ? "bg-[#6B3EFF] text-white shadow-[0_0_10px_#6B3EFF66]" : ""}
+                  ${day.isToday ? "bg-accent text-white shadow-[0_0_10px_#5650f966]" : ""}
                   ${
                     !day.isToday &&
                     new Date(day.date + "T00:00:00").toDateString() ===
@@ -621,32 +624,33 @@ const Sidebar: React.FC<SidebarProps> = ({
                 key={prof.id}
                 className="flex items-center justify-between relative"
               >
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
+                <div className="flex min-w-0 flex-1 items-center">
+                  <NeonCheckbox
                     id={`prof-${prof.id}`}
                     checked={selectedProfessionals.has(prof.id)}
                     onChange={() => onProfessionalToggle(prof.id)}
-                    className="w-4 h-4 rounded focus:ring-[#6B3EFF]"
-                    style={{
-                      accentColor: prof.color.startsWith("#")
-                        ? prof.color
-                        : undefined,
-                    }}
+                    color={prof.color}
+                    size={18}
+                    className="min-w-0"
+                    label={
+                      <span
+                        className={`truncate text-[14px] font-medium transition-colors duration-200 ${
+                          selectedProfessionals.has(prof.id)
+                            ? "text-white/80"
+                            : "text-white/35"
+                        }`}
+                      >
+                        {prof.name}
+                      </span>
+                    }
                   />
-                  <label
-                    htmlFor={`prof-${prof.id}`}
-                    className="ml-2 text-sm text-gray-300"
-                  >
-                    {prof.name}
-                  </label>
                 </div>
 
                 <div className="relative">
                   <button
-                    onClick={() => toggleMenu(prof.id)}
+                    onClick={(e) => toggleMenu(prof.id, e.currentTarget)}
                     aria-label={`Opções de ${prof.name}`}
-                    className="rounded-xl p-1 text-gray-400 transition hover:bg-white/10 hover:text-white"
+                    className="grid h-8 w-8 place-items-center rounded-lg text-gray-400 transition-colors hover:bg-white/[0.07] hover:text-white"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -669,7 +673,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                     {openMenuId === prof.id && (
                       <motion.div
                         role="menu"
-                        className="menu-dropdown absolute left-1/2 translate-x-2 mt-1 w-48 bg-[#2a2a2a]/60 backdrop-blur-md border border-white/10 text-sm rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.4)] z-20 overflow-hidden"
+                        className={`menu-dropdown fixed z-50 w-[216px] overflow-hidden p-1.5 text-sm ${SUPERFICIE_MENU}`}
+                        style={{ top: menuPos?.top, left: menuPos?.left }}
                         initial={{ opacity: 0, scale: 0.95, y: -4 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: -4 }}
@@ -681,7 +686,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                             onOpenSettings(prof.id);
                             setOpenMenuId(null);
                           }}
-                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-gray-200 transition hover:bg-white/10"
+                          className="flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-gray-200 transition-colors hover:bg-white/[0.07] focus-visible:bg-white/[0.09] focus-visible:outline-none"
                         >
                           <Settings size={16} />
                           <span>Configurar agenda</span>
@@ -694,7 +699,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                             setShowColorPicker(prof.id);
                             setOpenMenuId(null);
                           }}
-                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-gray-200 transition hover:bg-white/10"
+                          className="flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-gray-200 transition-colors hover:bg-white/[0.07] focus-visible:bg-white/[0.09] focus-visible:outline-none"
                         >
                           <PaintBucket size={16} />
                           <span>Alterar cor</span>
@@ -703,7 +708,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         <button
                           role="menuitem"
                           onClick={() => handleDelete(prof.id)}
-                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-gray-200 transition hover:bg-red-500/10 hover:text-red-500"
+                          className="flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-gray-200 transition-colors hover:bg-red-500/10 hover:text-red-400 focus-visible:bg-red-500/10 focus-visible:text-red-400 focus-visible:outline-none"
                         >
                           <Trash2 size={16} />
                           <span>Excluir profissional</span>
@@ -720,7 +725,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Conversas WhatsApp -- sem o rótulo "Conversas" com ícone verde
           (tirado a pedido do dono em 2026-08-04, junto com o header novo). */}
-      {(!mobilePanel || mobilePanel === "conversations") && (
+      {(!mobilePanel || (mobilePanel === "conversations" && !selectedConv)) && (
         <div
           className={`flex-1 min-h-0 flex flex-col${convGrande ? " px-3 pt-2" : ""}`}
         >
@@ -743,7 +748,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               [
                 {
                   iniciais: "MS",
-                  cor: "#6B3EFF",
+                  cor: "#5650f9",
                   nome: "Maria Silva (exemplo)",
                   hora: "14:32",
                   previa: "Oi, gostaria de agendar um horário...",
@@ -764,9 +769,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                   >
                     <div
                       className={convAvatar}
-                      style={{ backgroundColor: ex.cor }}
                     >
                       {ex.iniciais}
+                      <span
+                        aria-hidden="true"
+                        className={`absolute -bottom-px -right-px ${convPonto} rounded-full ring-2 ring-[#1c1c1c]`}
+                        style={{ backgroundColor: ex.cor }}
+                      />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline justify-between gap-1">
@@ -818,13 +827,17 @@ const Sidebar: React.FC<SidebarProps> = ({
               >
                 <div
                   className={convAvatar}
-                  style={{ backgroundColor: conv.color }}
                 >
                   {conv.name
                     .split(" ")
                     .map((n: string) => n[0])
                     .join("")
                     .slice(0, 2)}
+                  <span
+                    aria-hidden="true"
+                    className={`absolute -bottom-px -right-px ${convPonto} rounded-full ring-2 ring-[#1c1c1c]`}
+                    style={{ backgroundColor: conv.color }}
+                  />
                 </div>
 
                 <div className="flex-1 min-w-0">
@@ -862,6 +875,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <WhatsAppPanel
           conversation={selectedConv}
           onClose={() => setSelectedConv(null)}
+          mobileFullScreen={isMobile && mobilePanel === "conversations"}
         />
       )}
 
@@ -884,7 +898,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <motion.div
               role="menu"
               aria-label="Opções de conversas"
-              className="fixed z-50 w-64 overflow-hidden rounded-[28px] border border-white/[0.14] bg-[#1c1c1c]/90 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.14)]"
+              className={`fixed z-50 w-64 overflow-hidden ${SUPERFICIE_MENU}`}
               style={{
                 top: conversaMenuPos.top,
                 left: conversaMenuPos.left,
@@ -921,12 +935,17 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Modal de "Novo profissional" - multi-step */}
+      {/* Modal de "Novo profissional" - multi-step.
+          Vai por portal para o `body`: na Agenda do celular a raiz desta Sidebar é
+          `hidden` (display:none), e um `fixed` dentro de pai escondido não aparece.
+          O "+" do hambúrguer abria o modal invisível, e ele só surgia ao entrar em
+          Conversas, onde a Sidebar fica visível. */}
+      {typeof document !== "undefined" && createPortal(
       <AnimatePresence>
         {showAddModal && (
           <motion.div
             key="add-prof-backdrop"
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[3px]"
+            className="fixed inset-0 z-[110] flex h-dvh items-stretch justify-center overflow-hidden bg-black/50 backdrop-blur-[3px] md:h-auto md:items-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -935,10 +954,15 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <motion.div
               layout
-              className="w-full max-w-lg rounded-2xl overflow-hidden bg-[#1e1f24] border border-white/10 shadow-2xl"
-              initial={{ opacity: 0, y: 18, scale: 0.97 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="novo-profissional-title"
+              className="h-dvh max-h-dvh w-full max-w-none overflow-hidden rounded-none border-0 bg-[#191919]
+                         shadow-[0_24px_70px_rgba(0,0,0,0.55)] md:h-auto md:max-h-[90vh]
+                         md:max-w-lg md:rounded-xl md:border md:border-white/10"
+              initial={isMobile ? { opacity: 0, y: 24 } : { opacity: 0, y: 18, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.97 }}
+              exit={isMobile ? { opacity: 0, y: 16 } : { opacity: 0, y: 10, scale: 0.97 }}
               transition={{ type: "spring", stiffness: 340, damping: 30 }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -946,20 +970,21 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {addStep === 1 ? (
                   <motion.div
                     key="step-1"
-                    className="p-6"
+                    className="flex h-full min-h-0 flex-col"
                     initial={{ opacity: 0, x: -24 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -24 }}
                     transition={{ duration: 0.18, ease: "easeOut" }}
                   >
+                    <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))] md:p-6 md:pb-4">
                     {/* Step 1 header */}
                     <div className="flex items-center justify-between mb-5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-[#6B3EFF]/15 flex-shrink-0">
-                          <UserPlus size={16} className="text-[#8b5cf6]" />
-                        </div>
+                        <div className="flex items-center gap-3">
+                          {/* Ícone solto, sem caixa: pedido do dono — o destaque é o
+                              próprio ícone, não uma moldura em volta dele. */}
+                          <UserPlus size={20} className="flex-shrink-0 text-accent-400" />
                         <div>
-                          <h3 className="text-base font-semibold text-white leading-tight">
+                          <h3 id="novo-profissional-title" className="text-base font-semibold text-white leading-tight">
                             Novo profissional
                           </h3>
                           <p className="text-xs text-white/40 mt-0.5">
@@ -968,7 +993,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        <div className="w-5 h-1.5 bg-[#6B3EFF] rounded-full" />
+                        <div className="w-5 h-1.5 bg-accent rounded-full" />
                         <div className="w-2 h-1.5 bg-white/15 rounded-full" />
                       </div>
                     </div>
@@ -988,10 +1013,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                         }}
                         placeholder="Ex: Lucas Costa"
                         autoFocus
-                        className="w-full rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30
-                                   bg-[#111114] border border-white/10
-                                   focus:outline-none focus:border-[#8b5cf6]/60 focus-visible:ring-2 focus-visible:ring-[#6B3EFF]/20
-                                   transition-all duration-200"
+                        className="w-full rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-white/30
+                                   bg-[#141414] border border-white/10
+                                   focus:outline-none focus:border-accent-400/60 focus-visible:ring-2 focus-visible:ring-accent/20
+                                   transition-colors duration-150"
                       />
                     </div>
 
@@ -1001,36 +1026,34 @@ const Sidebar: React.FC<SidebarProps> = ({
                         Cor
                       </label>
                       <div className="flex gap-2.5 flex-wrap">
-                        {COLORS.map((color) => (
+                        {CORES_PROFISSIONAIS.map((color) => (
                           <button
                             key={color}
                             type="button"
                             onClick={() => setNewProfColor(color)}
                             aria-label={`Cor ${color}`}
                             aria-pressed={newProfColor === color}
-                            className="w-7 h-7 rounded-full transition-transform duration-150 hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                            className="h-7 w-7 rounded-full border border-white/10 transition-[box-shadow,filter] duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
                             style={{
                               backgroundColor: color,
-                              transform:
-                                newProfColor === color
-                                  ? "scale(1.2)"
-                                  : undefined,
                               boxShadow:
                                 newProfColor === color
-                                  ? `0 0 0 2px #1e1f24, 0 0 0 3.5px ${color}`
+                                  ? "0 0 0 2px #191919, 0 0 0 3px rgba(255,255,255,0.72)"
                                   : undefined,
                             }}
                           />
                         ))}
                       </div>
                     </div>
+                    </div>
 
                     {/* Ações step 1 */}
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-shrink-0 justify-end gap-2 border-t border-white/[0.08]
+                                    px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-3 md:px-6 md:pb-6">
                       <button
                         type="button"
                         onClick={closeAddModal}
-                        className="rounded-xl px-4 py-2 text-sm font-medium text-white/50 hover:text-white hover:bg-white/[0.07] transition-all duration-200 focus-visible:outline-none"
+                        className="min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium text-white/50 transition-colors duration-150 hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 md:min-h-0"
                       >
                         Cancelar
                       </button>
@@ -1038,38 +1061,32 @@ const Sidebar: React.FC<SidebarProps> = ({
                         type="button"
                         onClick={handleGoToStep2}
                         disabled={!newProfName.trim() || addingProfLoading}
-                        className="rounded-xl px-5 py-2 text-sm font-semibold text-white
-                                   bg-[#6B3EFF] hover:bg-[#825CFF]
+                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-5 py-2 text-sm font-semibold text-white
+                                   bg-accent hover:bg-accent-hover
                                    disabled:opacity-40 disabled:cursor-not-allowed
-                                   transition-all duration-200
-                                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6B3EFF]/50"
-                        style={{
-                          boxShadow: newProfName.trim()
-                            ? "0 4px 16px rgba(107,62,255,0.45)"
-                            : undefined,
-                        }}
+                                   transition-colors duration-150
+                                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 md:min-h-0"
                       >
-                        {addingProfLoading ? "Criando..." : "Próximo →"}
+                        {addingProfLoading ? "Criando..." : <>Próximo <ChevronRight size={15} /></>}
                       </button>
                     </div>
                   </motion.div>
                 ) : (
                   <motion.div
                     key="step-2"
-                    className="p-6"
+                    className="flex h-full min-h-0 flex-col"
                     initial={{ opacity: 0, x: 24 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 24 }}
                     transition={{ duration: 0.18, ease: "easeOut" }}
                   >
                     {/* Step 2 header */}
-                    <div className="flex items-center justify-between mb-5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-[#6B3EFF]/15 flex-shrink-0">
-                          <Settings size={16} className="text-[#8b5cf6]" />
-                        </div>
+                    <div className="flex flex-shrink-0 items-center justify-between border-b border-white/[0.08]
+                                    px-5 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))] md:px-6 md:pt-6">
+                        <div className="flex items-center gap-3">
+                          <Settings size={20} className="flex-shrink-0 text-accent-400" />
                         <div>
-                          <h3 className="text-base font-semibold text-white leading-tight">
+                          <h3 id="novo-profissional-title" className="text-base font-semibold text-white leading-tight">
                             Configurar agenda
                           </h3>
                           <div className="flex items-center gap-1.5 mt-0.5">
@@ -1084,14 +1101,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        <div className="w-2 h-1.5 bg-[#6B3EFF]/40 rounded-full" />
-                        <div className="w-5 h-1.5 bg-[#6B3EFF] rounded-full" />
+                        <div className="w-2 h-1.5 bg-accent/40 rounded-full" />
+                        <div className="w-5 h-1.5 bg-accent rounded-full" />
                       </div>
                     </div>
 
                     {/* Agenda form */}
                     <div
-                      className="space-y-4 max-h-[calc(90vh-240px)] overflow-y-auto pr-1
+                      className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 md:max-h-[calc(90vh-240px)] md:flex-none md:px-6
                                   [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full
                                   [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-track]:transparent"
                       style={{
@@ -1112,12 +1129,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                               aria-pressed={agendaConfig.dias_semana.includes(
                                 dia.value,
                               )}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition
-                                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6B3EFF]/60
+                              className={`min-h-8 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors
+                                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60
                                 ${
                                   agendaConfig.dias_semana.includes(dia.value)
-                                    ? "bg-[#6B3EFF] text-white shadow-[0_0_10px_#6B3EFF55]"
-                                    : "bg-white/5 text-white/50 hover:bg-white/10"
+                                    ? "border-accent-400/60 bg-white/[0.09] text-white"
+                                    : "border-transparent bg-white/[0.035] text-white/50 hover:bg-white/[0.07]"
                                 }`}
                             >
                               {dia.label}
@@ -1152,13 +1169,13 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                       {/* Intervalo de descanso */}
                       <div
-                        className={`space-y-3 rounded-xl border p-3 transition-colors ${
+                        className={`space-y-3 rounded-[10px] border p-3 transition-colors ${
                           Boolean(
                             agendaConfig.intervalo_inicio &&
                             agendaConfig.intervalo_duracao_min,
                           )
-                            ? "border-[#6B3EFF]/30 bg-[#6B3EFF]/[0.04]"
-                            : "border-white/10 bg-white/[0.025]"
+                            ? "border-accent-400/35 bg-transparent"
+                            : "border-white/[0.08] bg-transparent"
                         }`}
                       >
                         <label className="flex items-center gap-2.5 cursor-pointer select-none">
@@ -1184,7 +1201,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           />
                           <div
                             className="relative w-9 h-5 flex-shrink-0 rounded-full transition-colors
-                            bg-white/10 peer-checked:bg-[#6B3EFF]/70
+                            bg-white/10 peer-checked:bg-accent/70
                             after:content-[''] after:absolute after:top-0.5 after:left-0.5
                             after:h-4 after:w-4 after:rounded-full after:transition-all after:duration-200
                             after:bg-white/40 peer-checked:after:translate-x-4 peer-checked:after:bg-white"
@@ -1234,13 +1251,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                                           agendaConfig.intervalo_duracao_min ===
                                           intervalo.value
                                         }
-                                        className={`px-3 py-1.5 rounded-xl text-xs font-medium transition
-                                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6B3EFF]/60
+                                      className={`min-h-8 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors
+                                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60
                                         ${
                                           agendaConfig.intervalo_duracao_min ===
                                           intervalo.value
-                                            ? "bg-[#6B3EFF] text-white shadow-[0_0_10px_#6B3EFF55]"
-                                            : "bg-white/5 text-white/50 hover:bg-white/10"
+                                            ? "border-accent-400/60 bg-white/[0.09] text-white"
+                                            : "border-transparent bg-white/[0.035] text-white/50 hover:bg-white/[0.07]"
                                         }`}
                                       >
                                         {intervalo.label}
@@ -1277,12 +1294,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 }))
                               }
                               aria-pressed={agendaConfig.duracao_min === d}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition
-                                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6B3EFF]/60
+                              className={`min-h-8 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors
+                                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60
                                 ${
                                   agendaConfig.duracao_min === d
-                                    ? "bg-[#6B3EFF] text-white shadow-[0_0_10px_#6B3EFF55]"
-                                    : "bg-white/5 text-white/50 hover:bg-white/10"
+                                    ? "border-accent-400/60 bg-white/[0.09] text-white"
+                                    : "border-transparent bg-white/[0.035] text-white/50 hover:bg-white/[0.07]"
                                 }`}
                             >
                               {d} min
@@ -1292,7 +1309,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       </div>
 
                       {/* Abertura da agenda */}
-                      <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3">
+                      <div className="rounded-[10px] border border-white/[0.08] bg-transparent p-3">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <p className="text-xs text-white/50">
@@ -1302,7 +1319,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                               {agendaConfig.janela_agendamento_dias} dias
                             </p>
                           </div>
-                          <span className="rounded-full bg-[#6B3EFF]/20 px-2.5 py-1 text-xs font-semibold text-[#c9b8ff]">
+                          <span className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-xs font-medium text-white/60">
                             {agendaConfig.janela_agendamento_dias ===
                             JANELA_MIN_DIAS
                               ? "Mínimo"
@@ -1325,14 +1342,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                               janela_agendamento_dias: Number(e.target.value),
                             }))
                           }
-                          className="mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-[#6B3EFF]
+                          className="mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-accent
                                      [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5
                                      [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full
-                                     [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_0_4px_rgba(107,62,255,0.35),0_0_18px_rgba(107,62,255,0.55)]
+                                      [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_0_3px_rgba(86,80,249,0.28)]
                                      [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full
                                      [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-white"
                           style={{
-                            background: `linear-gradient(to right, #6B3EFF 0%, #6B3EFF ${
+                            background: `linear-gradient(to right, #5650f9 0%, #5650f9 ${
                               ((agendaConfig.janela_agendamento_dias -
                                 JANELA_MIN_DIAS) /
                                 (JANELA_MAX_DIAS - JANELA_MIN_DIAS)) *
@@ -1362,7 +1379,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       </div>
 
                       {/* Slots preview */}
-                      <div className="rounded-xl bg-white/5 p-3">
+                      <div className="border-t border-white/[0.08] pt-3">
                         <p className="text-xs text-white/55 mb-1.5">
                           Slots gerados
                         </p>
@@ -1380,7 +1397,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                     </div>
 
                     {/* Footer step 2 */}
-                    <div className="flex items-center justify-between mt-5 pt-4 border-t border-white/[0.08]">
+                    <div className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-white/[0.08]
+                                    px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-3 md:px-6 md:pb-6">
                       {agendaFeedback ? (
                         <span className="text-xs text-red-400">
                           {agendaFeedback}
@@ -1392,7 +1410,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         <button
                           type="button"
                           onClick={closeAddModal}
-                          className="rounded-xl px-4 py-2 text-sm font-medium text-white/50 hover:text-white hover:bg-white/[0.07] transition-all duration-200 focus-visible:outline-none"
+                        className="min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium text-white/50 transition-colors duration-150 hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 md:min-h-0"
                         >
                           Pular
                         </button>
@@ -1400,14 +1418,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                           type="button"
                           onClick={handleCreateComplete}
                           disabled={addingSaving}
-                          className="rounded-xl px-5 py-2 text-sm font-semibold text-white
-                                     bg-[#6B3EFF] hover:bg-[#825CFF]
+                          className="min-h-[44px] rounded-lg px-5 py-2 text-sm font-semibold text-white
+                                     bg-accent hover:bg-accent-hover
                                      disabled:opacity-40 disabled:cursor-not-allowed
-                                     transition-all duration-200
-                                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6B3EFF]/50"
-                          style={{
-                            boxShadow: "0 4px 16px rgba(107,62,255,0.45)",
-                          }}
+                                     transition-colors duration-150
+                                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 md:min-h-0"
                         >
                           {addingSaving ? "Salvando..." : "Concluir"}
                         </button>
@@ -1419,30 +1434,40 @@ const Sidebar: React.FC<SidebarProps> = ({
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body,
+      )}
 
       {/* Color Picker */}
-      {showColorPicker && (
+      {showColorPicker && typeof document !== "undefined" && createPortal(
         <div
-          className="fixed inset-0 bg-black/15 backdrop-blur-[2px] flex items-center justify-center z-50"
+          className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 backdrop-blur-[2px] md:items-center md:bg-black/15"
           onClick={() => setShowColorPicker(null)}
         >
           <div
-            className="rounded-2xl bg-[#28292d] p-4 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Escolher cor do profissional"
+            className="w-full rounded-t-2xl border-t border-white/10 bg-[#28292d]
+                       px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-4 shadow-xl
+                       md:w-auto md:rounded-2xl md:border md:p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="grid grid-cols-4 gap-2">
-              {COLORS.map((color) => (
+            <p className="mb-4 text-sm font-semibold text-white md:sr-only">Cor do profissional</p>
+            <div className="grid grid-cols-4 justify-center gap-3 md:gap-2">
+              {CORES_PROFISSIONAIS.map((color) => (
                 <button
                   key={color}
                   onClick={() => handleColorChange(showColorPicker, color)}
-                  className="w-8 h-8 rounded-full"
+                  aria-label={`Escolher cor ${color}`}
+                  className="h-11 w-11 rounded-full md:h-8 md:w-8"
                   style={{ backgroundColor: color }}
                 />
               ))}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </aside>
   );

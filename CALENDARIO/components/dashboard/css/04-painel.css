@@ -46,11 +46,16 @@
 /* =========================================================================
    ROWS / GRID
    ========================================================================= */
-/* Sem padding lateral: quem posiciona a faixa agora e o `.db-resumo`. */
+/* Sem padding lateral: quem posiciona a faixa agora e o `.db-resumo`.
+   Os quatro KPIs compartilham a mesma moldura, como no Financeiro: o grupo
+   comunica "resumo" e cada metrica vira uma celula, nao um card solto. */
 .db-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.025);
 }
 /* Disponibilidade (em pe) + relogio do dia, lado a lado.
    A DISPONIBILIDADE E `auto`: o card encosta na propria grade e nao cresce mais

@@ -1,4 +1,5 @@
 import type { Professional, Event, CreateEventRequest } from "../types";
+import type { AjusteDeValor, ClientePresencial, ServicoDoAtendimento } from "../lib/fechamento";
 
 // Sem `VITE_CALENDAR_API_URL` (o caso do deploy), a API e a funcao servida pelo
 // mesmo dominio, em `/api` — mesma origem, sem CORS no meio. No local a variavel
@@ -8,6 +9,32 @@ const API_BASE = (import.meta.env.VITE_CALENDAR_API_URL ?? "/api").replace(
   "",
 );
 import { credencial } from "../lib/sessao";
+
+// ponytail: painel populado com mundo de teste (`VITE_MOCK=1`), para validar
+// layout sem banco de pé.
+// Teto: cobre só as rotas escritas em `mock/rotas.ts`. Rota fora dessa lista cai
+// para a rede normalmente — mock que responde qualquer coisa esconderia
+// endpoint novo em vez de mostrar que ele não foi coberto.
+// Gatilho de remoção: quando o banco voltar e o painel tiver dado real de
+// vitrine próprio. Manter os dois é manter duas fontes de verdade, que é o
+// defeito que o `DashboardScreen` foi escrito para evitar.
+const MOCK = (import.meta.env.VITE_MOCK ?? "").trim() === "1";
+
+// `import()` e não import estático de propósito: `VITE_MOCK` vira literal no
+// build, então com a flag desligada o bundler descarta este ramo inteiro e o
+// mundo de teste não viaja no bundle de produção.
+let mockCarregado: {
+  responder: (caminho: string, init: RequestInit) => unknown;
+  SEM_MOCK: symbol;
+} | null = null;
+
+async function carregarMock() {
+  if (!mockCarregado) {
+    const m = await import("./mock/rotas");
+    mockCarregado = { responder: m.responderMock, SEM_MOCK: m.SEM_MOCK };
+  }
+  return mockCarregado;
+}
 
 // ─── Tipos novos ──────────────────────────────────────────────────────────────
 
@@ -91,6 +118,36 @@ export interface ConfiguredService {
   price?: string;
 }
 
+export interface SiteCategory {
+  id: string;
+  label: string;
+  active: boolean;
+}
+
+export interface BookingSiteSettings {
+  home: { heroLine1: string; heroName: string; ctaLabel: string };
+  categories: { filtersEnabled: boolean; items: SiteCategory[] };
+  services: ConfiguredService[];
+}
+
+/** Contrato do site público. O backend do dev ainda precisa expor as escritas. */
+export async function getBookingSiteSettings(): Promise<BookingSiteSettings> {
+  const [home, categories, services] = await Promise.all([
+    api<BookingSiteSettings["home"]>("configuracao/home"),
+    api<BookingSiteSettings["categories"]>("categorias-servicos"),
+    getConfiguredServices(),
+  ]);
+  return { home, categories, services };
+}
+
+export async function saveBookingSiteSettings(settings: BookingSiteSettings): Promise<void> {
+  // Cada recurso tem endpoint próprio. Salvar em sequência permite apontar
+  // exatamente qual etapa falhou; atomicidade depende do backend do dev.
+  await api("configuracao/home", { method: "PUT", body: JSON.stringify(settings.home) });
+  await api("categorias-servicos", { method: "PUT", body: JSON.stringify(settings.categories) });
+  await api("servicos", { method: "PUT", body: JSON.stringify(settings.services) });
+}
+
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -105,6 +162,17 @@ export class ApiError extends Error {
 }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  // A costura do mundo de teste. Fica aqui, no transporte, para que TODA função
+  // acima continue rodando inteira — `toEvent`, `toProf`, filtros e `catch` —
+  // sobre um corpo com o mesmo formato do Fastify. Nenhuma tela ganha um
+  // `if (mock)`, e por isso o que aparece torto no teste apareceria torto com a
+  // API de pé.
+  if (MOCK) {
+    const { responder, SEM_MOCK } = await carregarMock();
+    const resposta = responder(path, init);
+    if (resposta !== SEM_MOCK) return resposta as T;
+  }
+
   const hasBody = init.body !== undefined && init.body !== null;
   const res = await fetch(`${API_BASE}/${path.replace(/^\//, "")}`, {
     ...init,
@@ -157,14 +225,17 @@ function toEvent(raw: any): Event {
     date: raw.dia_marcado ?? raw.date ?? "",
     startTime: raw.startTime ?? raw.hora_marcada ?? "",
     endTime: raw.endTime ?? "",
-    description: raw.servico
-      ? [
-          `Servico: ${raw.servico}`,
-          raw.telefone ? `Telefone: ${raw.telefone}` : "",
-        ]
-          .filter(Boolean)
-          .join("\n")
-      : undefined,
+    // O EventModal lê serviço e telefone daqui. Sem serviço gravado, antes o
+    // texto inteiro sumia -- e o telefone junto, no "Editar Evento".
+    description:
+      raw.servico || raw.telefone
+        ? [
+            raw.servico ? `Servico: ${raw.servico}` : "",
+            raw.telefone ? `Telefone: ${raw.telefone}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n")
+        : undefined,
     professionalId: Number(raw.professional_id ?? raw.professionalId ?? 0),
     // campos do banco preservados
     telefone: raw.telefone,
@@ -175,6 +246,7 @@ function toEvent(raw: any): Event {
     hora_marcada: raw.hora_marcada,
     status: raw.status,
     source: raw.source,
+    fechamento: raw.fechamento ?? null,
     created_at: raw.created_at,
     updated_at: raw.updated_at,
   };
@@ -293,6 +365,19 @@ export async function removeBlockedDay(
   });
 }
 
+// ─── CLIENTES ─────────────────────────────────────────────────────────────────
+
+/**
+ * O nome de quem já é cliente, a partir do telefone (DDD + número ou já com
+ * DDI -- o servidor normaliza). `null` quando o número é novo.
+ */
+export async function buscarClientePorTelefone(telefone: string): Promise<string | null> {
+  const data = await api<{ encontrado: boolean; nome?: string }>(
+    `clientes/buscar?telefone=${encodeURIComponent(telefone)}`,
+  );
+  return data?.encontrado && data.nome ? data.nome : null;
+}
+
 // ─── EVENTOS (AGENDAMENTOS) ───────────────────────────────────────────────────
 
 export async function getConfiguredServices(): Promise<ConfiguredService[]> {
@@ -349,6 +434,30 @@ export async function updateEventStatus(
   });
 }
 
+export interface ConcluirAtendimentoPayload {
+  servicos: ServicoDoAtendimento[];
+  ajuste: AjusteDeValor | null;
+  /** Só no presencial. Sem nome, o atendimento fica como "Cliente presencial". */
+  cliente?: ClientePresencial | null;
+}
+
+/**
+ * Conclui gravando o fechamento (spec 2026-09-27-fechar-atendimento-design).
+ * Substitui `updateEventStatus(id, "concluido")` no "Marcar como feito". O
+ * servidor recalcula o total a partir dos itens e rejeita desconto maior que o
+ * subtotal.
+ */
+export async function concluirAtendimento(
+  id: number,
+  payload: ConcluirAtendimentoPayload,
+): Promise<Event> {
+  const data = await api<{ event: any }>(`agendamentos/${id}/concluir`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return toEvent(data.event);
+}
+
 export async function deleteEvent(id: number): Promise<void> {
   await api(`agendamentos/${id}`, { method: "DELETE" });
 }
@@ -363,6 +472,20 @@ export async function getAvailableSlots(
     `agendamentos/horarios-disponiveis?professionalId=${professionalId}&date=${date}`,
   );
   return res.availableSlots ?? [];
+}
+
+/**
+ * O primeiro dia, a partir de hoje, em que o profissional tem ao menos um
+ * horário livre -- ou `null` se não houver nos próximos `dias`.
+ */
+export async function getPrimeiroDiaLivre(
+  professionalId: number,
+  dias = 14,
+): Promise<string | null> {
+  const res = await api<{ openDays?: { date: string }[] }>(
+    `agendamentos/dias-disponiveis?professionalId=${professionalId}&days=${dias}`,
+  );
+  return res.openDays?.[0]?.date ?? null;
 }
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────

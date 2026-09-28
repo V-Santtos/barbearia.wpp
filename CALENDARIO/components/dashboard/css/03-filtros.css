@@ -47,7 +47,7 @@
   transition: all 0.15s ease-out;
 }
 .proffilter__btn:hover { background: var(--surface-hover); }
-.proffilter__btn.is-open { border-color: var(--border-purple); box-shadow: 0 0 0 3px rgba(106,61,255,0.1); }
+.proffilter__btn.is-open { border-color: var(--border-purple); box-shadow: 0 0 0 3px rgba(86,80,249,0.1); }
 .proffilter__dot { width: 8px; height: 8px; border-radius: 50%; }
 .proffilter__menu {
   position: absolute; top: calc(100% + 4px); right: 0;
@@ -73,5 +73,5 @@
   text-align: left;
 }
 .proffilter__opt:hover { background: var(--surface-hover); }
-.proffilter__opt.is-active { background: rgba(106,61,255,0.12); color: var(--text-strong); }
+.proffilter__opt.is-active { background: rgba(86,80,249,0.12); color: var(--text-strong); }
 .proffilter__opt-dot { width: 8px; height: 8px; border-radius: 50%; }

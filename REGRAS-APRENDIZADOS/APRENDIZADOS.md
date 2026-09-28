@@ -6,10 +6,88 @@ funcionaram. Objetivo: não repetir o mesmo erro duas vezes.
 Formato de cada entrada:
 
 ```md
+## [2026-09-21] `font: inherit` sem camada mata todo utilitário de fonte em `<button>`
+
+- O que aconteceu: no Mês, o nome do cliente saía em 16 px e disputava tamanho com a
+  hora. A tarja tinha `text-[11px]` e `font-semibold` nas classes, e o computado era
+  16px/400. Perdi tempo procurando no componente antes de testar o óbvio: a mesma classe
+  dá 11 px numa `div` e 16 px num `button`. Causa: `index.css` declara
+  `button, input, textarea { font: inherit }` **fora de qualquer `@layer`**, e regra sem
+  camada vence a camada `utilities` do Tailwind v4, independentemente de
+  especificidade. Vale para **todo botão do app**, não só o calendário — o `DayView`
+  tinha o mesmo sintoma havia tempo.
+- Correção: neste projeto, tamanho e peso de fonte em `<button>` vão por estilo inline.
+  Antes de caçar no componente, testar a mesma classe num elemento neutro — dois
+  segundos de teste separam "o componente está errado" de "a classe não existe para
+  este elemento". Consertar na origem (mover o reset para `@layer base`) muda o app
+  inteiro e precisa ser uma rodada própria.
+
+## [2026-09-21] Classe de posicionamento na base de um componente vence a de fora
+
+- O que aconteceu: criei `TarjaDeEvento` com `relative` nas classes-base. A `WeekView`
+  passava `absolute` por `className`, e o Tailwind emite `.relative` depois de
+  `.absolute` — as tarjas ficaram em fluxo, deslocadas por `top`, e no celular foram
+  parar fora da grade. Pior: a primeira medição que eu ia apresentar como prova estava
+  colhida sobre esse layout errado.
+- Correção: componente reutilizável não declara `position`. Quem posiciona é quem usa.
+  E juntar duas classes do mesmo grupo via `className` não resolve por ordem de string —
+  resolve pela ordem da folha de estilo, que não é a minha.
+
+## [2026-09-21] Medir com coordenadas arredondadas inventa colisão
+
+- O que aconteceu: reportei 3 sobreposições na grade da semana. Eram falso-positivo: eu
+  comparava caixas com largura arredondada para inteiro, e blocos que se tocam na aresta
+  passavam a "invadir" 1 px.
+- Correção: teste de sobreposição usa float e uma margem explícita (`> 0.5px`). Arredondar
+  serve para exibir, nunca para decidir.
+
 ## [DATA] Título curto do erro/ajuste
 - O que aconteceu: <contexto do erro ou do caminho errado>
 - Correção: <o que fazer diferente da próxima vez>
 ```
+
+## [2026-09-27] Validar o modal no desktop antes de concluir a rodada responsiva
+
+- O que aconteceu: refinei o modal de Configurações olhando primeiro a janela estreita.
+  Os campos e abas ficaram coerentes ali, mas no desktop a lateral manteve um bloco de
+  cor que começava abaixo do cabeçalho e terminava antes do rodapé. A navegação também
+  começava 16 px acima do título do conteúdo. Victor apontou a quebra no print.
+- Correção: em modais que mudam de navegação horizontal para lateral, conferir **as
+  duas composições renderizadas** antes de anunciar a entrega. Comparar fundo da
+  lateral com cabeçalho e rodapé e medir o topo do primeiro item contra o título do
+  conteúdo. Build e teste de tipos não substituem essa verificação visual.
+
+## [2026-09-17] `max()` com área segura devolve zero de folga
+
+- O que aconteceu: todo rodapé ancorado do celular usava
+  `max(16px, env(safe-area-inset-bottom))`. Parecia certo — "pelo menos 16 px" — mas
+  `max()` **escolhe**, e num iPhone o inset (34 px) já é o maior. O resultado era o
+  espaço do indicador de home e nada mais: o botão encostava na borda. O dono viu no
+  aparelho, eu não teria visto no navegador, onde `env()` é 0 e o `max()` acerta.
+- Correção: área segura entra **somada** — `calc(env(safe-area-inset-bottom) + folga)`.
+  Sempre que uma medida mistura folga visual com inset de aparelho, a pergunta é "somo
+  ou escolho?", e a resposta quase sempre é somo.
+
+## [2026-09-17] `justify-center` esconde o topo do que transborda
+
+- O que aconteceu: a tela de login espremia com o teclado aberto. Liguei a rolagem e o
+  problema continuou. A causa não era o `overflow`: era o `justify-center` no pai. Num
+  flex centralizado, conteúdo maior que a caixa transborda para os **dois** lados, e a
+  parte de cima fica fora do alcance da rolagem — a marca simplesmente não voltava.
+- Correção: centralizar por `margin: auto` no filho (`my-auto`), não por
+  `justify-center` no pai, sempre que o conteúdo puder ficar maior que a tela. E medir
+  `scrollHeight > clientHeight` no elemento certo antes de dizer que rola — na primeira
+  medição eu li o pai errado e quase dei o problema por resolvido.
+
+## [2026-09-17] Contar altura por estimativa corta o conteúdo
+
+- O que aconteceu: a célula do Mês calculava quantos horários cabiam a partir de
+  constantes que descreviam o cabeçalho "mais ou menos" — 20 px onde o numeral ocupava
+  24, sem contar a margem da lista. A conta dizia que cabia mais uma tarja do que cabia,
+  e a última nascia cortada.
+- Correção: quando o layout depende de altura, medir o que o DOM desenha (ou fixar a
+  altura no CSS e usar esse número na conta), e conferir com
+  `scrollHeight > clientHeight` em todas as células antes de dar por pronto.
 
 ## [2026-07-30] Apontar lacunas futuras em vez de ficar na etapa atual
 
@@ -381,3 +459,109 @@ Formato de cada entrada:
 - Como saber que estou errando: se o mesmo erro sobrevive a uma correção que eu apliquei,
   a suspeita número um é **que a correção não chegou** — não que a causa era outra, e
   muito menos um mecanismo novo que eu ainda não verifiquei.
+
+## [2026-09-08] Menu `absolute` dentro da gaveta é cortado pelo `overflow-hidden`
+
+- O que aconteceu: o menu dos três pontinhos do profissional aparecia decepado na borda
+  da gaveta. Nada tinha sido feito no menu — quem mudou foi a volta dele. A
+  `GavetaDeSecao` é `overflow-hidden` **de propósito**, para recortar o miolo fixo de
+  288px enquanto a moldura encolhe na animação de largura. Qualquer filho `absolute` que
+  passe desses 288px é recortado junto, sem erro nenhum: só some.
+- Correção: menu que nasce dentro da gaveta e precisa ultrapassá-la é `fixed`, com a
+  posição **medida** do botão no clique (`getBoundingClientRect`), não `absolute`. O
+  padrão já existia na mesma tela — `openConversaMenu`, no `Sidebar.tsx` — e era só
+  segui-lo. Tirar o `overflow-hidden` da gaveta não é opção: é ele que faz o conteúdo
+  ser recortado em vez de espremido durante a animação.
+- Como saber que estou errando: elemento flutuante que "some" ou aparece cortado sem
+  erro no console — procurar `overflow-hidden` nos ancestrais antes de mexer no z-index.
+  Aqui o `z-20` estava correto o tempo todo; o problema nunca foi empilhamento.
+
+## [2026-09-09] Filho não deve trocar a própria largura enquanto o pai anima largura
+
+- O que aconteceu: a coluna esquerda animava de 64 px para 240 px com mola, mas o
+  botão `Criar` trocava imediatamente de `w-8` para `w-full`. Na contração ele
+  encolhia antes da coluna; na expansão o rótulo aparecia antes de a forma ter espaço.
+  Os itens de seção pareciam certos porque nunca trocavam de largura: apenas preenchiam
+  o contêiner que já estava animando.
+- Correção: deixar o filho em `w-full` nos dois estados e permitir que a largura do pai
+  seja a única fonte de movimento. Conteúdo textual que aparece no estado aberto fica
+  sob `overflow-hidden` e `whitespace-nowrap` até caber.
+- Como saber que estou errando: duas peças que deveriam contrair juntas terminam certas,
+  mas uma delas salta ou vaza no meio do percurso — procurar uma classe condicional de
+  largura no filho antes de adicionar outra animação.
+
+## [2026-09-15] Animação segurando mudança de estado
+
+- O que aconteceu: no site público, a troca do dia selecionado no calendário foi escrita
+  para acontecer no `onComplete` da animação de saída do número grande. No teste, tocar
+  num dia não selecionava nada: o navegador de teste não roda `requestAnimationFrame`, o
+  GSAP não avança e o `onComplete` nunca dispara. Em qualquer celular em que a animação
+  trave, o cliente tocaria e nada aconteceria. O próprio app já tem esse padrão na troca
+  de etapa (`App.tsx`, `setDisplayStep` no `onComplete`), e foi por isso que as etapas 5 e
+  6 não abriam no teste.
+- Correção: **o estado muda na hora; a animação é enfeite e nunca decide se a ação
+  acontece.** Quando a ação precisa esperar um efeito visual (o preenchimento do botão
+  antes de avançar), a espera é um `setTimeout` com o mesmo tempo da transição CSS — não o
+  fim da animação. Foi assim que `useFillAdvance` nasceu.
+- Como saber que estou errando: `onComplete`, `animationend` ou `transitionend` chamando
+  `setState`, navegação ou envio.
+
+## [2026-09-15] Efeito que depende do DOM rodando antes de a lista existir
+
+- O que aconteceu: o desfoque dos horários da borda só aparecia depois da primeira
+  rolagem. O efeito inicial rodava com `deps [slots]` enquanto a etapa ainda mostrava o
+  carregamento — a lista não existia, o `ref` era nulo e ele desistia. Quando o
+  carregamento terminava, os slots já eram os mesmos e nada o chamava de novo. Antes disso
+  eu tinha errado a regra do efeito: calculava "está parcialmente fora da caixa", e com a
+  lista parada nenhum item está (o 4º termina exatamente no pixel 240).
+- Correção: efeito que mede elementos precisa depender do que **monta** esses elementos
+  (aqui, `loading`), não só do dado. E, antes de dizer que um efeito de rolagem funciona,
+  testar a posição parada, não só o meio da rolagem.
+- Como saber que estou errando: "funciona quando eu mexo, não quando entra".
+
+## [2026-09-15] Verificar UI num navegador que não anima
+
+- O que aconteceu: no painel do navegador de teste (oculto), `requestAnimationFrame` e
+  transições CSS ficam congelados. Isso produziu três leituras falsas na mesma sessão:
+  cards de serviço "invisíveis" (presos em opacidade 0), cor de bolinha "errada" (a
+  transição de 150 ms parada no meio) e borda de botão "branca" (CSS antigo em cache).
+- Correção: nesse ambiente, conferir **valor final**, não tela animada — desligar a
+  transição (`transition: none`) antes de ler `getComputedStyle`, montar uma cópia do
+  componente com as mesmas classes para medir, e recarregar a página antes de acusar CSS
+  que não bate. O que depende de animação rodando (troca de etapa, fluidez) fica declarado
+  como não visto e vai para o print do dono.
+
+## [2026-09-15] `fixed` dentro de pai escondido: o modal abre e ninguém vê
+
+- O que aconteceu: no celular, o "+" de profissional do menu hambúrguer não abria
+  nada na Agenda, mas o mesmo modal aparecia ao entrar em Conversas. O estado
+  estava certo o tempo todo. O modal mora na `Sidebar`, cuja raiz é
+  `hidden md:flex` fora de Conversas — e `display: none` no ancestral apaga o
+  filho `fixed` também, sem erro, sem aviso. Em Conversas a raiz vira tela cheia
+  e o mesmo modal reaparece, o que fazia o defeito parecer "abrir no lugar errado".
+- Correção: camada que cobre a tela (modal, drawer, popover) não pode depender da
+  visibilidade do componente que a hospeda — sai por `createPortal` para o `body`.
+  E ao investigar "não abre", checar `display` dos ancestrais antes de suspeitar
+  do estado: elemento presente no DOM com caixa de tamanho zero é o sintoma.
+
+## [2026-09-26] `scrollbar-width` desliga o `::-webkit-scrollbar` no Chrome
+
+- O que aconteceu: para afinar a barra do modal de agendamento e do menu de horário,
+  somei `scrollbar-width: thin` / `scrollbar-color` aos `::-webkit-scrollbar` que já
+  estavam lá. O Chrome (121+) passa a obedecer só às propriedades padrão e ignora os
+  pseudo-elementos: voltou a barra do sistema, com setinhas e trilho branco. Errei duas
+  vezes seguidas, no modal e no `BottomSheet`, antes do dono apontar.
+- Correção: neste projeto, barra de rolagem customizada é **só** `::-webkit-scrollbar`
+  (4 px, trilho transparente, polegar `white/15`), sem `scrollbar-width` nem
+  `scrollbar-color`. Conferir pelo estilo computado (`scrollbarWidth: auto`) e pela
+  largura real (`offsetWidth - clientWidth`).
+
+## [2026-09-26] Efeito colateral dentro de `setState(fn)` quebra no modo de desenvolvimento
+
+- O que aconteceu: no preenchimento automático do nome, a decisão (e a escrita num
+  `ref`) morava dentro do `setTitle(atual => ...)`. O React roda essa função duas vezes
+  em desenvolvimento; a primeira rodada mexia no `ref`, a segunda lia o `ref` já
+  alterado e desfazia a decisão — trocar para um número novo não limpava o nome do
+  cliente anterior. Só apareceu porque o teste trocou de número duas vezes.
+- Correção: a função passada ao `setState` fica pura. Estado atual lido de um `ref`
+  espelhado a cada render, decisão fora, `setState(valor)` direto.

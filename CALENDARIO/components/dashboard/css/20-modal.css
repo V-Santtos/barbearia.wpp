@@ -30,7 +30,7 @@
   background: var(--bg);
   border: 1px solid var(--border-strong);
   border-radius: 18px;
-  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(106, 61, 255, 0.1);
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(86, 80, 249, 0.1);
 }
 
 /* O corpo rola sozinho; a moldura fica parada. Sem isto o cabecalho subiria

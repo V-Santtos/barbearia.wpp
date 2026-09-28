@@ -1,7 +1,129 @@
 # Skills Log — SaaS Barbearia
 
-Registro de toda skill/repositório/conhecimento avaliado para entrar em `.claude/skills/`.
-Processo descrito em `docs/superpowers/specs/2026-07-29-ambiente-skills-barbearia-design.md`.
+Histórico de avaliações. As entradas antigas registram decisões da época; o inventário
+abaixo define o que está instalado agora.
+
+## [2026-09-26] Limpeza das skills locais
+
+Pedido do Victor: manter apenas habilidades usadas diretamente na casca do agendamento
+e no painel. Permanecem em `.agents/skills/`:
+
+- `frontend-design` — direção visual;
+- `mobile-ux-patterns` — PWA e interação no celular;
+- `web-design-guidelines` — revisão de acessibilidade e interface.
+
+Permanece em `.claude/skills/` somente `ponytail-debt`, porque o projeto usa
+marcações `ponytail:` para revisar simplificações deliberadas.
+
+Saíram do carregamento do projeto: `impeccable` (sobreposição com as skills visuais,
+153 arquivos), `mobile-app-ux-auditor` (foco nativo e sobreposição no PWA),
+`improve-codebase-architecture` e `codebase-design` (auditoria ampla fora da etapa),
+`supabase` e `supabase-postgres-best-practices` (backend e banco conduzidos pelo dev),
+`ponytail-audit` (auditoria genérica), `skill-creator` (capacidade já disponível fora
+deste repo) e a skill não commitada `deploy-to-vercel` (deploy fora da etapa).
+
+Os arquivos retirados estão guardados fora do repositório em
+`C:\Users\victo\Desktop\Referencias\skills-retiradas-saas`; as cópias versionadas
+também podem ser recuperadas pelo Git. `skills-lock.json` foi retirado por não restar
+skill instalada por esse gerenciador. As junctions antigas de `.claude/skills/`
+apontavam para um caminho anterior do projeto e também foram retiradas.
+
+Processo histórico descrito em
+`docs/superpowers/specs/2026-07-29-ambiente-skills-barbearia-design.md`.
+
+## [2026-09-16] UI/UX mobile para o calendário
+
+- Fontes:
+  - https://github.com/lumusitech/AI/tree/main/skills/mobile-ux-patterns
+  - https://github.com/AjnasNB/mobile-app-ux-auditor-skill
+- Veredito: ✅ **Adoção composta das duas skills, escopada ao mobile**.
+- Motivo:
+  - `mobile-ux-patterns` é a referência principal para o React/PWA do calendário:
+    trata touch targets, zonas do polegar, navegação inferior, bottom sheets,
+    formulários, teclado, safe areas, gestos e estados offline. Parte dos exemplos
+    usa sintaxe Angular, mas as decisões de UX e CSS são portáveis para React DOM.
+  - `mobile-app-ux-auditor` complementa com um processo de revisão por fluxo e
+    severidade (P0–P3), incluindo acessibilidade, adaptação de layout, teclado,
+    interrupções e estados de erro. A lista oficial de frameworks é majoritariamente
+    nativa; no PWA, o scanner Python serve apenas como triagem e cada achado precisa
+    ser confirmado no código e no aparelho.
+  - Ambas usam licença MIT. São projetos jovens e com baixa adoção pública; por isso
+    entram como orientação e checklist, nunca como autoridade acima das decisões já
+    validadas com o dono ou do design system existente.
+  - `trmquang93/mobile-design-kit` foi avaliada e não trazida: força um design system
+    paralelo e proíbe roxo no alvo iOS, em conflito direto com a marca já aprovada.
+- Ação: instaladas somente as pastas necessárias em
+  `.agents/skills/mobile-ux-patterns/` e
+  `.agents/skills/mobile-app-ux-auditor/`. Nenhum hook, plugin, instalador de
+  terceiro ou dependência de runtime foi ativado.
+
+## [2026-09-08] Engenharia de memória + arquitetura + design do calendário
+
+- Fontes:
+  - `C:\Users\victo\Desktop\agent-memory-engineering\SKILL.md`
+  - https://www.skills.sh/mattpocock/skills/improve-codebase-architecture
+  - https://www.skills.sh/vercel-labs/agent-skills/web-design-guidelines
+  - https://www.skills.sh/anthropics/skills/frontend-design
+- Veredito: ✂️ **Adoção composta e escopada**.
+- Motivo:
+  - `agent-memory-engineering` entra pelo sistema de arquivos, disclosure
+    progressiva, versionamento e conferência de hash. O padrão assíncrono de
+    `dreaming` fica fora: não há frota de agentes nem lote de transcrições que
+    justifique a infraestrutura.
+  - `improve-codebase-architecture` e sua dependência `codebase-design` entram
+    para mapear atrito e aprofundar modules antes de mover arquivos. O fluxo foi
+    escopado ao `CALENDARIO/`; `BARBEARIA/` é apenas contexto de contrato.
+  - `frontend-design` entra como direção de criação e remodelagem visual.
+  - `web-design-guidelines` entra como auditoria enxuta de acessibilidade e
+    qualidade web, buscando as regras atuais antes de cada revisão.
+- Sobreposição: 🥊 `frontend-design` + `web-design-guidelines` cobrem parte do
+  espaço do `impeccable`, mas ainda não cobrem seu detector e o fluxo de inspeção
+  visual. Como o usuário sugeriu **talvez** removê-lo, ele fica marcado como
+  candidato à exclusão, sem ser apagado nesta rodada. Critério: validar uma rodada
+  completa do calendário com as duas skills novas; se não houver lacuna prática,
+  remover os 153 arquivos (~3,15 MB) e a junction antiga de `.claude/skills/`.
+- Ação:
+  - Criados `AGENTS.md`, `CALENDARIO/AGENTS.md` e `BARBEARIA/AGENTS.md` como
+    roteadores progressivos; a memória durável continua em
+    `REGRAS-APRENDIZADOS/`, sem uma segunda fonte concorrente.
+  - Skills externas pequenas mantidas em `.agents/skills/` para portabilidade e
+    versionamento.
+  - Auditoria arquitetural do calendário gerada como relatório temporário, sem
+    refatorar o código antes da escolha do candidato.
+
+## [2026-09-08] arhamkhnz/next-shadcn-admin-dashboard
+- Fonte: https://github.com/arhamkhnz/next-shadcn-admin-dashboard
+- Veredito: ✂️ Adotado parcial — só **vocabulário de ícone** e **gramática de layout**.
+  Zero código, zero dependência, nada instalado.
+- Motivo: trazido pelo dono para adiantar o painel (dashboard/analytics + financeiro).
+  A cópia original ficava em `%TEMP%/claude/eval/shadcn-admin` e perdeu os arquivos
+  de origem. Em 2026-09-26, Victor pediu para guardar a referência fora do produto;
+  clone íntegro recuperado em `C:\Users\victo\Desktop\Referencias\dashboard-shadcn-admin`
+  (commit `4728475584809adebe7775b05ab2ff4eb342b276`).
+  Next 16 + Turbopack + React 19 + Tailwind v4 + shadcn; `npm ci` em 35s, sobe em
+  3,5s, sem `.env` — é template estático com dado mock.
+  - **O que NÃO dá para aproveitar, e é a maior parte:** a stack é incompatível.
+    O `CALENDARIO/` é React DOM + Vite com sistema de tokens CSS próprio (11
+    arquivos numerados); importar página de lá é importar um segundo design system.
+  - **Boa parte do que parece pronto não é.** Verificado clicando: o "Add event"
+    do calendário e o "Quick Create" da sidebar são `<Button>` **sem `onClick`** —
+    decorativos. Não existe `eventClick`, `dateClick`, `eventAdd` nem `selectable`
+    em `src/` inteiro: a página de calendário é casca visual. Confirmado idêntico
+    no demo oficial do autor, então não é defeito do clone. (O template não é
+    inerte por inteiro: há 60 `onClick` no `src/` e a tabela arrastável do
+    dashboard legado usa dnd-kit de verdade.)
+  - **O que foi aproveitado, e por quê:**
+    1. **Nomes de ícone.** Os dois projetos usam `lucide-react`, então o
+       aproveitamento é de vocabulário, não de código. Todos verificados contra a
+       nossa versão (0.552.0) — existem, sem atualizar dependência.
+    2. **A estrutura da coluna da esquerda:** marca no topo, ação primária logo
+       abaixo, seções com rótulo, e a coluna inteira recolhendo para só ícones.
+       Copiada a forma, não o CSS.
+  - **O que foi deliberadamente NÃO copiado:** o conjunto de ícones inteiro. Ele é
+    retilíneo (`MessageSquare`, `LayoutDashboard`, `Banknote`) e este app é
+    pílula/círculo. Ver a regra do conjunto em `REGRAS.md` (2026-09-08).
+- Ação: nada instalado no repo do produto. A cópia estável acima é apenas
+  referência visual; não importar sua stack ou tratá-la como base do sistema.
 
 ## [2026-08-04] callstack/liquid-glass
 - Fonte: https://github.com/callstack/liquid-glass

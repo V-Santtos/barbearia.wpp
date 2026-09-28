@@ -16,12 +16,17 @@
 import React from "react";
 import { hhmm, statusDoDia, type DashboardVm, type ProfVm } from "./modelo";
 
-/* Vão da costura, em graus: onde o fim do dia encosta no começo (o topo do
-   anel). Sem ele, `t=janelaDia.fim` e `t=janelaDia.ini` caem no MESMO ponto
+/* Vão da costura, em graus: onde o fim do dia encosta no começo (a lateral
+   esquerda do anel). Sem ele, `t=janelaDia.fim` e `t=janelaDia.ini` caem no MESMO ponto
    -- a volta fecha em círculo contínuo e sugere ciclo, quando na verdade é
-   uma linha enrolada. O corte é o que ensina o olho que ali é a emenda, não
-   meio-dia (Frente 2 do ANEXO-PLANO-LAPIDACAO). */
+   uma linha enrolada. A emenda fica longe das 12h para o mostrador seguir a
+   orientação natural de um relógio. */
 const CORTE_DEG = 3;
+
+/* Sobra à esquerda do mostrador, em unidades do `viewBox`. A abertura e o
+   fechamento dividem a emenda lateral e precisam caber fora do anel sem
+   apertar nem cobrir os arcos. */
+const FOLGA_ESQUERDA = 44;
 
 const RAD = Math.PI / 180;
 
@@ -49,14 +54,18 @@ export const RelogioDoDia: React.FC<Props> = ({ vm, profs }) => {
   const rBorda = rExterno + espessura / 2;
   const margem = 0.03; // respiro entre slots vizinhos
 
+  const duracaoDia = janelaDia.fim - janelaDia.ini;
+
   // 360 - CORTE_DEG, não 360: a volta inteira (abertura -> fechamento) some
-  // um pouco menos que o círculo cheio, deixando o vão da costura no topo.
-  // `- 90 - CORTE_DEG / 2` centraliza o corte exatamente nos 12h (topo),
-  // então abertura e fechamento ficam simétricos ao redor dele.
+  // um pouco menos que o círculo cheio, deixando o vão da costura. Meio-dia é
+  // a referência visual e cai exatamente no topo, como num relógio conhecido;
+  // com a janela atual de 12h, 15h vai à direita, 18h embaixo e 9h à esquerda.
   const anguloDaHora = (t: number) =>
-    ((t - janelaDia.ini) / (janelaDia.fim - janelaDia.ini)) * (360 - CORTE_DEG) -
-    90 -
-    CORTE_DEG / 2;
+    ((t - 12) / duracaoDia) * (360 - CORTE_DEG) - 90;
+
+  // A abertura vem logo depois da costura no sentido horário. Voltar metade
+  // do vão encontra o eixo visual que separa começo e fim do expediente.
+  const anguloDaCostura = anguloDaHora(janelaDia.ini) - CORTE_DEG / 2;
 
   const arcoDaFaixa = (r: number, t0: number, t1: number) => {
     const a0 = anguloDaHora(t0);
@@ -80,7 +89,6 @@ export const RelogioDoDia: React.FC<Props> = ({ vm, profs }) => {
   // coincidência de a barbearia abrir às 8h) -- N escala com a duração pra o
   // mostrador nunca passar de ~6 rótulos. Abertura e fechamento são âncoras
   // à parte, sempre rotuladas, mesmo quando não caem em hora cheia.
-  const duracaoDia = janelaDia.fim - janelaDia.ini;
   const passoRotulo = Math.max(2, Math.round(duracaoDia / 5));
 
   const horas: number[] = [];
@@ -104,7 +112,7 @@ export const RelogioDoDia: React.FC<Props> = ({ vm, profs }) => {
       <div className="relo__palco">
         <svg
           className="relo__dial"
-          viewBox={`0 0 ${S} ${S}`}
+          viewBox={`${-FOLGA_ESQUERDA} 0 ${S + FOLGA_ESQUERDA} ${S}`}
           role="img"
           aria-label={`Horários livres de hoje, ${statusDoDia(vm)}. ${resumo}`}
         >
@@ -190,31 +198,42 @@ export const RelogioDoDia: React.FC<Props> = ({ vm, profs }) => {
           })}
 
           {/* Costura: o traço mais forte exatamente no meio do vão de
-              CORTE_DEG -- é o corte que diz "aqui a volta emenda", não meio-dia. */}
+              CORTE_DEG. Fica à esquerda; 12h permanece livre no topo. */}
           {(() => {
-            const [x0, y0] = pontoNoAnel(c, raio(profs.length - 1) - espessura / 2 - 4, -90);
-            const [x1, y1] = pontoNoAnel(c, rBorda + 9, -90);
+            const [x0, y0] = pontoNoAnel(
+              c,
+              raio(profs.length - 1) - espessura / 2 - 4,
+              anguloDaCostura,
+            );
+            const [x1, y1] = pontoNoAnel(c, rBorda + 9, anguloDaCostura);
             return <path className="relo__costura" d={`M ${x0} ${y0} L ${x1} ${y1}`} />;
           })()}
 
           {/* Âncoras: abertura e fechamento, sempre rotuladas (mesmo fora de
               hora cheia), com peso maior e a palavra que diz o que aquele
-              ponto é -- sem isso ninguém descobre sozinho que o topo não é
-              meio-dia. */}
+              ponto é -- sem isso as duas pontas do expediente parecem apenas
+              mais dois horários do mostrador. */}
+          {/* Os dois rótulos ficam a apenas `CORTE_DEG` um do outro. Na emenda
+              lateral, abertura sobe e fechamento desce; assim continuam ligados
+              ao mesmo eixo sem se sobrepor. O `text-anchor` vem das classes CSS,
+              porque a regra de `.relo__hora` venceria o atributo do SVG. */}
           {(
             [
-              { hora: janelaDia.ini, palavra: "abre" },
-              { hora: janelaDia.fim, palavra: "fecha" },
+              { hora: janelaDia.ini, palavra: "abre", deslocamentoY: -10 },
+              { hora: janelaDia.fim, palavra: "fecha", deslocamentoY: 16 },
             ] as const
-          ).map(({ hora, palavra }) => {
+          ).map(({ hora, palavra, deslocamentoY }) => {
             const a = anguloDaHora(hora);
             const [x0, y0] = pontoNoAnel(c, rBorda + 4, a);
             const [x1, y1] = pontoNoAnel(c, rBorda + 9, a);
-            const [lx, ly] = pontoNoAnel(c, rBorda + 20, a);
             return (
               <g key={palavra}>
                 <path className="relo__tick relo__tick--ancora" d={`M ${x0} ${y0} L ${x1} ${y1}`} />
-                <text className="relo__hora relo__hora--ancora" x={lx} y={ly + 3.5}>
+                <text
+                  className={`relo__hora relo__hora--ancora relo__hora--${palavra}`}
+                  x={c - rBorda - 11}
+                  y={c + deslocamentoY}
+                >
                   {hhmm(hora)}
                   <tspan className="relo__hora-palavra" dx="3">{palavra}</tspan>
                 </text>

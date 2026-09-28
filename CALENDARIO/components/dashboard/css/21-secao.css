@@ -1,0 +1,39 @@
+/* O dashboard como SECAO da casca, irmao de Agenda e Conversas.
+
+   A diferenca para o `20-modal.css` nao e de estilo, e de natureza: la ele e uma
+   camada por cima da agenda, com veu, sombra e tres saidas; aqui ele e o proprio
+   conteudo da secao, e quem desenha a moldura (respiro, raio e borda) e o
+   `MolduraDeSecao` da casca. Este arquivo so ensina o dashboard a preencher a
+   pilula e a rolar dentro dela.
+
+   As duas cascas convivem de proposito enquanto o modal do menu do avatar ainda
+   existe. */
+
+.dash-secao {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+/* O corpo rola sozinho, como no modal: sem isto o cabecalho da pagina subiria
+   junto e o filtro de profissional sairia de vista no meio da leitura. */
+.dash-secao__corpo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+.dash-secao__corpo::-webkit-scrollbar { width: 6px; }
+.dash-secao__corpo::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}
+
+/* Mesma correcao do modal: sem a `db-topbar` de 56px do prototipo, o cabecalho
+   da pagina encostaria no topo da moldura. */
+.dash-secao .db-pagehead { padding-top: 22px; }

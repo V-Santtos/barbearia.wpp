@@ -33,14 +33,14 @@
   /* Borders */
   --border:        rgba(255, 255, 255, 0.10);
   --border-strong: rgba(255, 255, 255, 0.16);
-  --border-purple: rgba(168, 85, 247, 0.25);
+  --border-purple: rgba(86, 80, 249, 0.25);
 
   /* Accents */
-  --primary:       #6a3dff;
-  --primary-alt:   #6B3EFF;
-  --primary-hover: #825CFF;
-  --primary-soft:  #a78bfa;
-  --primary-line:  #8b5cf6;
+  --primary:       #5650f9;
+  --primary-alt:   #5650f9;
+  --primary-hover: #7772fb;
+  --primary-soft:  #9a96fc;
+  --primary-line:  #7772fb;
   --whatsapp:      #25D366;
   --warning:       #fbbf24;
   --warning-deep:  #d97706;
@@ -49,8 +49,8 @@
   /* Shadows */
   --shadow-panel:       0 18px 44px rgba(0,0,0,0.32);
   --shadow-card:        0 8px 24px rgba(0,0,0,0.24);
-  --purple-glow:        0 0 24px rgba(106, 61, 255, 0.22);
-  --purple-glow-strong: 0 0 14px rgba(106, 61, 255, 0.45);
+  --purple-glow:        0 0 24px rgba(86, 80, 249, 0.22);
+  --purple-glow-strong: 0 0 14px rgba(86, 80, 249, 0.45);
   --inset-top:          inset 0 1px 0 rgba(255,255,255,0.06);
 
   color: var(--text);

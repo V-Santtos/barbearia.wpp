@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Send } from "lucide-react";
+import { ChevronLeft, X, Send } from "lucide-react";
 import { motion } from "framer-motion";
 import {
   ApiError,
@@ -86,7 +86,11 @@ function motivoDaFalha(err: unknown): string {
 
 interface Props {
   conversation: Conversation;
-  onClose: () => void;
+  onClose?: () => void;
+  /** No desktop da seção Conversas, o painel ocupa a própria coluna. */
+  embedded?: boolean;
+  /** No celular, a conversa substitui a lista e ocupa a tela inteira. */
+  mobileFullScreen?: boolean;
 }
 
 /**
@@ -115,7 +119,12 @@ function comNegrito(texto: string): React.ReactNode[] {
     .map((pedaco, i) => (i % 2 === 1 ? <strong key={i}>{pedaco}</strong> : pedaco));
 }
 
-const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
+const WhatsAppPanel: React.FC<Props> = ({
+  conversation,
+  onClose,
+  embedded = false,
+  mobileFullScreen = false,
+}) => {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>(
     () => historico.get(conversation.id) ?? [],
@@ -194,12 +203,22 @@ const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
   );
 
   useEffect(() => {
+    if (!onClose) return;
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
+
+  useEffect(() => {
+    if (!mobileFullScreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileFullScreen]);
 
   const handleSend = async () => {
     const text = input.trim();
@@ -249,20 +268,61 @@ const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
   const panel = (
     <motion.div
       key={`panel-${conversation.id}`}
-      initial={{ opacity: 0, x: -12 }}
+      initial={{ opacity: 0, x: mobileFullScreen ? 24 : -12 }}
       animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -12 }}
+      exit={{ opacity: 0, x: mobileFullScreen ? 24 : -12 }}
       transition={{ duration: 0.18, ease: "easeOut" }}
-      className="fixed top-0 bottom-0 left-72 z-30 flex flex-col w-[360px] border-r border-white/[0.07] shadow-[4px_0_32px_rgba(0,0,0,0.5)]"
+      role={mobileFullScreen ? "dialog" : undefined}
+      aria-modal={mobileFullScreen ? true : undefined}
+      aria-label={mobileFullScreen ? `Conversa com ${conversation.name}` : undefined}
+      className={
+        embedded
+          ? "flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[#1a1a1a]"
+          : mobileFullScreen
+            ? "fixed inset-0 z-[110] flex h-dvh w-full flex-col overflow-hidden"
+            : "fixed top-0 bottom-0 left-72 z-30 flex w-[360px] flex-col border-r border-white/[0.07] shadow-[4px_0_32px_rgba(0,0,0,0.5)]"
+      }
       style={{ backgroundColor: "#1a1a1a" }}
     >
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.07] bg-[#202020] flex-shrink-0">
-        <div
-          className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-[12px] font-bold text-white"
-          style={{ backgroundColor: conversation.color }}
-        >
+      {/*
+        Embutido na seção Conversas, este cabeçalho tem 72px — o mesmo número do
+        cabeçalho da lista, em `ConversasDesktop`. É o que faz a linha de baixo dos
+        dois ser uma linha só, e não duas em alturas diferentes. Flutuando sobre a
+        Agenda não há nada com que alinhar, e ele mantém a altura própria.
+      */}
+      <div
+        className={`flex items-center gap-3 px-4 border-b border-white/[0.07] bg-[#202020] flex-shrink-0 ${
+          embedded ? "h-[72px]" : mobileFullScreen ? "pb-3" : "py-3"
+        }`}
+        style={
+          mobileFullScreen
+            ? { paddingTop: "max(0.75rem, env(safe-area-inset-top))" }
+            : undefined
+        }
+      >
+        {mobileFullScreen && onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="-ml-2 grid h-11 w-11 flex-shrink-0 place-items-center rounded-xl text-white/65 transition-colors hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+            aria-label="Voltar para a lista de conversas"
+          >
+            <ChevronLeft size={24} />
+          </button>
+        )}
+        {/*
+          Mesmo desenho do avatar da lista: a cor do cliente não preenche o
+          círculo, ela é o ponto de 10px no canto. O anel do ponto acompanha o
+          fundo do cabeçalho, não o da lista.
+        */}
+        <div className="relative w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center bg-white/[0.07] text-[12px] font-semibold text-white/70 ring-1 ring-inset ring-white/[0.08]">
           {initials}
+          <span
+            aria-hidden="true"
+            className="absolute -bottom-px -right-px h-2.5 w-2.5 rounded-full ring-2 ring-[#202020]"
+            style={{ backgroundColor: conversation.color }}
+          />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-white truncate">
@@ -278,13 +338,15 @@ const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
             {formatarTelefone(conversation.phone)}
           </p>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/8 transition-colors"
-          aria-label="Fechar"
-        >
-          <X size={15} />
-        </button>
+        {!embedded && !mobileFullScreen && onClose && (
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/8 transition-colors"
+            aria-label="Fechar"
+          >
+            <X size={15} />
+          </button>
+        )}
       </div>
 
       {/* Messages */}
@@ -308,7 +370,7 @@ const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
               <div
                 className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-snug ${
                   msg.fromMe
-                    ? "bg-[#6B3EFF] text-white rounded-br-sm"
+                    ? "bg-accent text-white rounded-br-sm"
                     : "bg-[#2a2a2a] text-white/90 rounded-bl-sm"
                 }`}
               >
@@ -328,7 +390,11 @@ const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
       </div>
 
       {/* Input */}
-      <div className="px-3 py-3 border-t border-white/[0.07] bg-[#202020] flex-shrink-0">
+      <div
+        className={`px-3 pt-3 border-t border-white/[0.07] bg-[#202020] flex-shrink-0 ${
+          mobileFullScreen ? "pb-[calc(env(safe-area-inset-bottom)+12px)]" : "pb-3"
+        }`}
+      >
         <div className="flex items-center gap-2">
           <input
             type="text"
@@ -338,12 +404,19 @@ const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
               if (e.key === "Enter") handleSend();
             }}
             placeholder="Mensagem…"
-            className="flex-1 rounded-xl bg-[#2a2a2a] border border-white/[0.08] px-3 py-2 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#6B3EFF]/50 transition-colors"
+            aria-label="Mensagem"
+            name="message"
+            autoComplete="off"
+            className={`min-w-0 flex-1 rounded-xl bg-[#2a2a2a] border border-white/[0.08] px-3 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-accent/50 transition-colors ${
+              mobileFullScreen ? "h-11" : "py-2"
+            }`}
           />
           <button
+            type="button"
             onClick={handleSend}
             disabled={!input.trim() || sending}
-            className="w-9 h-9 rounded-xl bg-[#6B3EFF] flex items-center justify-center text-white disabled:opacity-25 hover:bg-[#7c52ff] transition-colors flex-shrink-0"
+            aria-label="Enviar mensagem"
+            className={`${mobileFullScreen ? "h-11 w-11" : "h-9 w-9"} rounded-xl bg-accent flex items-center justify-center text-white disabled:opacity-25 hover:bg-accent-hover transition-colors flex-shrink-0`}
           >
             <Send size={14} />
           </button>
@@ -352,7 +425,7 @@ const WhatsAppPanel: React.FC<Props> = ({ conversation, onClose }) => {
     </motion.div>
   );
 
-  return createPortal(panel, document.body);
+  return embedded ? panel : createPortal(panel, document.body);
 };
 
 export default WhatsAppPanel;

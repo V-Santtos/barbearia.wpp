@@ -40,20 +40,20 @@ const NeonCheckbox: React.FC<NeonCheckboxProps> = ({
     >
       <input
         type="checkbox"
-        className="hidden"
+        className="peer sr-only"
         checked={isChecked}
         onChange={handleChange}
         {...props}
       />
 
       {/* Checkbox frame */}
-      <div className="relative flex-shrink-0 w-[var(--neon-size)] h-[var(--neon-size)]">
+      <div className="relative flex-shrink-0 w-[var(--neon-size)] h-[var(--neon-size)] rounded peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-[var(--neon-primary)]">
         {/* Box */}
         <div
           className={`absolute inset-0 bg-black/80 rounded border-2 transition-all duration-[400ms]`}
           style={{
-            borderColor: isChecked ? color : `${color}55`,
-            backgroundColor: isChecked ? `${color}15` : undefined,
+            borderColor: isChecked ? color : `color-mix(in srgb, ${color} 33%, transparent)`,
+            backgroundColor: isChecked ? `color-mix(in srgb, ${color} 8%, transparent)` : undefined,
           }}
         >
           {/* SVG checkmark */}

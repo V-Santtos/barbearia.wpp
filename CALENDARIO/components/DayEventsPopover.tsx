@@ -29,7 +29,7 @@ const DayEventsPopover: React.FC<DayEventsPopoverProps> = ({
 }) => {
   // map id->color
   const colorOf = (profId: number) =>
-    professionals.find(p => p.id === profId)?.color ?? "#6B3EFF";
+    professionals.find(p => p.id === profId)?.color ?? "#5650f9";
 
   // ordenar por horário (09:00, 10:30, …)
   const items = useMemo(() => {

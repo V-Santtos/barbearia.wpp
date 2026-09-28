@@ -9,7 +9,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClass = {
   primary:
-    'border-primary bg-primary text-primary-foreground shadow-[0_0_14px_rgba(106,61,255,0.35)] hover:bg-primary-soft',
+    'border-primary bg-primary text-primary-foreground shadow-[0_0_14px_rgba(86,80,249,0.35)] hover:bg-primary-soft',
   secondary:
     'border-border bg-surface-strong text-foreground hover:border-primary/50 hover:bg-surface',
   ghost:
