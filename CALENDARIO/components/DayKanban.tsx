@@ -4,6 +4,7 @@ import type { Event, Professional } from '../types';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Scissors, Sun, Sunset, Moon, ChevronRight, Pencil, Check, UserCheck } from 'lucide-react';
 import { NeonCheckbox } from './ui/NeonCheckbox';
+import { MODO_DEMONSTRACAO } from '../lib/modoDemonstracao';
 import { CASCA_BACKGROUND, CASCA_BORDER } from './ui/vidro';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import FecharAtendimentoModal from './FecharAtendimentoModal';
@@ -98,7 +99,9 @@ const DayKanban: React.FC<DayKanbanProps> = ({
     const hoje = currentDate.toLocaleDateString('en-CA');
     const primeiro = professionals[0];
     const segundo = professionals[1] ?? professionals[0];
-    if (!primeiro) return [];
+    // Só no modo de teste (28/09/2026). Contra o banco real, o dono veria um card
+    // falso na agenda da noite dele — com nome de cliente e horário.
+    if (!MODO_DEMONSTRACAO || !primeiro) return [];
     return [
       {
         id: -101,

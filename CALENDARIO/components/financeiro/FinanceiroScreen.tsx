@@ -4,6 +4,7 @@
  * sequência, a geometria conectada dos KPIs e os padrões de drill-down.
  * Não há recebido, caixa, comissão, assinatura ou forma de pagamento aqui.
  */
+import { MODO_DEMONSTRACAO } from "../../lib/modoDemonstracao";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDownRight,
@@ -85,7 +86,6 @@ const PERIODOS = Object.entries(ROTULOS_PERIODOS_FINANCEIROS) as Array<
   [PeriodoFinanceiro, string]
 >;
 
-const MODO_DEMONSTRACAO = (import.meta.env.VITE_MOCK ?? "").trim() === "1";
 
 function ordenar(movimentos: MovimentoFinanceiro[]) {
   return [...movimentos].sort((a, b) =>
@@ -171,7 +171,11 @@ export default function FinanceiroScreen({
     String(referencia.getFullYear()),
   );
   const [manuais, setManuais] = useState<MovimentoFinanceiro[]>(() =>
-    movimentosManuaisPorSessao.get(chaveSessao) ?? criarDespesasDemonstrativas(referencia),
+    movimentosManuaisPorSessao.get(chaveSessao) ??
+      // Mesma condicao das receitas-exemplo, logo abaixo. Faltava aqui: as despesas
+      // demonstrativas entravam SEMPRE, e com o banco real apareciam misturadas nas
+      // Movimentacoes de verdade. Corrigido na integracao de 28/09/2026.
+      (MODO_DEMONSTRACAO ? criarDespesasDemonstrativas(referencia) : []),
   );
   const [categorias, setCategorias] = useState<CategoriasPorTipo>(() =>
     categoriasPorSessao.get(chaveSessao) ?? CATEGORIAS_PADRAO,

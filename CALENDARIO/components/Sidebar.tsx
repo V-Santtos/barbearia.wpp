@@ -31,6 +31,7 @@ import { usePolling } from "../hooks/usePolling";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { CORES_PROFISSIONAIS } from "../lib/coresProfissionais";
 import { SUPERFICIE_MENU } from "./ui/menuFlutuante";
+import { MODO_DEMONSTRACAO } from "../lib/modoDemonstracao";
 
 interface SidebarProps {
   professionals: Professional[];
@@ -743,8 +744,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 está sendo validado. Mesma estrutura visual da linha real logo
                 abaixo, só com dado fixo e "(exemplo)" no nome pra não passar
                 por conversa de cliente de verdade. Entram na busca junto com
-                as reais, senão o campo parece quebrado numa lista vazia. */}
-            {conversations.length === 0 &&
+                as reais, senão o campo parece quebrado numa lista vazia.
+                Desde 28/09/2026, SÓ no modo de teste: contra o banco real, um
+                dono sem conversas via "Maria Silva (exemplo)" no painel dele. */}
+            {MODO_DEMONSTRACAO && conversations.length === 0 &&
               [
                 {
                   iniciais: "MS",
