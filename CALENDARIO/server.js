@@ -749,18 +749,60 @@ function buildServer() {
    * dali — nunca do `pool` direto, que ignora RLS. Em modo legado `db` E o pool de
    * servico, entao o comportamento fica identico ao de antes e a troca nao tem dia-D.
    *
-   * ponytail: o `commit` acontece depois que o handler chamou `reply.send()`, entao um
-   * commit que falhasse responderia sucesso a uma escrita perdida. Teto: hoje nao ha
-   * transacao NENHUMA nestas rotas (cada query commita sozinha), entao isto ja e
-   * estritamente melhor. Gatilho de upgrade: a primeira rota do painel que escreva em
-   * mais de uma tabela e precise de tudo-ou-nada visivel pro dono.
+   * A RESPOSTA SO SAI DEPOIS DO COMMIT. Os handlers terminam com
+   * `return reply.status(201).send(x)`, e o `send` do Fastify despacha na hora —
+   * antes de `comUsuario` commitar. Ate 28/09/2026 era assim, e custava duas coisas:
+   *
+   *  - o cliente recebia 201 e, se relesse logo em seguida, podia NAO ver o que
+   *    acabou de criar (a leitura corria contra o commit). Achado pela verificacao
+   *    ponta a ponta, que falhava em metade das rodadas;
+   *  - um commit que falhasse ja teria respondido sucesso por uma escrita perdida.
+   *
+   * O conserto intercepta o `send`: o handler recebe um `reply` que guarda o corpo
+   * em vez de enviar; `status`, `header` e afins passam direto para o verdadeiro. O
+   * envio de fato acontece aqui, depois do commit. Os handlers nao mudaram uma linha.
+   *
+   * Handler que DEVOLVE o dado (`return rows`) ja era seguro: o Fastify so serializa
+   * o retorno depois que esta funcao resolve, e ela so resolve depois do commit.
    */
-  const noPainel =
-    (handler) =>
-    async (request, reply) =>
-      MODO_JWT
-        ? comUsuario(poolUsuario, request, (db) => handler(request, reply, db))
-        : handler(request, reply, pool);
+  const noPainel = (handler) => async (request, reply) => {
+    if (!MODO_JWT) return handler(request, reply, pool);
+
+    let corpoAdiado;
+    let adiou = false;
+    const replyAdiado = new Proxy(reply, {
+      get(alvo, chave) {
+        // O `reply` do Fastify e AGUARDAVEL: tem `then`, que resolve quando a resposta
+        // sai. Um handler que devolve este proxy faria o `await` esperar por esse
+        // `then` — que so resolve depois do envio, que so acontece depois que o handler
+        // termina. Impasse: a requisicao pendurava para sempre (achado em 28/09/2026,
+        // na primeira escrita pelo proxy). Escondido aqui, o proxy vira objeto comum.
+        if (chave === "then") return undefined;
+        if (chave === "send") {
+          return (corpo) => {
+            corpoAdiado = corpo;
+            adiou = true;
+            return replyAdiado;
+          };
+        }
+        const valor = alvo[chave];
+        if (typeof valor !== "function") return valor;
+        // Metodos encadeaveis (`status`, `code`, `header`) devolvem o proprio reply;
+        // devolver o proxy no lugar mantem o `.send()` do fim da cadeia interceptado.
+        return (...args) => {
+          const saida = valor.apply(alvo, args);
+          return saida === alvo ? replyAdiado : saida;
+        };
+      },
+    });
+
+    const retorno = await comUsuario(poolUsuario, request, (db) =>
+      handler(request, replyAdiado, db),
+    );
+
+    if (adiou) return reply.send(corpoAdiado);
+    return retorno === replyAdiado ? reply : retorno;
+  };
   const requireWebhookToken = buildTokenGuard(
     "WHATSAPP_WEBHOOK_TOKEN",
     "WHATSAPP_WEBHOOK_TOKEN",

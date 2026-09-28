@@ -66,6 +66,35 @@ const ok = (nome, cond, det) => {
   if (!cond) falhas.push(nome);
 };
 
+// ── A limpeza, num lugar so ──
+//
+// Chamada no fim E ao receber SIGINT/SIGTERM. Em 28/09/2026 rodadas interrompidas no
+// meio pularam o `finally`: a loja ficou ligada a um dono falso, o dono real
+// desligado e oito usuarios de teste orfaos no banco. `kill -9` continua sem remedio —
+// nada roda depois dele —, mas Ctrl+C e `timeout` agora limpam.
+let limpo = false;
+async function limpar() {
+  if (limpo) return;
+  limpo = true;
+  servidor?.kill();
+  emissor.close();
+  await banco.query(`delete from agendamentos where source = 'verificacao-isolamento'`).catch(() => {});
+  await banco.query(`delete from profissionais where nome = 'Teste Verificacao'`).catch(() => {});
+  for (const { slug, user_id } of donosOriginais) {
+    await banco.query(`update barbearias set user_id = $1 where slug = $2`, [user_id, slug]).catch(() => {});
+  }
+  if (criados.length) await banco.query(`delete from auth.users where id = any($1)`, [criados]).catch(() => {});
+  await banco.end().catch(() => {});
+  console.log("\nlimpeza: donos originais devolvidos, dados de teste removidos.");
+}
+for (const sinal of ["SIGINT", "SIGTERM"]) {
+  process.on(sinal, async () => {
+    console.log(`\n${sinal} recebido — limpando antes de sair.`);
+    await limpar();
+    process.exit(130);
+  });
+}
+
 try {
   for (const _ of [0, 1]) {
     const { rows: [u] } = await banco.query(
@@ -104,6 +133,9 @@ try {
 
   const pedir = async (caminho, { token, metodo = "GET", corpo } = {}) => {
     const r = await fetch(API + caminho, {
+      // Prazo por requisicao. Sem ele, uma rota que nunca responde deixa o script
+      // esperando para sempre — e quem mata o processo na mao pula a limpeza.
+      signal: AbortSignal.timeout(15_000),
       method: metodo,
       headers: {
         ...(token ? { authorization: `Bearer ${token}` } : {}),
@@ -193,16 +225,11 @@ try {
   } else {
     ok("havia vaga para testar o POST", false, "nenhum dia com vaga na janela");
   }
+} catch (erro) {
+  falhas.push(`erro inesperado: ${erro.message}`);
+  console.log(`\n  ERRO ${erro.message}`);
 } finally {
-  servidor?.kill();
-  emissor.close();
-  await banco.query(`delete from agendamentos where source = 'verificacao-isolamento'`).catch(() => {});
-  for (const { slug, user_id } of donosOriginais) {
-    await banco.query(`update barbearias set user_id = $1 where slug = $2`, [user_id, slug]).catch(() => {});
-  }
-  if (criados.length) await banco.query(`delete from auth.users where id = any($1)`, [criados]).catch(() => {});
-  await banco.end();
-  console.log("\nlimpeza: donos originais devolvidos, dados de teste removidos.");
+  await limpar();
 }
 
 console.log(falhas.length ? `\nRESULTADO: ${falhas.length} FALHA(S) — ${falhas.join("; ")}` : "\nRESULTADO: todas passaram.");
