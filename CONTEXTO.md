@@ -94,7 +94,8 @@ slug, o painel pela sessão); escrita por `noPainel`, só na própria loja.
 - `npm run verificar` ganhou 17 checagens, e o teste agora fotografa catálogo,
   categorias e configuração das duas lojas e os devolve no fim.
 
-**Falta:** a conferência no navegador.
+**Conferido no navegador em 29/09/2026**, com login real: carregar, salvar a página
+inicial, criar serviço e salvar duas vezes sem duplicar, remover serviço.
 
 ## Fila do backend: o que a casca pede e o servidor ainda não tem
 
