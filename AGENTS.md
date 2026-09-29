@@ -16,7 +16,7 @@ carregue somente o contexto necessário.
   `docs/mapa-endpoints-frontend.md`. É a fila do backend — não inventar rota fora dela
   para tapar lacuna da interface.
 - `BARBEARIA/` é o bot de WhatsApp, **em standby** (`BOT_STANDBY=1`): recebe e grava,
-  não responde. O agendamento é pelo site, que mora fora deste repositório.
+  não responde. O agendamento é pelo site, em `SITE/`.
 - Trabalhar na frente que o pedido atual colocar em escopo. Pedido de interface não
   autoriza mexer em banco, RLS ou bot, e vice-versa.
 
@@ -47,6 +47,7 @@ avaliar contra este guia e contra o pedido atual.
 | Caminho | Papel nesta cópia |
 |---|---|
 | `CALENDARIO/` | Painel do dono (React/Vite) e a API (`server.js`, Fastify), com o mundo de teste em `services/mock/` |
+| `SITE/` | Site público de agendamento (React/Vite). A barbearia é o primeiro segmento do caminho: `/lucas-costa` |
 | `BARBEARIA/` | Bot de WhatsApp (Hono), em standby; guarda também as migrações do banco e as ferramentas de acesso a ele |
 | `AUDITORIA/` | A varredura de entrada de 28/08/2026: mapa, rotas, riscos |
 | `REGRAS-APRENDIZADOS/` | Memória durável e curada |

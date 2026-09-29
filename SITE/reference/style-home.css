@@ -1,0 +1,661 @@
+/* ============================================================
+   SEÇÃO 1 — CSS FIXO / ESTRUTURAL
+   ============================================================ */
+
+:root {
+  --bg: #030303;
+
+  /* 🔥 Controle da transição simples HOME → SERVIÇOS */
+  --home-services-fade-duration: 0.1s;
+  --home-services-fade-ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  background: var(--bg);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: #fff;
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: scroll;
+}
+/* Esconde a barra de rolagem, mas mantém o scroll funcional */
+
+/* Chrome, Edge, Safari */
+body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden; /* Evita barras de rolagem horizontais */
+}
+
+/* Firefox */
+body {
+  scrollbar-width: none;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden; /* Evita barras de rolagem horizontais */
+}
+
+/* ============================================================
+   BACKGROUND --------
+============================================================ */
+
+.bg-video-root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover; /* Faz o vídeo preencher toda a tela */
+  z-index: -1;
+}
+
+/* ============================================================
+   CONTENT WRAPPER
+============================================================ */
+
+.content-wrapper {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 40px 40px 80px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+}
+
+.debug-border {
+  outline: none;
+  border-radius: 16px;
+  width: 100%;
+  min-height: 100%;
+  padding: 40px 20px 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+}
+
+/* ============================================================
+   MENU — GLASS
+============================================================ */
+
+.nav {
+  position: relative;
+  z-index: 20;
+}
+
+.nav-list {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(12px);
+  padding: 6px;
+  border-radius: 999px;
+}
+
+.nav-item {
+  display: inline-block;
+  padding: 10px 26px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: 0.25s ease;
+}
+
+.nav-item:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.nav-item.active {
+  background: #fff;
+  color: #000;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18),
+    inset 0 -3px 5px rgba(0, 0, 0, 0.15);
+}
+
+/* ============================================================
+   HOME — TÍTULO / SUBTÍTULO / BOTÃO
+============================================================ */
+
+.hero-inner {
+  text-align: center;
+  max-width: 700px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hero-title {
+  margin: 0 0 12px;
+  line-height: 1.15;
+  font-weight: 800;
+}
+
+.hero-title-line1 {
+  font-size: clamp(28px, 4vw, 52px);
+  background: linear-gradient(180deg, #fff, rgba(255, 255, 255, 0.8));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero-title-line2 {
+  font-size: clamp(32px, 4.5vw, 56px);
+  background: linear-gradient(
+    90deg,
+    #bcd0ff,
+    rgba(255, 255, 255, 0.92),
+    #ffc0cb
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero-subtitle {
+  font-size: clamp(14px, 1.8vw, 18px);
+  color: rgba(255, 255, 255, 0.55);
+  max-width: 500px;
+  margin-inline: auto;
+}
+
+/* ============================================================
+   BOTÃO AGENDAR
+============================================================ */
+
+.cta-wrap {
+  margin-top: 28px;
+}
+
+.shimmer-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 54px;
+  border-radius: 999px;
+  text-decoration: none;
+  color: #fff;
+  background: var(--btn-bg);
+  border: 2px solid #fff;
+  overflow: hidden;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35), inset 0 -8px 10px #ffffff1f;
+  transition: transform 0.2s ease, filter 0.2s ease, box-shadow 0.25s ease;
+}
+
+.shimmer-btn::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  width: 64%;
+  height: 10px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.22),
+    transparent 70%
+  );
+  filter: blur(6px);
+  pointer-events: none;
+}
+
+.shimmer-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+}
+
+.shimmer-btn:active {
+  transform: translateY(0);
+  box-shadow: inset 0 -10px 10px #ffffff3f;
+}
+
+/* ============================================================
+   FOOTER
+============================================================ */
+
+.footer-links {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.footer-links a {
+  color: rgba(255, 255, 255, 0.55);
+  text-decoration: none;
+  font-weight: 400;
+}
+
+/* ============================================================
+   SEÇÃO 2 — CSS DINÂMICO
+============================================================ */
+
+:root {
+  /* HOME */
+  --nav-offset-y: 130px;
+  --nav-scale: 1;
+
+  --title-offset-y: 180px;
+  --title-scale: 1.5;
+
+  --subtitle-offset-y: 200px;
+  --subtitle-scale: 1.26;
+
+  --button-offset-y: 250px;
+  --button-scale: 1;
+
+  --footer-offset-y: 54vh;
+  --footer-scale: 1;
+
+  /* SERVIÇOS */
+  --services-title-offset-y: 160px;
+  --services-tabs-offset-y: 180px;
+  --services-list-offset-y: 210px;
+}
+
+/* HOME – aplica os controles dinâmicos */
+
+.nav {
+  transform: translateY(var(--nav-offset-y)) scale(var(--nav-scale));
+}
+
+.hero-title {
+  transform: translateY(var(--title-offset-y)) scale(var(--title-scale));
+}
+
+.hero-subtitle {
+  transform: translateY(var(--subtitle-offset-y)) scale(var(--subtitle-scale));
+}
+
+.cta-wrap {
+  transform: translateY(var(--button-offset-y)) scale(var(--button-scale));
+}
+
+.site-footer {
+  transform: translateY(var(--footer-offset-y)) scale(var(--footer-scale));
+}
+
+/* ============================================================
+   ✨ EFEITO DE ENTRADA (TÍTULO / SUBTÍTULO / BOTÃO HOME)
+   - Usa as MESMAS variáveis de posição/escala
+============================================================ */
+
+.fade-in-title,
+.fade-in-subtitle,
+.fade-in-button {
+  opacity: 0;
+}
+
+/* TÍTULO HOME */
+@keyframes fadeTitleIn {
+  0% {
+    opacity: 0;
+    transform: translateY(calc(var(--title-offset-y) + 30px))
+      scale(var(--title-scale));
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(var(--title-offset-y)) scale(var(--title-scale));
+  }
+}
+
+/* SUBTÍTULO HOME */
+@keyframes fadeSubtitleIn {
+  0% {
+    opacity: 0;
+    transform: translateY(calc(var(--subtitle-offset-y) + 30px))
+      scale(var(--subtitle-scale));
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(var(--subtitle-offset-y)) scale(var(--subtitle-scale));
+  }
+}
+
+/* BOTÃO HOME */
+@keyframes fadeButtonIn {
+  0% {
+    opacity: 0;
+    transform: translateY(calc(var(--button-offset-y) + 30px))
+      scale(var(--button-scale));
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(var(--button-offset-y)) scale(var(--button-scale));
+  }
+}
+
+/* aplica as animações em cascata na HOME */
+.fade-in-title {
+  animation: fadeTitleIn 0.8s cubic-bezier(0.43, 0.13, 0.23, 0.96) forwards;
+  animation-delay: 0.2s;
+}
+
+.fade-in-subtitle {
+  animation: fadeSubtitleIn 0.8s cubic-bezier(0.43, 0.13, 0.23, 0.96) forwards;
+  animation-delay: 0.45s;
+}
+
+.fade-in-button {
+  animation: fadeButtonIn 0.8s cubic-bezier(0.43, 0.13, 0.23, 0.96) forwards;
+  animation-delay: 0.7s;
+}
+
+/* ============================================================
+   SERVIÇOS — AJUSTES MANUAIS + ANIMAÇÃO (TÍTULO, TABS, LISTA)
+============================================================ */
+
+/* Wrapper visual da seção */
+#services-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/* Título de Serviços:
+   - posição travada por variável
+   - começa invisível (opacity:0) pra não dar flick
+   - anima de +20px pra posição base
+*/
+.services-title {
+  font-size: 30px;
+  font-weight: 700;
+  text-align: center;
+
+  transform: translateY(var(--services-title-offset-y));
+  opacity: 0;
+
+  animation: servicesTitleFadeIn 0.8s cubic-bezier(0.43, 0.13, 0.23, 0.96)
+    forwards;
+  animation-delay: 0.2s;
+}
+
+/* Tabs de categorias:
+   - mesma lógica do título, logo depois
+*/
+.category-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  margin-bottom: 10px;
+
+  transform: translateY(var(--services-tabs-offset-y));
+  opacity: 0;
+
+  animation: servicesTabsFadeIn 0.8s cubic-bezier(0.43, 0.13, 0.23, 0.96)
+    forwards;
+  animation-delay: 0.45s;
+}
+
+.cat-btn {
+  position: relative;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 4px;
+  transition: 0.25s ease;
+}
+
+.cat-btn:hover {
+  color: #fff;
+}
+.cat-btn.active {
+  color: #fff;
+}
+
+.cat-btn.active::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 45px;
+  height: 3px;
+  background: #7939ff;
+  border-radius: 4px;
+}
+
+/* Lista de serviços:
+   - posição travada
+   - largura centralizada
+*/
+.services-list {
+  transform: translateY(var(--services-list-offset-y));
+
+  width: 100%;
+  max-width: 700px;
+  list-style: none;
+  padding: 0;
+  margin: 0 auto 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Cards */
+.service-item {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 20px 22px;
+  backdrop-filter: blur(12px);
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+
+.service-name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.service-desc {
+  margin: 5px 0 0;
+  font-size: 14px;
+  opacity: 0.65;
+}
+
+.service-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.service-price {
+  font-size: 17px;
+  font-weight: 600;
+  opacity: 0.92;
+}
+
+.service-btn {
+  padding: 11px 26px;
+  border-radius: 10px;
+  background: rgba(121, 57, 255, 0.95);
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  transition: 0.2s ease;
+  white-space: nowrap;
+}
+
+.service-btn:hover {
+  background: #8e53ff;
+  transform: translateY(-2px);
+  box-shadow: 0 0 10px rgba(121, 57, 255, 0.35);
+}
+
+/* ============================================================
+   🔁 FADE SIMPLES HOME → SERVIÇOS (controlado só por CSS)
+============================================================ */
+
+/* home começa totalmente visível, já com transition configurada */
+#home-view {
+  opacity: 1;
+  transition: opacity var(--home-services-fade-duration)
+    var(--home-services-fade-ease);
+}
+
+/* agora a regra ganha do #home-view, porque tem
+   o mesmo id + a classe junto (maior especificidade) */
+#home-view.home-fade-out {
+  opacity: 0;
+}
+
+/* ============================================================
+   SERVIÇOS — KEYFRAMES DO TÍTULO / TABS
+============================================================ */
+
+@keyframes servicesTitleFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(calc(var(--services-title-offset-y) + 20px));
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(var(--services-title-offset-y));
+  }
+}
+
+@keyframes servicesTabsFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(calc(var(--services-tabs-offset-y) + 20px));
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(var(--services-tabs-offset-y));
+  }
+}
+
+/* ============================================================
+   SERVIÇOS — ANIMAÇÃO EM CASCATA DOS CARDS
+   (usada só quando entrar em Serviços vindo da Home)
+============================================================ */
+
+.service-item.fade-cascade {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: serviceItemFadeIn 0.65s ease forwards;
+  animation-delay: var(--service-delay, 0s);
+}
+
+@keyframes serviceItemFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* ============================================================
+   CONTROLES ESPECÍFICOS PARA MOBILE (HOME + SERVIÇOS)
+   - Neutro por padrão: valores iguais aos do desktop
+   - Para ajustar só o mobile, altere ESTES valores
+   ============================================================ */
+@media (max-width: 828px) {
+  :root {
+    /* ========== HOME ========== */
+    /* MENU (nav) */
+    --nav-offset-y: 15dvh; /* ajuste vertical do menu no mobile */
+    --nav-scale: 1; /* escala do menu no mobile */
+
+    /* TÍTULO principal (duas linhas) */
+    --title-offset-y: 25dvh;
+    --title-scale: 1.25;
+
+    /* SUBTÍTULO */
+    --subtitle-offset-y: 24dvh;
+    --subtitle-scale: 1.2;
+
+    /* BOTÃO "Agendar" */
+    --button-offset-y: 30dvh;
+    --button-scale: 1.2;
+
+    /* FOOTER da home */
+    --footer-offset-y: 45vh;
+    --footer-scale: 0.7;
+
+    /* ========== SERVIÇOS ========== */
+    /* Título "Serviços" */
+    --services-title-offset-y: 160px;
+
+    /* Tabs de categorias (Corte, Barba, etc.) */
+    --services-tabs-offset-y: 180px;
+
+    /* Lista de cards de serviços */
+    --services-list-offset-y: 210px;
+  }
+
+  .services-list {
+    max-width: 92%; /* ← ajuste como quiser: 100%, 95%, 90%, 85% etc. */
+  }
+
+  /* ===========================================
+      IMPEDIR QUE O PREÇO QUEBRE EM DUAS LINHAS
+      =========================================== */
+  .service-right {
+    display: flex;
+    flex-direction: row; /* mantém o preço + botão lado a lado */
+    align-items: center;
+    gap: 12px;
+    flex-wrap: nowrap; /* impede quebra */
+  }
+
+  .service-price {
+    white-space: nowrap; /* garante que "R$ 45" fique na mesma linha */
+    font-size: 16px; /* opcional */
+  }
+
+  /* Reduz leve padding do card para caber melhor na tela */
+  .service-item {
+    padding: 16px 18px;
+  }
+
+  /* Ajuste opcional do botão no mobile */
+  .service-btn {
+    padding: 10px 22px;
+    font-size: 13.5px;
+  }
+}

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Barbearia</title>
+    <link rel="stylesheet" href="./style-home.css" />
+  </head>
+  <body>
+    <div class="bg-video-root">
+      <video
+        class="bg-video"
+        src="BG.mp4"
+        autoplay
+        muted
+        loop
+        playsinline
+      ></video>
+    </div>
+
+    <!-- ============================================================
+       CONTENT WRAPPER — CORRETA
+       ============================================================ -->
+    <div class="content-wrapper debug-border">
+      <!-- MENU SUPERIOR -->
+      <nav class="nav" aria-label="Principal">
+        <ul class="nav-list">
+          <li><a class="nav-item active" data-action="go-home">Início</a></li>
+          <li><a class="nav-item" data-action="go-services">Serviços</a></li>
+        </ul>
+      </nav>
+
+      <!-- ============================================================
+         VIEW HOME (AGORA COM .hero + animações)
+         ============================================================ -->
+      <section id="home-view" class="view-section">
+        <header class="hero">
+          <div class="hero-inner">
+            <!-- TÍTULO COM ANIMAÇÃO CORRETA -->
+            <h1 class="hero-title fade-in-title">
+              <span class="hero-title-line1">Bem-vindo à</span><br />
+              <span class="hero-title-line2">Barbearia Exemplo</span>
+            </h1>
+
+            <!-- SUBTÍTULO COM ANIMAÇÃO -->
+            <p class="hero-subtitle fade-in-subtitle">
+              Cortes, barba e experiência — com estilo.
+            </p>
+
+            <!-- BOTÃO COM ANIMAÇÃO -->
+            <div class="cta-wrap fade-in-button">
+              <a class="shimmer-btn" href="#" data-action="go-services">
+                <span class="shimmer-label">Agendar</span>
+              </a>
+            </div>
+          </div>
+
+          <!-- Vinheta suave igual ao projeto rascunho -->
+          <div class="hero-vignette"></div>
+        </header>
+
+        <!-- FOOTER -->
+        <footer class="site-footer" aria-label="Rodapé">
+          <nav class="footer-links">
+            <a href="/privacidade" rel="nofollow">Política de privacidade</a>
+            <span class="footer-sep">•</span>
+            <a href="/termos" rel="nofollow">Termos de uso</a>
+          </nav>
+        </footer>
+      </section>
+      <!-- fim da home-view -->
+
+      <!-- ============================================================
+         VIEW SERVIÇOS (NOVA SEÇÃO)
+         ============================================================ -->
+      <section id="services-view" class="view-section" style="display: none">
+        <!-- TÍTULO -->
+        <h1 class="services-title">Escolha um serviço:</h1>
+
+        <!-- FILTROS -->
+        <div class="category-tabs">
+          <button class="cat-btn active" data-filter="all">Todos</button>
+          <button class="cat-btn" data-filter="cabelo">Cabelo</button>
+          <button class="cat-btn" data-filter="barba">Barba</button>
+          <button class="cat-btn" data-filter="combos">Combos</button>
+        </div>
+
+        <!-- LISTA DE SERVIÇOS COMPLETA -->
+        <ul class="services-list">
+          <!-- CABELO -->
+          <li class="service-item" data-category="cabelo">
+            <div>
+              <h2 class="service-name">Corte Tradicional</h2>
+              <p class="service-desc">
+                Acabamento clássico com tesoura e máquina.
+              </p>
+            </div>
+            <div class="service-right">
+              <span class="service-price">R$ 45</span>
+              <button class="service-btn" data-service="Corte Tradicional">
+                Agendar
+              </button>
+            </div>
+          </li>
+
+          <li class="service-item" data-category="cabelo">
+            <div>
+              <h2 class="service-name">Corte Degradê</h2>
+              <p class="service-desc">
+                Fade limpo e moderno, acabamento detalhado.
+              </p>
+            </div>
+            <div class="service-right">
+              <span class="service-price">R$ 55</span>
+              <button class="service-btn" data-service="Corte Degradê">
+                Agendar
+              </button>
+            </div>
+          </li>
+
+          <li class="service-item" data-category="cabelo">
+            <div>
+              <h2 class="service-name">Corte Navalhado</h2>
+              <p class="service-desc">
+                Acabamento à navalha para maior precisão.
+              </p>
+            </div>
+            <div class="service-right">
+              <span class="service-price">R$ 50</span>
+              <button class="service-btn" data-service="Corte Navalhado">
+                Agendar
+              </button>
+            </div>
+          </li>
+
+          <li class="service-item" data-category="cabelo">
+            <div>
+              <h2 class="service-name">Corte Infantil</h2>
+              <p class="service-desc">
+                Corte especial para crianças com cuidado extra.
+              </p>
+            </div>
+            <div class="service-right">
+              <span class="service-price">R$ 35</span>
+              <button class="service-btn" data-service="Corte Infantil">
+                Agendar
+              </button>
+            </div>
+          </li>
+
+          <!-- BARBA -->
+          <li class="service-item" data-category="barba">
+            <div>
+              <h2 class="service-name">Barba Completa</h2>
+              <p class="service-desc">Modelagem, navalha e toalha quente.</p>
+            </div>
+            <div class="service-right">
+              <span class="service-price">R$ 40</span>
+              <button class="service-btn" data-service="Barba Completa">
+                Agendar
+              </button>
+            </div>
+          </li>
+
+          <li class="service-item" data-category="barba">
+            <div>
+              <h2 class="service-name">Sobrancelha</h2>
+              <p class="service-desc">Limpeza e alinhamento natural.</p>
+            </div>
+            <div class="service-right">
+              <span class="service-price">R$ 20</span>
+              <button class="service-btn" data-service="Sombrancelha">
+                Agendar
+              </button>
+            </div>
+          </li>
+
+          <li class="service-item" data-category="barba">
+            <div>
+              <h2 class="service-name">Pigmentação de Barba</h2>
+              <p class="service-desc">
+                Definição e correção para aparência mais cheia.
+              </p>
+            </div>
+            <div class="service-right">
+              <span class="service-price">R$ 60</span>
+              <button class="service-btn" data-service="Pigmentação de Barba">
+                Agendar
+              </button>
+            </div>
+          </li>
+
+          <!-- COMBOS -->
+          <li class="service-item" data-category="combos">
+            <div>
+              <h2 class="service-name">Corte + Barba</h2>
+              <p class="service-desc">Combo completo para renovar o visual.</p>
+            </div>
+            <div class="service-right">
+              <span class="service-price">R$ 70</span>
+              <button class="service-btn" data-service="Corte + Barba">
+                Agendar
+              </button>
+            </div>
+          </li>
+
+          <li class="service-item" data-category="combos">
+            <div>
+              <h2 class="service-name">Black Mask + Barba</h2>
+              <p class="service-desc">Tratamento de pele + barba alinhada.</p>
+            </div>
+            <div class="service-right">
+              <span class="service-price">R$ 55</span>
+              <button class="service-btn" data-service="Black Mask + Barba">
+                Agendar
+              </button>
+            </div>
+          </li>
+
+          <li class="service-item" data-category="combos">
+            <div>
+              <h2 class="service-name">Corte + Hidratação</h2>
+              <p class="service-desc">Corte + tratamento capilar completo.</p>
+            </div>
+            <div class="service-right">
+              <span class="service-price">R$ 80</span>
+              <button class="service-btn" data-service="Corte + Hidratação">
+                Agendar
+              </button>
+            </div>
+          </li>
+        </ul>
+      </section>
+      <!-- fim services-view -->
+    </div>
+    <!-- fim content-wrapper -->
+
+    <script src="./script-home.js"></script>
+  </body>
+</html>

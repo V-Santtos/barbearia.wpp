@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Agendamento — Barbearia</title>
+
+    <link rel="stylesheet" href="/styles.css" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Inter:wght@400&family=Barlow+Condensed:wght@700&family=DM+Mono:wght@400&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Tailwind via CDN (temporário — instalar via npm na próxima etapa) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+
+  <body>
+    <div id="bg-video-root" class="bg-video-root">
+      <video
+        id="bgVideo"
+        class="bg-video"
+        src="/BG.mp4"
+        autoplay
+        muted
+        loop
+        playsinline
+        webkit-playsinline
+        disablePictureInPicture
+        preload="auto"
+        controlslist="nodownload noplaybackrate noremoteplayback"
+      ></video>
+    </div>
+
+    <div id="root"></div>
+
+    <script type="module" src="/index.tsx"></script>
+
+    <script>
+      (function () {
+        const v = document.getElementById("bgVideo");
+        if (!v) return;
+
+        document.body.classList.add("bg-video-blocked");
+
+        let videoShown = false;
+
+        const showVideo = () => {
+          videoShown = true;
+          document.body.classList.remove("bg-video-blocked");
+        };
+
+        const showFallback = () => {
+          // Never hide the video once it's confirmed playing.
+          // This guards against the race where autoplay fires "playing"
+          // (removing the class) and then v.play() rejects (re-adding it).
+          if (!videoShown) {
+            document.body.classList.add("bg-video-blocked");
+          }
+        };
+
+        v.addEventListener("playing", showVideo);
+        v.addEventListener("error", showFallback);
+
+        v.play().catch(showFallback);
+      })();
+    </script>
+  </body>
+</html>

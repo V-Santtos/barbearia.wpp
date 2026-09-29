@@ -1,0 +1,50 @@
+[
+  {
+    "id": 1,
+    "slug": "cabelo",
+    "category": "cabelo",
+    "name": "Cabelo",
+    "desc": "Corte personalizado com alinhamento e acabamento preciso.",
+    "price": "35"
+  },
+  {
+    "id": 2,
+    "slug": "barba",
+    "category": "barba",
+    "name": "Barba",
+    "desc": "Modelagem com navalha, contornos limpos e acabamento cuidado.",
+    "price": "25"
+  },
+  {
+    "id": 3,
+    "slug": "cabelo-e-barba-navalhado",
+    "category": "cabelo-barba",
+    "name": "Cabelo e Barba navalhado",
+    "desc": "Corte e barba com acabamento navalhado.",
+    "price": "55"
+  },
+  {
+    "id": 4,
+    "slug": "barboterapia",
+    "category": "barboterapia",
+    "name": "Barboterapia",
+    "desc": "Tratamento com toalha quente, preparo da pele e acabamento refinado.",
+    "price": "40"
+  },
+  {
+    "id": 5,
+    "slug": "sobrancelha",
+    "category": "sobrancelha",
+    "name": "Sobrancelha",
+    "desc": "Alinhamento natural preservando o formato do rosto.",
+    "price": "15"
+  },
+  {
+    "id": 6,
+    "slug": "depilacao-nariz-e-ouvidos",
+    "category": "depilacao",
+    "name": "Depilação nariz e ouvidos",
+    "desc": "Remoção de pelos do nariz e ouvidos com higiene e discrição.",
+    "price": "15"
+  }
+]

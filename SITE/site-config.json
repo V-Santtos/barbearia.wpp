@@ -1,0 +1,12 @@
+{
+  "heroLine1": "Bem-vindo à",
+  "heroName": "Barbearia",
+  "ctaLabel": "Agendar",
+  "filtersEnabled": true,
+  "categories": [
+    { "id": "cabelo", "label": "Cabelo", "active": true },
+    { "id": "barba", "label": "Barba", "active": true },
+    { "id": "combos", "label": "Combos", "active": true },
+    { "id": "outros", "label": "Outros", "active": true }
+  ]
+}

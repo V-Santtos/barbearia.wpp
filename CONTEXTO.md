@@ -22,7 +22,8 @@ As duas frentes se encontraram em **28/09/2026**, na branch
 de verdade. `CALENDARIO/server.js` **é** o backend atual — não um contrato antigo de
 referência, como o checkout da casca registrava.
 
-O site público de agendamento continua fora deste repositório.
+O site público de agendamento entrou no repositório em 29/09/2026, em `SITE/` — ver
+a seção própria abaixo.
 
 ## Estado — frente do backend
 
@@ -96,6 +97,30 @@ slug, o painel pela sessão); escrita por `noPainel`, só na própria loja.
 
 **Conferido no navegador em 29/09/2026**, com login real: carregar, salvar a página
 inicial, criar serviço e salvar duas vezes sem duplicar, remover serviço.
+
+### O site entrou no repositório (29/09/2026)
+
+Estava na máquina em cinco cópias antigas (abril a agosto) e numa atual,
+`~/Desktop/projetos/agendamentos-barbearia/site-agendamentos`, a cópia de trabalho
+do Victor com a rodada visual de 27/09 — sem git. Veio para `SITE/` como cópia; a
+pasta original ficou intacta.
+
+Adaptado ao backend novo:
+
+- **A barbearia vem do caminho** (`/lucas-costa`), e o transporte a manda em toda
+  chamada. Sem ela, ou com uma que não existe, a tela "Barbearia não encontrada" —
+  sem loja padrão.
+- A página inicial lê o **objeto direto** (antes `{valor: ...}`).
+- **Saiu o `AdminDrawer`**: nenhuma rota o montava, e ele era a única razão de o
+  bundle carregar `VITE_OWNER_PASSWORD` e `VITE_ADMIN_API_TOKEN`. As escritas dele
+  pertencem ao modal de Configurações do painel. Conferido: nenhum dos segredos no
+  build.
+
+Percurso do cliente testado contra a API local, com as chamadas que o site faz: dez
+leituras em 200, agendamento 201 gravado na loja certa, mesmo horário 409, o
+barbeiro da loja A pelo endereço da loja B 404.
+
+**Falta:** o `vercel.json` publicar o site; a conferência visual no navegador.
 
 ## Fila do backend: o que a casca pede e o servidor ainda não tem
 
