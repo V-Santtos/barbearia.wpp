@@ -713,7 +713,10 @@ function mapServiceRow(row) {
   return {
     id: Number(row.id),
     slug: row.slug,
-    category: row.categoria_id ?? "",
+    // O contrato fala em SLUG de categoria ("cabelo"), nao no id numerico que liga as
+    // tabelas. Ate 29/09/2026 saia o `categoria_id` cru — que nunca estava preenchido,
+    // entao a tela recebia "" e ninguem notava a diferenca de tipo.
+    category: row.categoria_slug ?? "",
     name: row.nome,
     desc: row.descricao ?? "",
     price: row.preco ?? "",
@@ -726,10 +729,11 @@ function mapServiceRow(row) {
 // concorrente e exatamente o tipo de coisa que ninguem descobre ter vazado.
 async function getServicesFromTables(barbeariaId) {
   const { rows } = await pool.query(
-    `SELECT id, slug, nome, descricao, preco, categoria_id
-     FROM public.servicos
-     WHERE ativo = TRUE AND barbearia_id = $1
-     ORDER BY ordem ASC, id ASC`,
+    `SELECT s.id, s.slug, s.nome, s.descricao, s.preco, c.slug AS categoria_slug
+     FROM public.servicos s
+     LEFT JOIN public.categorias_servicos c ON c.id = s.categoria_id
+     WHERE s.ativo = TRUE AND s.barbearia_id = $1
+     ORDER BY s.ordem ASC NULLS LAST, s.id ASC`,
     [barbeariaId],
   );
   return rows.map(mapServiceRow);
@@ -2918,10 +2922,308 @@ function buildServer() {
 
   // GET /servicos - catalogo de servicos, so leitura.
   //
-  // O EventModal usa isto pro dropdown de servico. Quem EDITAVA o catalogo era o
-  // AdminDrawer do site publico, que nao existe mais aqui — entao `PUT /servicos`,
-  // `GET/PUT /categorias-servicos` e `GET/PUT /configuracao/:chave` sairam junto
-  // com ele. Ate existir tela nossa, o catalogo se edita pelo painel do Supabase.
+  // ─── CONFIGURACOES DO SITE (29/09/2026) ────────────────────────────────────
+  //
+  // Leitura: `noSite` — o site publico le pelo slug, o painel pela sessao.
+  // Escrita: `noPainel` — so o dono, e so a propria loja; a RLS garante.
+  //
+  // Historia: rotas com estes nomes ja existiram e sairam junto com o `AdminDrawer`
+  // do site antigo, com a nota "ate existir tela nossa, o catalogo se edita pelo
+  // Supabase". A tela agora existe: o modal de Configuracoes, feito pelo Victor. O
+  // contrato e o dela — `docs/superpowers/specs/2026-09-27-configuracoes-site-agendamento.md`.
+
+  /** Os padroes de uma loja que ainda nao salvou nada. O nome e o dela. */
+  const homePadrao = (barbearia) => ({
+    heroLine1: "Bem-vindo à",
+    heroName: barbearia.nome,
+    ctaLabel: "Agendar",
+  });
+
+  // GET /configuracao/home — os textos da pagina inicial.
+  //
+  // Objeto DIRETO, no formato do painel (decisao de 29/09/2026). O site publico, que
+  // mora fora do repositorio, espera `{valor: ...}` e sera adaptado quando entrar —
+  // ele ja precisa de adaptacao por causa do slug obrigatorio.
+  fastify.get(
+    "/configuracao/home",
+    noSite(async (_request, reply, barbearia) => {
+      try {
+        const { rows } = await pool.query(
+          `SELECT titulo_linha1, nome_destaque, texto_botao
+             FROM public.configuracoes_site WHERE barbearia_id = $1`,
+          [barbearia.id],
+        );
+        if (!rows.length) return homePadrao(barbearia);
+        return {
+          heroLine1: rows[0].titulo_linha1,
+          heroName: rows[0].nome_destaque,
+          ctaLabel: rows[0].texto_botao,
+        };
+      } catch (err) {
+        fastify.log.error(err);
+        return reply.status(500).send({ error: "Erro ao buscar a configuração do site." });
+      }
+    }),
+  );
+
+  fastify.put(
+    "/configuracao/home",
+    { preHandler: requireAdmin },
+    noPainel(async (request, reply, db) => {
+      const texto = (v) => String(v ?? "").trim();
+      const heroLine1 = texto(request.body?.heroLine1);
+      const heroName = texto(request.body?.heroName);
+      const ctaLabel = texto(request.body?.ctaLabel);
+
+      // A tela ja recusa isto; o servidor recusa de novo, porque a tela nao e o
+      // unico cliente possivel e uma home sem nome nem botao quebra o site inteiro.
+      if (!heroName || !ctaLabel) {
+        return reply
+          .status(400)
+          .send({ error: "O nome da barbearia e o texto do botão são obrigatórios." });
+      }
+
+      try {
+        // `barbearia_atual()` e nao um id vindo do corpo: o dono so escreve na propria
+        // loja, e quem diz qual e a loja dele e a sessao.
+        await db.query(
+          `INSERT INTO public.configuracoes_site
+             (barbearia_id, titulo_linha1, nome_destaque, texto_botao)
+           VALUES (public.barbearia_atual(), $1, $2, $3)
+           ON CONFLICT (barbearia_id) DO UPDATE
+             SET titulo_linha1 = EXCLUDED.titulo_linha1,
+                 nome_destaque = EXCLUDED.nome_destaque,
+                 texto_botao   = EXCLUDED.texto_botao,
+                 atualizado_em = now()`,
+          [heroLine1, heroName, ctaLabel],
+        );
+        return { heroLine1, heroName, ctaLabel };
+      } catch (err) {
+        fastify.log.error(err);
+        return reply.status(500).send({ error: "Erro ao salvar a configuração do site." });
+      }
+    }),
+  );
+
+  // GET /categorias-servicos — as categorias da vitrine e o filtro.
+  //
+  // `id` no contrato e o SLUG, nao o numero da tabela. A tela gera o slug a partir do
+  // rotulo e o usa como referencia em `servicos[].category`.
+  fastify.get(
+    "/categorias-servicos",
+    noSite(async (_request, reply, barbearia) => {
+      try {
+        const [{ rows: itens }, { rows: conf }] = await Promise.all([
+          pool.query(
+            `SELECT slug, rotulo, ativa FROM public.categorias_servicos
+              WHERE barbearia_id = $1 ORDER BY ordem, id`,
+            [barbearia.id],
+          ),
+          pool.query(
+            `SELECT filtro_categorias FROM public.configuracoes_site WHERE barbearia_id = $1`,
+            [barbearia.id],
+          ),
+        ]);
+        return {
+          filtersEnabled: conf[0]?.filtro_categorias ?? true,
+          items: itens.map((c) => ({ id: c.slug, label: c.rotulo, active: c.ativa })),
+        };
+      } catch (err) {
+        fastify.log.error(err);
+        return reply.status(500).send({ error: "Erro ao buscar categorias." });
+      }
+    }),
+  );
+
+  fastify.put(
+    "/categorias-servicos",
+    { preHandler: requireAdmin },
+    noPainel(async (request, reply, db) => {
+      const itens = Array.isArray(request.body?.items) ? request.body.items : null;
+      if (!itens) return reply.status(400).send({ error: "`items` deve ser uma lista." });
+
+      const limpos = itens.map((c, ordem) => ({
+        slug: String(c?.id ?? "").trim(),
+        rotulo: String(c?.label ?? "").trim(),
+        ativa: c?.active !== false,
+        ordem,
+      }));
+      if (limpos.some((c) => !c.slug || !c.rotulo)) {
+        return reply.status(400).send({ error: "Toda categoria precisa de id e nome." });
+      }
+      if (new Set(limpos.map((c) => c.slug)).size !== limpos.length) {
+        return reply.status(400).send({ error: "Há categorias repetidas." });
+      }
+
+      try {
+        // A tela nao deixa remover categoria com servico vinculado. O servidor confere
+        // de novo: removida com servico ATIVO dentro, a vitrine mostraria o servico sem
+        // categoria — ou pior, sumiria com ele do filtro sem ninguem ter pedido.
+        const slugs = limpos.map((c) => c.slug);
+        const { rows: presas } = await db.query(
+          `SELECT c.slug, count(*)::int AS servicos
+             FROM public.categorias_servicos c
+             JOIN public.servicos s ON s.categoria_id = c.id AND s.ativo
+            WHERE NOT (c.slug = ANY($1))
+            GROUP BY c.slug`,
+          [slugs],
+        );
+        if (presas.length) {
+          return reply.status(409).send({
+            error: `A categoria "${presas[0].slug}" ainda tem serviços ativos.`,
+            codigo: "categoria_em_uso",
+          });
+        }
+
+        await db.query(
+          `DELETE FROM public.categorias_servicos WHERE NOT (slug = ANY($1))`,
+          [slugs],
+        );
+        for (const c of limpos) {
+          await db.query(
+            `INSERT INTO public.categorias_servicos (barbearia_id, slug, rotulo, ativa, ordem)
+             VALUES (public.barbearia_atual(), $1, $2, $3, $4)
+             ON CONFLICT (barbearia_id, slug) DO UPDATE
+               SET rotulo = EXCLUDED.rotulo, ativa = EXCLUDED.ativa, ordem = EXCLUDED.ordem`,
+            [c.slug, c.rotulo, c.ativa, c.ordem],
+          );
+        }
+
+        // O filtro mora na linha de configuracao. Se ela ainda nao existe, nasce com
+        // os padroes da pagina inicial — o nome da propria loja.
+        const filtersEnabled = request.body?.filtersEnabled !== false;
+        await db.query(
+          `INSERT INTO public.configuracoes_site (barbearia_id, nome_destaque, filtro_categorias)
+           SELECT id, nome, $1 FROM public.barbearias WHERE id = public.barbearia_atual()
+           ON CONFLICT (barbearia_id) DO UPDATE
+             SET filtro_categorias = EXCLUDED.filtro_categorias, atualizado_em = now()`,
+          [filtersEnabled],
+        );
+
+        return {
+          filtersEnabled,
+          items: limpos.map((c) => ({ id: c.slug, label: c.rotulo, active: c.ativa })),
+        };
+      } catch (err) {
+        fastify.log.error(err);
+        return reply.status(500).send({ error: "Erro ao salvar categorias." });
+      }
+    }),
+  );
+
+  // PUT /servicos — a lista INTEIRA do catalogo da loja.
+  //
+  // Tres casos por item:
+  //  - `id` positivo: servico existente. Tem que ser DESTA loja — a RLS esconde os de
+  //    outra, entao o update afetaria zero linhas, e isso vira 400 em vez de sucesso
+  //    silencioso.
+  //  - `id` ausente ou <= 0: servico novo. A tela marca os novos com id negativo
+  //    temporario (-1, -2...).
+  //  - servico ativo da loja que NAO veio na lista: DESATIVADO, nao apagado (decisao de
+  //    29/09/2026). Some do site; o historico de agendamentos continua fazendo sentido.
+  //
+  // DEVOLVE A LISTA COMO FICOU, com os ids reais. A tela precisa trocar o rascunho por
+  // ela: se guardasse o proprio rascunho, o servico novo continuaria com id -1 e seria
+  // criado DE NOVO no proximo salvamento.
+  fastify.put(
+    "/servicos",
+    { preHandler: requireAdmin },
+    noPainel(async (request, reply, db) => {
+      const itens = Array.isArray(request.body) ? request.body : null;
+      if (!itens) return reply.status(400).send({ error: "O corpo deve ser a lista de serviços." });
+
+      const PRECO = /^\d+(?:[.,]\d{1,2})?$/;
+      const limpos = itens.map((sv, ordem) => ({
+        id: Number(sv?.id) > 0 ? Number(sv.id) : null,
+        nome: String(sv?.name ?? "").trim(),
+        descricao: String(sv?.desc ?? "").trim(),
+        categoria: String(sv?.category ?? "").trim(),
+        preco: String(sv?.price ?? "").trim().replace(",", "."),
+        slug:
+          String(sv?.slug ?? "").trim() ||
+          String(sv?.name ?? "").toLowerCase().normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+        ordem,
+      }));
+
+      const invalido = limpos.find((sv) => !sv.nome || !PRECO.test(sv.preco));
+      if (invalido) {
+        return reply
+          .status(400)
+          .send({ error: `Serviço inválido: "${invalido.nome || "sem nome"}". Confira nome e preço.` });
+      }
+
+      try {
+        const { rows: cats } = await db.query(`SELECT id, slug FROM public.categorias_servicos`);
+        const idDaCategoria = new Map(cats.map((c) => [c.slug, c.id]));
+        const semCategoria = limpos.find((sv) => sv.categoria && !idDaCategoria.has(sv.categoria));
+        if (semCategoria) {
+          return reply.status(400).send({
+            error: `A categoria "${semCategoria.categoria}" não existe. Salve as categorias antes dos serviços.`,
+          });
+        }
+
+        const mantidos = [];
+        for (const sv of limpos) {
+          const valores = [
+            sv.nome, sv.descricao || null, sv.preco,
+            idDaCategoria.get(sv.categoria) ?? null, sv.slug, sv.ordem,
+          ];
+          if (sv.id) {
+            const { rowCount } = await db.query(
+              `UPDATE public.servicos
+                  SET nome = $1, descricao = $2, preco = $3, categoria_id = $4,
+                      slug = $5, ordem = $6, ativo = TRUE
+                WHERE id = $7`,
+              [...valores, sv.id],
+            );
+            // Zero linhas = o id nao e desta loja (a RLS escondeu) ou nao existe. Nos
+            // dois casos a resposta certa e recusar, nao fingir que salvou.
+            if (!rowCount) {
+              throw Object.assign(new Error("Um dos serviços não pertence a esta barbearia."), {
+                statusCode: 400,
+              });
+            }
+            mantidos.push(sv.id);
+          } else {
+            const { rows } = await db.query(
+              `INSERT INTO public.servicos
+                 (nome, descricao, preco, categoria_id, slug, ordem, ativo, barbearia_id)
+               VALUES ($1, $2, $3, $4, $5, $6, TRUE, public.barbearia_atual())
+               RETURNING id`,
+              valores,
+            );
+            mantidos.push(Number(rows[0].id));
+          }
+        }
+
+        await db.query(
+          `UPDATE public.servicos SET ativo = FALSE WHERE ativo AND NOT (id = ANY($1))`,
+          [mantidos],
+        );
+
+        const { rows } = await db.query(
+          `SELECT s.id, s.slug, s.nome, s.descricao, s.preco, c.slug AS categoria_slug
+             FROM public.servicos s
+             LEFT JOIN public.categorias_servicos c ON c.id = s.categoria_id
+            WHERE s.ativo
+            ORDER BY s.ordem ASC NULLS LAST, s.id ASC`,
+        );
+        return rows.map(mapServiceRow);
+      } catch (err) {
+        // RELANCADO, e nao respondido aqui. Responder daqui faria o handler terminar
+        // normalmente — e o `noPainel` COMMITARIA os servicos gravados antes do item
+        // invalido. Subindo, o `comUsuario` desfaz a transacao inteira, e o Fastify
+        // responde com o `statusCode` que o erro carrega. A primeira versao desta rota
+        // tinha o comentario certo e o codigo errado (29/09/2026).
+        if (err.statusCode === 400) throw err;
+        fastify.log.error(err);
+        return reply.status(500).send({ error: "Erro ao salvar serviços." });
+      }
+    }),
+  );
+
+  // O EventModal usa isto pro dropdown de servico, e o site publico pra vitrine.
   fastify.get(
     "/servicos",
     noSite(async (_request, reply, barbearia) => {

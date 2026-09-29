@@ -74,24 +74,33 @@ despesas do Financeiro) — agora restrito a `VITE_MOCK=1`.
 A documentação dele (`AGENTS.md`, `CONTEXTO.md`) foi reorganizada sobre a estrutura
 que ele criou; vale ele conferir.
 
-Próximo: as rotas de configuração do site, primeiro item da fila abaixo. Decisões já
-tomadas com o usuário (29/09):
+### Configurações do site — backend pronto (29/09/2026)
 
-- `GET /configuracao/home` devolve o **objeto direto**, no formato do painel. O site
-  público espera `{valor: ...}` e vai ser adaptado quando entrar no repositório — ele
-  já precisa de adaptação por causa do slug.
-- Serviço que sai da lista no `PUT /servicos` é **desativado**, não apagado: some do
-  site, e o histórico continua.
+As rotas que o modal do Victor pedia existem: `GET`/`PUT /configuracao/home`,
+`GET`/`PUT /categorias-servicos` e `PUT /servicos`. Leitura por `noSite` (o site pelo
+slug, o painel pela sessão); escrita por `noPainel`, só na própria loja.
+
+- Migração `20260929120000_configuracoes_do_site.sql`: `categorias_servicos` e
+  `configuracoes_site`, ambas com RLS. A ligação serviço → categoria é uma **chave
+  composta com a barbearia** — o banco recusa um serviço da loja A apontando para uma
+  categoria da loja B, sem depender de o código lembrar.
+- A página inicial devolve o **objeto direto**; serviço que sai da lista é
+  **desativado**, não apagado — as duas decisões de 29/09.
+- **Mudou no transporte, e o Victor precisa saber:** `saveBookingSiteSettings` passou
+  a devolver o que o servidor gravou, e o modal troca o rascunho por isso. A tela
+  criava serviços novos com id negativo e guardava o próprio rascunho depois de
+  salvar; com banco real, o serviço ganhava id de verdade e o próximo "Salvar" o
+  criaria **de novo**. O mock não mostrava, porque grava o id negativo como chega.
+- `npm run verificar` ganhou 17 checagens, e o teste agora fotografa catálogo,
+  categorias e configuração das duas lojas e os devolve no fim.
+
+**Falta:** a conferência no navegador.
 
 ## Fila do backend: o que a casca pede e o servidor ainda não tem
 
 `docs/mapa-endpoints-frontend.md` (Victor, 27/09) é o contrato que as telas esperam.
 Rotas que hoje **só existem no mock** e são trabalho do backend:
 
-- `GET`/`PUT /configuracao/home` — e alinhar o formato: o site desempacota
-  `{valor: ...}`, o painel espera o objeto direto
-- `GET`/`PUT /categorias-servicos`
-- `PUT /servicos`
 - `POST /agendamentos/:id/concluir` — o "Fechar atendimento"
 - lançamentos manuais do Financeiro (hoje em memória)
 

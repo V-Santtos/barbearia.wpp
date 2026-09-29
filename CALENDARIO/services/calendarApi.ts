@@ -140,12 +140,30 @@ export async function getBookingSiteSettings(): Promise<BookingSiteSettings> {
   return { home, categories, services };
 }
 
-export async function saveBookingSiteSettings(settings: BookingSiteSettings): Promise<void> {
+export async function saveBookingSiteSettings(
+  settings: BookingSiteSettings,
+): Promise<BookingSiteSettings> {
   // Cada recurso tem endpoint próprio. Salvar em sequência permite apontar
-  // exatamente qual etapa falhou; atomicidade depende do backend do dev.
-  await api("configuracao/home", { method: "PUT", body: JSON.stringify(settings.home) });
-  await api("categorias-servicos", { method: "PUT", body: JSON.stringify(settings.categories) });
-  await api("servicos", { method: "PUT", body: JSON.stringify(settings.services) });
+  // exatamente qual etapa falhou. A ORDEM importa: categorias antes de serviços,
+  // porque um serviço novo pode apontar para uma categoria criada no mesmo salvamento.
+  //
+  // DEVOLVE O QUE O SERVIDOR GRAVOU, e a tela troca o rascunho por isso (29/09/2026).
+  // Serviço novo entra com id negativo temporário e sai com o id real; se a tela
+  // guardasse o próprio rascunho, o próximo "Salvar" criaria o serviço de novo. No mock
+  // não aparecia, porque ele grava o id negativo do jeito que chega.
+  const home = await api<BookingSiteSettings["home"]>("configuracao/home", {
+    method: "PUT",
+    body: JSON.stringify(settings.home),
+  });
+  const categories = await api<BookingSiteSettings["categories"]>("categorias-servicos", {
+    method: "PUT",
+    body: JSON.stringify(settings.categories),
+  });
+  const services = await api<ConfiguredService[]>("servicos", {
+    method: "PUT",
+    body: JSON.stringify(settings.services),
+  });
+  return { home, categories, services };
 }
 
 // ─── Helper ───────────────────────────────────────────────────────────────────

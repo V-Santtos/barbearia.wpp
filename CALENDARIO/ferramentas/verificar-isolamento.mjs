@@ -51,6 +51,17 @@ console.log(`banco de teste confirmado (${trava.n} agendamentos de seed)\n`);
 // ── Trava 2: guarda os donos reais ──
 const { rows: donosOriginais } = await banco.query(`select slug, user_id from barbearias`);
 
+// ── Trava 3: fotografa o que o teste de configuracoes vai alterar ──
+// Catalogo, categorias e configuracao da pagina das DUAS lojas. Se o isolamento
+// falhar e a loja A conseguir mexer na B, a limpeza devolve a B como estava — o
+// teste nao pode deixar como rastro justamente o estrago que veio medir.
+const foto = {
+  servicos: (await banco.query(
+    `select id, nome, descricao, preco, categoria_id, slug, ordem, ativo from servicos`)).rows,
+  categorias: (await banco.query(`select id, rotulo, ativa, ordem from categorias_servicos`)).rows,
+  config: (await banco.query(`select * from configuracoes_site`)).rows,
+};
+
 const { publicKey, privateKey } = await generateKeyPair("ES256", { extractable: true });
 const jwk = { ...(await exportJWK(publicKey)), kid: "teste", alg: "ES256", use: "sig" };
 const emissor = createServer((_q, r) => {
@@ -80,6 +91,30 @@ async function limpar() {
   emissor.close();
   await banco.query(`delete from agendamentos where source = 'verificacao-isolamento'`).catch(() => {});
   await banco.query(`delete from profissionais where nome = 'Teste Verificacao'`).catch(() => {});
+  // Configuracoes do site: servicos primeiro (apontam para categorias), depois as
+  // categorias, depois a linha de configuracao.
+  const idsServicos = foto.servicos.map((sv) => sv.id);
+  await banco.query(`delete from servicos where not (id = any($1))`, [idsServicos]).catch(() => {});
+  for (const sv of foto.servicos) {
+    await banco.query(
+      `update servicos set nome=$2, descricao=$3, preco=$4, categoria_id=$5, slug=$6, ordem=$7, ativo=$8 where id=$1`,
+      [sv.id, sv.nome, sv.descricao, sv.preco, sv.categoria_id, sv.slug, sv.ordem, sv.ativo],
+    ).catch(() => {});
+  }
+  await banco.query(`delete from categorias_servicos where not (id = any($1))`,
+    [foto.categorias.map((c) => c.id)]).catch(() => {});
+  for (const c of foto.categorias) {
+    await banco.query(`update categorias_servicos set rotulo=$2, ativa=$3, ordem=$4 where id=$1`,
+      [c.id, c.rotulo, c.ativa, c.ordem]).catch(() => {});
+  }
+  await banco.query(`delete from configuracoes_site`).catch(() => {});
+  for (const c of foto.config) {
+    await banco.query(
+      `insert into configuracoes_site (barbearia_id, titulo_linha1, nome_destaque, texto_botao, filtro_categorias, atualizado_em)
+       values ($1,$2,$3,$4,$5,$6)`,
+      [c.barbearia_id, c.titulo_linha1, c.nome_destaque, c.texto_botao, c.filtro_categorias, c.atualizado_em],
+    ).catch(() => {});
+  }
   for (const { slug, user_id } of donosOriginais) {
     await banco.query(`update barbearias set user_id = $1 where slug = $2`, [user_id, slug]).catch(() => {});
   }
@@ -181,6 +216,68 @@ try {
     ok("e ele cai na loja B", onde?.slug === "central-teste", onde?.slug);
     await banco.query(`delete from profissionais where id = $1`, [novo.corpo.id]);
   }
+
+  // ── Configuracoes do site (29/09/2026) ──
+  console.log("\nconfiguracoes do site:");
+  const servicosDe = async (slug) => (await banco.query(
+    `select s.id, s.nome, s.ativo from servicos s join barbearias b on b.id=s.barbearia_id where b.slug=$1 order by s.id`,
+    [slug])).rows;
+
+  r = await pedir("/configuracao/home?barbearia=central-teste");
+  ok("site le a pagina inicial pelo slug", r.status === 200 && !!r.corpo?.heroName, `HTTP ${r.status}`);
+  const homeB = r.corpo;
+
+  r = await pedir("/configuracao/home", { token: tokenA, metodo: "PUT",
+    corpo: { heroLine1: "Teste", heroName: "Loja A Verificacao", ctaLabel: "Marcar" } });
+  ok("dono A grava a propria pagina inicial", r.status === 200, `HTTP ${r.status}`);
+  ok("e a loja A passa a ler o texto novo",
+    (await pedir("/configuracao/home", { token: tokenA })).corpo?.heroName === "Loja A Verificacao");
+  ok("a pagina da loja B nao mudou",
+    (await pedir("/configuracao/home?barbearia=central-teste")).corpo?.heroName === homeB.heroName);
+  ok("sem nome da barbearia -> 400", (await pedir("/configuracao/home", { token: tokenA, metodo: "PUT",
+    corpo: { heroLine1: "x", heroName: "", ctaLabel: "x" } })).status === 400);
+
+  const catsA = (await pedir("/categorias-servicos", { token: tokenA })).corpo;
+  ok("categorias da A pela sessao", catsA?.items?.length >= 1, `${catsA?.items?.length} categorias`);
+  r = await pedir("/categorias-servicos", { token: tokenA, metodo: "PUT",
+    corpo: { filtersEnabled: true, items: [...catsA.items, { id: "teste-verif", label: "Teste", active: true }] } });
+  ok("dono A cria categoria", r.status === 200 && r.corpo?.items?.some((c) => c.id === "teste-verif"), `HTTP ${r.status}`);
+  const catsB = (await pedir("/categorias-servicos?barbearia=central-teste")).corpo;
+  ok("mesmo slug 'cabelo' nas duas lojas, sem colisao",
+    catsA.items.some((c) => c.id === "cabelo") && catsB.items.some((c) => c.id === "cabelo"));
+  ok("a categoria nova nao aparece na loja B", !catsB.items.some((c) => c.id === "teste-verif"));
+
+  const antesA = await servicosDe("lucas-costa");
+  const listaA = (await pedir("/servicos", { token: tokenA })).corpo;
+  r = await pedir("/servicos", { token: tokenA, metodo: "PUT", corpo: [...listaA,
+    { id: -1, name: "Verificacao Servico", desc: "teste", category: "teste-verif", price: "12,50" }] });
+  const criado = r.corpo?.find?.((sv) => sv.name === "Verificacao Servico");
+  ok("servico novo volta com id REAL", r.status === 200 && criado?.id > 0, `HTTP ${r.status}, id ${criado?.id}`);
+  ok("preco com virgula gravado como decimal", criado?.price === "12.50", criado?.price);
+
+  // O bug que o mock escondia: salvar de novo a lista devolvida nao pode duplicar.
+  r = await pedir("/servicos", { token: tokenA, metodo: "PUT", corpo: r.corpo });
+  const duplicados = (await servicosDe("lucas-costa")).filter((sv) => sv.nome === "Verificacao Servico");
+  ok("salvar de novo NAO duplica o servico", duplicados.length === 1, `${duplicados.length} copia(s)`);
+
+  r = await pedir("/servicos", { token: tokenA, metodo: "PUT",
+    corpo: r.corpo.filter((sv) => sv.name !== "Verificacao Servico") });
+  const removido = (await servicosDe("lucas-costa")).find((sv) => sv.nome === "Verificacao Servico");
+  ok("servico retirado da lista e DESATIVADO, nao apagado", removido && removido.ativo === false,
+    removido ? `ativo=${removido.ativo}` : "apagado");
+
+  const [servicoB] = await servicosDe("central-teste");
+  r = await pedir("/servicos", { token: tokenA, metodo: "PUT", corpo: [...listaA,
+    { id: servicoB.id, name: "Sequestrado", desc: "x", category: "cabelo", price: "1" }] });
+  ok("A NAO edita servico da B pelo id -> 400", r.status === 400, `HTTP ${r.status}`);
+  ok("e o servico da B continua intacto", (await servicosDe("central-teste"))[0].nome === servicoB.nome);
+  const depoisA = await servicosDe("lucas-costa");
+  ok("e a tentativa nao gravou nada pela metade na loja A",
+    depoisA.filter((sv) => sv.ativo).length === antesA.filter((sv) => sv.ativo).length);
+
+  r = await pedir("/categorias-servicos", { token: tokenA, metodo: "PUT",
+    corpo: { filtersEnabled: true, items: catsA.items.filter((c) => c.id !== "cabelo") } });
+  ok("categoria com servico ativo nao pode sumir -> 409", r.status === 409, `HTTP ${r.status}`);
 
   // ── Tokens recusados ──
   console.log("\ntokens recusados:");

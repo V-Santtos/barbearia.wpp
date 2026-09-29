@@ -120,6 +120,36 @@ on conflict (id) do update
 select setval(pg_get_serial_sequence('public.servicos','id'),
               (select max(id) from public.servicos));
 
+-- ─── Categorias da vitrine (29/09/2026) ──────────────────────────────────────
+-- A loja B tem uma categoria com o MESMO slug de uma da loja A (`cabelo`), de
+-- propósito: o slug é único por loja, não no sistema, e o teste de isolamento precisa
+-- de uma colisão de nome para provar que uma loja não enxerga nem altera a da outra.
+insert into public.categorias_servicos (barbearia_id, slug, rotulo, ativa, ordem)
+select b.id, v.slug, v.rotulo, true, v.ordem
+  from public.barbearias b
+  join (values
+    ('lucas-costa',   'cabelo', 'Cabelo', 0),
+    ('lucas-costa',   'barba',  'Barba',  1),
+    ('lucas-costa',   'combos', 'Combos', 2),
+    ('lucas-costa',   'outros', 'Outros', 3),
+    ('central-teste', 'cabelo', 'Cabelo (loja B)', 0)
+  ) as v(loja, slug, rotulo, ordem) on v.loja = b.slug
+on conflict (barbearia_id, slug) do update
+  set rotulo = excluded.rotulo, ativa = excluded.ativa, ordem = excluded.ordem;
+
+-- Cada serviço na categoria do seu slug, dentro da própria loja.
+update public.servicos s
+   set categoria_id = c.id
+  from public.categorias_servicos c
+ where c.barbearia_id = s.barbearia_id
+   and c.slug = case s.slug
+                  when 'corte'       then 'cabelo'
+                  when 'barba'       then 'barba'
+                  when 'corte-barba' then 'combos'
+                  when 'sobrancelha' then 'outros'
+                  when 'platinado'   then 'cabelo'
+                end;
+
 -- ─── Um dia bloqueado ────────────────────────────────────────────────────────
 -- Daqui a 3 dias, só de manhã. Bloqueio PARCIAL de propósito: o de dia inteiro é
 -- gravado como NULL, então um seed só com dia inteiro nunca exercitaria a leitura

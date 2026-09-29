@@ -113,9 +113,11 @@ export default function BookingSiteSettings({ onClose }: Props) {
         price: service.price?.trim().replace(",", "."),
         slug: service.slug || slug(service.name),
       })) };
-      await saveBookingSiteSettings(normalized);
-      setDraft(normalized);
-      setInitial(JSON.stringify(normalized));
+      // O que volta do servidor, e não o rascunho: é o que carrega os ids reais dos
+      // serviços novos (ver `saveBookingSiteSettings`).
+      const salvo = await saveBookingSiteSettings(normalized);
+      setDraft(salvo);
+      setInitial(JSON.stringify(salvo));
       setEditingId(null);
       setFeedback("Configurações salvas.");
     } catch {
