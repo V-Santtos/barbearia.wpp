@@ -499,6 +499,7 @@ function mapEvent(row, duracaoMin = 60) {
     endTime: addMinutes(start, duracaoMin),
     status: row.status,
     source: row.source,
+    fechamento: row.fechamento ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -2177,6 +2178,118 @@ function buildServer() {
       } catch (err) {
         fastify.log.error(err);
         return reply.status(500).send({ error: "Erro ao atualizar status." });
+      }
+    }),
+  );
+
+  // POST /agendamentos/:id/concluir — o "Marcar como feito" do painel.
+  //
+  // Grava o fechamento: os servicos feitos com o preco do dia, o ajuste e o total
+  // (spec 2026-09-27-fechar-atendimento-design). O preco de cada item vem da tela —
+  // e o que o dono conferiu —, mas o total e recalculado aqui, em centavos, e o
+  // desconto nao passa do subtotal. A mesma regra mora em `lib/fechamento.ts`.
+  //
+  // Concluir de novo, ou concluir um cancelado, e 409: o preco gravado e historico,
+  // e editar depois de concluido ficou fora da spec (decidido em 12/10/2026).
+  fastify.post(
+    "/agendamentos/:id/concluir",
+    { preHandler: requireAdmin },
+    noPainel(async (request, reply, db) => {
+      const { id } = request.params;
+      const { servicos, ajuste = null, cliente = null } = request.body ?? {};
+      const centavos = (valor) => Math.round(Number(valor) * 100);
+
+      if (!Array.isArray(servicos) || !servicos.length)
+        return reply.status(400).send({ error: "Selecione pelo menos um serviço." });
+
+      const itens = [];
+      for (const item of servicos) {
+        const nome = String(item?.nome ?? "").trim();
+        const preco = Number(item?.preco);
+        if (!nome || !Number.isFinite(preco) || preco < 0)
+          return reply.status(400).send({ error: "Serviço com nome ou preço inválido." });
+        const servicoId =
+          item.servicoId === undefined || item.servicoId === null ? null : Number(item.servicoId);
+        if (servicoId !== null && !Number.isInteger(servicoId))
+          return reply.status(400).send({ error: "Serviço com id inválido." });
+        itens.push({ ...(servicoId !== null && { servicoId }), nome, preco: centavos(preco) / 100 });
+      }
+
+      let ajusteLimpo = null;
+      if (ajuste) {
+        const valor = Number(ajuste.valor);
+        if (!["acrescimo", "desconto"].includes(ajuste.tipo) || !Number.isFinite(valor) || centavos(valor) <= 0)
+          return reply.status(400).send({ error: "Informe o valor do ajuste." });
+        const motivo = String(ajuste.motivo ?? "").trim().slice(0, 60);
+        ajusteLimpo = { tipo: ajuste.tipo, valor: centavos(valor) / 100, ...(motivo && { motivo }) };
+      }
+
+      const subtotal = itens.reduce((soma, item) => soma + centavos(item.preco), 0);
+      const delta = ajusteLimpo
+        ? centavos(ajusteLimpo.valor) * (ajusteLimpo.tipo === "desconto" ? -1 : 1)
+        : 0;
+      if (subtotal + delta < 0)
+        return reply.status(400).send({ error: "O desconto não pode passar do subtotal." });
+
+      const telefone = String(cliente?.telefone ?? "").replace(/\D/g, "");
+      if (telefone && (telefone.length < 10 || telefone.length > 11))
+        return reply.status(400).send({ error: "Telefone incompleto." });
+
+      try {
+        // Servico com id tem que ser da propria loja. A RLS filtra a consulta: um id
+        // da loja B simplesmente nao aparece, e o fechamento e recusado.
+        const ids = [...new Set(itens.filter((i) => i.servicoId).map((i) => i.servicoId))];
+        if (ids.length) {
+          const { rows } = await db.query(
+            `SELECT id FROM public.servicos WHERE id = ANY($1::bigint[])`,
+            [ids],
+          );
+          if (rows.length !== ids.length)
+            return reply.status(400).send({ error: "Serviço não encontrado nesta barbearia." });
+        }
+
+        const { rows: [atual] } = await db.query(
+          `SELECT status, source FROM public.agendamentos WHERE id = $1 FOR UPDATE`,
+          [id],
+        );
+        if (!atual)
+          return reply.status(404).send({ error: "Agendamento não encontrado." });
+        if (atual.status === "concluido" || atual.status === "cancelado")
+          return reply.status(409).send({
+            error: atual.status === "concluido"
+              ? "Este atendimento já foi concluído."
+              : "Atendimento cancelado não pode ser concluído.",
+          });
+
+        const fechamento = {
+          servicos: itens,
+          ajuste: ajusteLimpo,
+          total: (subtotal + delta) / 100,
+          concluidoEm: new Date().toISOString(),
+        };
+        // Vários servicos viajam no texto separados por ", " — nomes de combo ja
+        // usam "+" (REGRAS.md, 27/09).
+        const params = [fechamento, itens.map((i) => i.nome).join(", "), id];
+        let presencial = "";
+        if (atual.source === "presencial") {
+          params.push(String(cliente?.nome ?? "").trim() || "Cliente presencial", telefone);
+          presencial = `, cliente = $4, telefone = $5`;
+        }
+
+        const { rows } = await db.query(
+          `UPDATE public.agendamentos
+         SET status = 'concluido', fechamento = $1, servico = $2${presencial}, updated_at = NOW()
+         WHERE id = $3
+         RETURNING *,
+           profissional_id     AS professional_id,
+           dia_marcado::text  AS dia_marcado,
+           hora_marcada::text AS hora_marcada`,
+          params,
+        );
+        return { event: mapEvent(rows[0]) };
+      } catch (err) {
+        fastify.log.error(err);
+        return reply.status(500).send({ error: "Erro ao concluir atendimento." });
       }
     }),
   );

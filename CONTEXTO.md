@@ -29,8 +29,10 @@ a seção própria abaixo.
 
 - **Banco:** Supabase `bbcuudayemhjanklfgtr` — **conta pessoal do Agostinho, projeto
   "barb"**, região us-east-2 (Postgres 17.6). Recriável do zero pelas
-  13 migrações de `BARBEARIA/db/migracoes/` + `db/seed/teste.sql`. O seed tem duas
-  lojas de propósito; o serviço "SÓ DA LOJA B" é o discriminador de vazamento.
+  15 migrações de `BARBEARIA/db/migracoes/` + `db/seed/teste.sql`. O seed tem duas
+  lojas de propósito; o serviço "Platinado", só da `central-teste`, é o
+  discriminador de vazamento — "SÓ DA LOJA B" é a **descrição** dele, não o nome
+  (buscar pelo nome devolve 0).
   **Plano free: pausa após ~7 dias sem uso** — pausou entre 08/09 e 26/09 e de novo
   até 12/10; nas duas, restaurar preservou tudo e derrubou a produção enquanto
   durou. Regra prática: pausa no trabalho maior que uma semana → restaurar antes.
@@ -51,7 +53,7 @@ a seção própria abaixo.
   tabelas que só o bot escreve, e o gatilho `agendamentos_resolver_profissional`.
   Morrem na Fase 6. Enquanto existirem, um insert do bot que esqueça a barbearia cai
   na loja A em silêncio.
-- **Verificação:** `cd CALENDARIO && npm run verificar` — 24 checagens ponta a ponta de
+- **Verificação:** `cd CALENDARIO && npm run verificar` — 50 checagens ponta a ponta de
   autenticação, RLS e rotas públicas, contra o banco real. Só roda em banco com o seed
   de teste, e devolve o dono original de cada loja ao terminar.
 - **No ar** (`barbearia-wpp-two.vercel.app`) ainda está o código de **01/09**: login
@@ -74,10 +76,13 @@ a seção própria abaixo.
 Ordem decidida com o usuário em 12/10, depois do relatório geral:
 
 1. ~~Restaurar o banco~~ — feito em 12/10, conferido íntegro.
-2. **Conferir o site (`SITE/`) no navegador** — as chamadas foram testadas, a tela
-   ainda não. Percurso completo em `localhost:3001/lucas-costa`, conferindo depois no
-   painel se o agendamento apareceu.
-3. **Fechar atendimento junto com o preço histórico** (fila do backend, abaixo).
+2. ~~Conferir o site (`SITE/`) no navegador~~ — feito em 29/09, logo depois do commit
+   do site: o Agostinho agendou pela tela (agendamento 120, `source = app-etapas`) e o
+   viu no painel. Constatado no banco em 12/10; nada no `SITE/` nem na API mudou
+   desde então.
+3. ~~Fechar atendimento junto com o preço histórico~~ — feito em 12/10 (seção
+   abaixo), conferido no navegador pelo Agostinho: agendamento 120 concluído com
+   Corte + Barba e desconto, total no Financeiro.
 4. **Deploy**, pelo checklist no fim deste arquivo, incluindo publicar o `SITE/`.
 
 **O Victor precisa trazer a `main` para a `casca-de-secoes`** antes de continuar nela
@@ -128,14 +133,42 @@ Percurso do cliente testado contra a API local, com as chamadas que o site faz: 
 leituras em 200, agendamento 201 gravado na loja certa, mesmo horário 409, o
 barbeiro da loja A pelo endereço da loja B 404.
 
-**Falta:** o `vercel.json` publicar o site; a conferência visual no navegador.
+**Falta:** o `vercel.json` publicar o site. (A conferência no navegador foi feita em
+29/09 — ver a etapa atual.)
+
+### Fechar atendimento — backend pronto (12/10/2026)
+
+`POST /agendamentos/:id/concluir`, em `noPainel()`. O "preço histórico" **é** o
+fechamento: os serviços com o preço do dia, o ajuste e o total, gravados na coluna
+`agendamentos.fechamento` (jsonb, migração `20261012120000`). Decisões de 12/10:
+
+- **jsonb, não tabela de itens** — quem soma é o Financeiro, na tela. Marcado com
+  `ponytail:` na migração; o gatilho é relatório por serviço em SQL.
+- **Concluir de novo, ou um cancelado, é 409** — o preço gravado não muda.
+- O preço de cada item vem da tela (o dono conferiu); o servidor recalcula o total em
+  centavos, recusa desconto maior que o subtotal e `servicoId` de outra loja.
+- No presencial grava o cliente; sem nome, "Cliente presencial".
+
+A migração estreou no barb **tratado como teste**, por decisão do usuário: é o único
+banco, mas não tem cliente real e a coluna aceita nulo — o código de 01/09 no ar não
+a vê. `npm run verificar` ganhou 9 checagens; `tsc`, build e os dois testes de
+`lib/fechamento` passaram.
+
+**Conferido no navegador em 12/10/2026.** No mesmo dia, a pedido do usuário, o
+detalhe da movimentação no Financeiro passou a mostrar, quando há ajuste, "Valor dos
+serviços", "Desconto"/"Acréscimo" e o motivo; o valor grande segue sendo o total. O
+ranking "Serviços que mais faturaram" conta o preço cheio de cada serviço, sem o
+ajuste — aprovado assim.
+
+**Ainda aberto:** o `PATCH /agendamentos/:id/status` aceita `concluido` sem
+fechamento. A tela nova não conclui por ele, mas a porta existe.
 
 ## Fila do backend: o que a casca pede e o servidor ainda não tem
 
 `docs/mapa-endpoints-frontend.md` (Victor, 27/09) é o contrato que as telas esperam.
 Rotas que hoje **só existem no mock** e são trabalho do backend:
 
-- `POST /agendamentos/:id/concluir` — o "Fechar atendimento"
+- ~~`POST /agendamentos/:id/concluir`~~ — feito em 12/10, ver abaixo
 - lançamentos manuais do Financeiro (hoje em memória)
 
 Toda rota nova entra em `noPainel()` ou `noSite()`, e ganha uma checagem em
@@ -198,7 +231,8 @@ O JWKS não é segredo e já é conhecido:
 
 - O log da subida diz `"modo":"jwt"` e não `"modo":"legado"`.
 - Login do painel com e-mail e senha funciona; o `ADMIN_API_TOKEN` antigo é recusado.
-- `GET /api/servicos` **não** devolve mais o serviço "SÓ DA LOJA B" — é o
+- `GET /api/servicos` **não** devolve mais o serviço "Platinado" (descrição "SÓ DA
+  LOJA B") — é o
   discriminador que prova o isolamento em produção.
 - Mensagem real no WhatsApp: o bot não responde, mas a conversa aparece no painel.
 

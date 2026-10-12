@@ -279,6 +279,46 @@ try {
     corpo: { filtersEnabled: true, items: catsA.items.filter((c) => c.id !== "cabelo") } });
   ok("categoria com servico ativo nao pode sumir -> 409", r.status === 409, `HTTP ${r.status}`);
 
+  // ── Fechar atendimento (12/10/2026) ──
+  // Um agendamento de cada loja, num dia longe de qualquer agenda real. O
+  // `source` os coloca na limpeza junto com os outros desta verificacao.
+  console.log("\nfechar atendimento:");
+  const agendar = async (slug, prof, hora) => (await banco.query(
+    `insert into agendamentos (barbearia_id, profissional_id, profissional, cliente, servico, dia_marcado, hora_marcada, status, source)
+     select b.id, p.id, p.nome, 'Verificacao Fechamento', 'Corte', '2099-12-01', $3, 'agendado', 'verificacao-isolamento'
+       from barbearias b join profissionais p on p.barbearia_id = b.id
+      where b.slug = $1 and p.id = $2
+     returning id`, [slug, prof, hora])).rows[0].id;
+  const agA = await agendar("lucas-costa", conta.prof_a, "09:00");
+  const agB = await agendar("central-teste", conta.prof_b, "09:00");
+  const [corteA] = (await servicosDe("lucas-costa")).filter((sv) => sv.ativo);
+  const concluir = (ag, corpo, token = tokenA) =>
+    pedir(`/agendamentos/${ag}/concluir`, { token, metodo: "POST", corpo });
+
+  r = await concluir(agA, { servicos: [{ servicoId: corteA.id, nome: corteA.nome, preco: 40 }],
+    ajuste: { tipo: "desconto", valor: 50 } });
+  ok("desconto maior que o subtotal -> 400", r.status === 400, `HTTP ${r.status}`);
+  r = await concluir(agA, { servicos: [{ servicoId: servicoB.id, nome: servicoB.nome, preco: 180 }], ajuste: null });
+  ok("servico da B no fechamento da A -> 400", r.status === 400, `HTTP ${r.status}`);
+  r = await concluir(agB, { servicos: [{ nome: "Corte", preco: 40 }], ajuste: null });
+  ok("A NAO conclui agendamento da B -> 404", r.status === 404, `HTTP ${r.status}`);
+  const { rows: [b] } = await banco.query(`select status, fechamento from agendamentos where id = $1`, [agB]);
+  ok("e o agendamento da B continua intacto", b.status === "agendado" && b.fechamento === null, b.status);
+
+  r = await concluir(agA, { servicos: [
+    { servicoId: corteA.id, nome: corteA.nome, preco: 40 },
+    { nome: "Sobrancelha", preco: 15.5 },
+  ], ajuste: { tipo: "acrescimo", valor: 4.5, motivo: "verificacao" } });
+  ok("dono A conclui o proprio atendimento", r.status === 200 && r.corpo?.event?.status === "concluido",
+    `HTTP ${r.status} ${r.corpo?.error ?? ""}`);
+  const { rows: [a] } = await banco.query(`select status, servico, fechamento from agendamentos where id = $1`, [agA]);
+  ok("total recalculado no servidor: 40 + 15,50 + 4,50 = 60", a.fechamento?.total === 60, String(a.fechamento?.total));
+  ok("servicos gravados com o preco do dia", a.fechamento?.servicos?.length === 2 && a.servico === `${corteA.nome}, Sobrancelha`, a.servico);
+  r = await pedir("/agendamentos" + periodo, { token: tokenA });
+  ok("a agenda devolve o fechamento", r.corpo?.find?.((e) => e.id == agA)?.fechamento?.total === 60);
+  r = await concluir(agA, { servicos: [{ nome: "Corte", preco: 1 }], ajuste: null });
+  ok("concluir de novo -> 409, o preco gravado nao muda", r.status === 409, `HTTP ${r.status}`);
+
   // ── Tokens recusados ──
   console.log("\ntokens recusados:");
   ok("sem token -> 401", (await pedir("/agendamentos" + periodo)).status === 401);
