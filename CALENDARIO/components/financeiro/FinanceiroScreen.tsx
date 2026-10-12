@@ -108,6 +108,8 @@ function paraDetalhe(movimento: MovimentoFinanceiro): MovimentoParaDetalhe {
     profissionalId: movimento.profissionalId,
     servico: movimento.atendimento?.servico,
     atendimentoId: movimento.atendimento?.atendimentoId,
+    ajuste: movimento.atendimento?.ajuste,
+    motivoAjuste: movimento.atendimento?.motivoAjuste,
   };
 }
 

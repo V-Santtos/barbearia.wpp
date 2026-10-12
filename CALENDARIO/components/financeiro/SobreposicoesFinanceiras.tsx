@@ -94,6 +94,9 @@ export interface MovimentoParaDetalhe {
   profissionalId?: number;
   servico?: string;
   atendimentoId?: number;
+  /** Acréscimo (positivo) ou desconto (negativo) do fechamento. */
+  ajuste?: number;
+  motivoAjuste?: string;
 }
 
 export interface ResumoComparavel {
@@ -856,6 +859,19 @@ export function DetalheMovimentoDrawer({
                       <li><span>Cliente</span><strong>{rascunho.cliente || "Não informado"}</strong></li>
                       <li><span>Barbeiro</span><strong>{rascunho.profissional || "Não informado"}</strong></li>
                       <li><span>Serviço</span><strong>{rascunho.servico || rascunho.categoria}</strong></li>
+                      {/* Só com ajuste: o valor grande acima já é o total; aqui, de onde ele veio. */}
+                      {rascunho.ajuste ? (
+                        <>
+                          <li><span>Valor dos serviços</span><strong>{moeda.format(rascunho.valor - rascunho.ajuste)}</strong></li>
+                          <li>
+                            <span>{rascunho.ajuste < 0 ? "Desconto" : "Acréscimo"}</span>
+                            <strong>
+                              {rascunho.ajuste < 0 ? "− " : "+ "}{moeda.format(Math.abs(rascunho.ajuste))}
+                              {rascunho.motivoAjuste ? ` · ${rascunho.motivoAjuste}` : ""}
+                            </strong>
+                          </li>
+                        </>
+                      ) : null}
                       <li><span>Horário</span><strong>{rascunho.hora || "Não informado"}</strong></li>
                       <li><span>Atendimento</span><strong>{rascunho.atendimentoId ? `#${rascunho.atendimentoId}` : "Não informado"}</strong></li>
                     </ul>

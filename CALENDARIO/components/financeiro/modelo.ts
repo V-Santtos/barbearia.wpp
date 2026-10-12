@@ -33,6 +33,8 @@ export interface DetalhesAtendimentoFinanceiro {
   itens?: { nome: string; valor: number }[];
   /** Acréscimo (positivo) ou desconto (negativo) do fechamento. */
   ajuste?: number;
+  /** Motivo opcional que o barbeiro deu ao ajuste. */
+  motivoAjuste?: string;
 }
 
 export interface MovimentoFinanceiro {
@@ -431,6 +433,7 @@ export function converterEventosEmReceitas(
           ...(fechamento && {
             itens: fechamento.servicos.map((item) => ({ nome: item.nome, valor: item.preco })),
             ...(ajuste !== 0 && { ajuste }),
+            ...(ajuste !== 0 && fechamento.ajuste?.motivo && { motivoAjuste: fechamento.ajuste.motivo }),
           }),
         },
       },
