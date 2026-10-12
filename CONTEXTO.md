@@ -27,11 +27,17 @@ a seção própria abaixo.
 
 ## Estado — frente do backend
 
-- **Banco:** Supabase `bbcuudayemhjanklfgtr` (Postgres 17.6), recriável do zero pelas
+- **Banco:** Supabase `bbcuudayemhjanklfgtr` — **conta pessoal do Agostinho, projeto
+  "barb"**, região us-east-2 (Postgres 17.6). Recriável do zero pelas
   13 migrações de `BARBEARIA/db/migracoes/` + `db/seed/teste.sql`. O seed tem duas
   lojas de propósito; o serviço "SÓ DA LOJA B" é o discriminador de vazamento.
-  **Plano free: pausa após ~7 dias sem uso** — pausou entre 08/09 e 26/09, e
-  restaurar preservou tudo.
+  **Plano free: pausa após ~7 dias sem uso** — pausou entre 08/09 e 26/09 e de novo
+  até 12/10; nas duas, restaurar preservou tudo e derrubou a produção enquanto
+  durou. Regra prática: pausa no trabalho maior que uma semana → restaurar antes.
+- **Dados além do seed na loja A**, dos testes de 29/09 no navegador: profissional
+  "Barbeiro Teste", serviço "Teste" (R$ 10), agendamento de "Agostinho Cury" para
+  01/10 (feito pelo site, ponta a ponta) e um "Atendimento Presencial". O seed não os
+  apaga — só os agendamentos que ele mesmo cria.
 - **Multi-tenant pronto (Fases 1–4):** `barbearia_id` em toda tabela, RLS com 11
   políticas, papel `app_api` sem bypass, login por e-mail e senha no Supabase Auth,
   rotas públicas exigindo a barbearia.
