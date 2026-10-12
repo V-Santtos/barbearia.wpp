@@ -69,17 +69,19 @@ a seção própria abaixo.
 - A rodada visual de 2026-09-27 alinhou o site público ao painel: CTA da home, proporção no celular, cartões de serviço, descrições em Inter, espaçamento das etapas, calendário na virada de mês e resumo final. Victor manteve o degradê roxo do título e adiou a revisão geral da tipografia. O roteamento do botão de serviço para a segunda etapa fica com o dev. As decisões duráveis estão em `REGRAS-APRENDIZADOS/REGRAS.md`.
 - O modal de Configurações foi refinado em `CALENDARIO/components/settings/BookingSiteSettings.tsx`: campos compartilhados com o calendário, seleção de categorias pelo `NeonCheckbox`, menu “Página inicial”, menos divisores e estado ocioso sem “Tudo atualizado”. Depois do feedback de Victor, a lateral desktop passou a compartilhar o fundo do modal e a começar na altura do título; o ícone do cabeçalho ficou maior e sem círculo. Conferido no navegador em largura estreita e a 1440 px; `npx tsc --noEmit`, `npm run build` e `git diff --check` passaram. As alterações continuam locais e ainda podem receber avaliação visual do dono.
 
-## Etapa atual: configurações do site
+## Etapa atual (12/10/2026): retomar pela ordem combinada
 
-A integração foi **validada em 29/09/2026** e está na `main`: login real no painel,
-as telas da casca com dado real, isolamento conferido no navegador e em 8 de 8
-rodadas do `npm run verificar`. A conferência tela a tela achou conteúdo de
-demonstração vazando para o painel real (conversas-exemplo, cards-exemplo da Noite,
-despesas do Financeiro) — agora restrito a `VITE_MOCK=1`.
+Ordem decidida com o usuário em 12/10, depois do relatório geral:
 
-**O Victor precisa trazer a `main` para a `casca-de-secoes`** antes de continuar nela.
-A documentação dele (`AGENTS.md`, `CONTEXTO.md`) foi reorganizada sobre a estrutura
-que ele criou; vale ele conferir.
+1. ~~Restaurar o banco~~ — feito em 12/10, conferido íntegro.
+2. **Conferir o site (`SITE/`) no navegador** — as chamadas foram testadas, a tela
+   ainda não. Percurso completo em `localhost:3001/lucas-costa`, conferindo depois no
+   painel se o agendamento apareceu.
+3. **Fechar atendimento junto com o preço histórico** (fila do backend, abaixo).
+4. **Deploy**, pelo checklist no fim deste arquivo, incluindo publicar o `SITE/`.
+
+**O Victor precisa trazer a `main` para a `casca-de-secoes`** antes de continuar nela
+— em 12/10 ainda não tinha trazido, e não commitava desde 27/09.
 
 ### Configurações do site — backend pronto (29/09/2026)
 
