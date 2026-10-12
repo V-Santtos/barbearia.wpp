@@ -1,0 +1,9 @@
+# A CLI da Vercel envia a pasta local inteira e NAO le o .gitignore. Sem isto, o
+# `.env` local subiria junto e o build do Vite assaria as `VITE_*` dele no bundle
+# publico — `localhost:3334` como API, token de admin, senha do dono (12/10/2026).
+**/.env
+**/.env.*
+**/node_modules
+**/dist
+# O site tem projeto proprio na Vercel; nao faz parte deste build.
+SITE

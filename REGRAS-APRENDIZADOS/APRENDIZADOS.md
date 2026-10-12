@@ -565,3 +565,28 @@ Formato de cada entrada:
   cliente anterior. Só apareceu porque o teste trocou de número duas vezes.
 - Correção: a função passada ao `setState` fica pura. Estado atual lido de um `ref`
   espelhado a cada render, decisão fora, `setState(valor)` direto.
+
+## [2026-10-12] A CLI da Vercel não lê o `.gitignore`: o `.env` local sobe e vai para o bundle
+
+- O que aconteceu: antes do primeiro deploy pela CLI das Fases 1–4, notei que não havia
+  `.vercelignore`. A CLI envia a pasta local inteira e, por padrão, só ignora
+  `.env.local` — não `.env`. No build da nuvem, o Vite leria o `CALENDARIO/.env` e assaria
+  no bundle público `VITE_CALENDAR_API_URL=http://localhost:3334` (painel chamando a
+  máquina de quem abre a página), `VITE_ADMIN_API_TOKEN` e a senha do dono. O bundle que
+  estava no ar já continha `localhost:3334`.
+- Correção: `.vercelignore` na raiz (`**/.env`, `**/.env.*`, `node_modules`, `dist`, e o
+  `SITE`, que tem projeto próprio). Depois de todo deploy, baixar o bundle publicado e
+  procurar `localhost` e o valor dos tokens antes de dar por bom.
+
+## [2026-10-12] Variável copiada do `.env` local leva o host IPv6 para a Vercel
+
+- O que aconteceu: o `DATABASE_URL_APP` foi para a Vercel com o host direto
+  (`db.<ref>.supabase.co`, só IPv6), copiado do `.env` local. Login funcionou, painel
+  vazio: toda rota em `noPainel()` deu 500 `ENOTFOUND`, enquanto `/servicos` e
+  `/profissionais` respondiam — elas usam o outro pool, que já estava no pooler. O
+  sintoma ("umas rotas sim, outras não") apontava para a diferença entre os dois pools.
+  O anexo do banco também ensinava `aws-1`, que era do projeto anterior.
+- Correção: na Vercel, toda string de banco é a do pooler (`<papel>.<ref>@aws-0-us-east-2.pooler.supabase.com:6543`).
+  Ao passar uma variável para o usuário colar, dar o valor completo do ambiente de
+  destino, não "o mesmo do `.env`". E: "Redeploy" no painel da Vercel reconstrói o código
+  daquele deploy — num projeto sem git, não publica nada novo.

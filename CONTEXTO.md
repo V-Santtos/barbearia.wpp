@@ -45,10 +45,13 @@ a seção própria abaixo.
   rotas públicas exigindo a barbearia.
 - **Regra de toda rota nova:** do painel → dentro de `noPainel()`; pública → dentro
   de `noSite()`. Rota fora dos dois não dá erro — ela vaza.
-- **Dono de teste:** `usuario@teste.com`, ligado à loja `lucas-costa`.
+- **Dono:** `usuario@teste.com`, ligado à loja `lucas-costa` — inclusive em produção,
+  por decisão de 12/10, até a rotação de segredos antes do primeiro cliente real.
 - **Bot em standby** (`BOT_STANDBY=1`): recebe e grava, não responde. O agendamento é
   pelo site. Volta junto com a Fase 6 (bot resolvendo a barbearia pelo número), não
-  antes.
+  antes. **O número do bot foi desligado e está em outro uso** (informado em 12/10): a
+  Fase 6 vai precisar de um número novo ou da volta deste. Por isso o standby não foi
+  provado no ar — não há tráfego chegando.
 - **Dispositivos de transição ainda vivos:** o default `barbearia_em_transicao()` em 5
   tabelas que só o bot escreve, e o gatilho `agendamentos_resolver_profissional`.
   Morrem na Fase 6. Enquanto existirem, um insert do bot que esqueça a barbearia cai
@@ -56,15 +59,15 @@ a seção própria abaixo.
 - **Verificação:** `cd CALENDARIO && npm run verificar` — 50 checagens ponta a ponta de
   autenticação, RLS e rotas públicas, contra o banco real. Só roda em banco com o seed
   de teste, e devolve o dono original de cada loja ao terminar.
-- **No ar** (`barbearia-wpp-two.vercel.app`) ainda está o código de **01/09**: login
-  decorativo, sem isolamento, bot atendendo. Nada das Fases 1–4 foi publicado.
+- **No ar** (`barbearia-wpp-two.vercel.app`) desde **12/10**: Fases 1–4, Configurações
+  do site e Fechar atendimento, com login real e RLS. Ver "Deploy de 12/10" abaixo.
 
 ## Estado — frente da casca
 
 - A segunda rodada visual de 2026-09-26 (KPIs, período de 7 dias, ListaFluxo, janelas em folha, barra de rolagem global) foi commitada em 2026-09-27. Falta conferir no iPhone.
 - Agenda, Conversas, Dashboard e Financeiro são seções irmãs no desktop. No celular e no tablet, o Financeiro fica dentro da aba Dashboard, e a troca é uma pílula “Dashboard | Financeiro” no topo (2026-09-27; antes era o título com seta).
 - O Financeiro usa movimentos manuais e categorias criadas pelo barbeiro em memória, mais dados demonstrativos no modo mock. Não tratar essa interface como persistência pronta.
-- Rodada de 2026-09-27, commitada: lançamento manual só com Entrada e Saída (Ajuste removido), categorias mínimas com “+ Nova categoria”, comissão com barbeiro, máscara de moeda, Faturamento = atendimentos + entradas, Comparar períodos com Semana/Mês/Ano, e o resumo “Fechar atendimento” no “Marcar como feito” (vários serviços, acréscimo/desconto, cliente opcional no presencial). Nenhum card é concluído sozinho e o presencial não se apaga. Decisões em `REGRAS-APRENDIZADOS/REGRAS.md`; desenho em `docs/superpowers/specs/2026-09-27-fechar-atendimento-design.md`. A rota nova `POST agendamentos/:id/concluir` existe só no mock e precisa do dev.
+- Rodada de 2026-09-27, commitada: lançamento manual só com Entrada e Saída (Ajuste removido), categorias mínimas com “+ Nova categoria”, comissão com barbeiro, máscara de moeda, Faturamento = atendimentos + entradas, Comparar períodos com Semana/Mês/Ano, e o resumo “Fechar atendimento” no “Marcar como feito” (vários serviços, acréscimo/desconto, cliente opcional no presencial). Nenhum card é concluído sozinho e o presencial não se apaga. Decisões em `REGRAS-APRENDIZADOS/REGRAS.md`; desenho em `docs/superpowers/specs/2026-09-27-fechar-atendimento-design.md`. A rota `POST agendamentos/:id/concluir` ganhou servidor em 12/10.
 - A rota de busca de cliente por telefone (`/clientes/buscar`) foi verificada contra o banco novo na integração de 28/09, e entrou em `noPainel()` — ela lia pelo pool que ignora RLS e mostraria clientes de todas as lojas. As demais regras novas da casca ainda não foram verificadas contra o banco.
 - O template externo de dashboard usado como referência foi recuperado em C:\Users\victo\Desktop\Referencias\dashboard-shadcn-admin. Ele não faz parte do produto; fonte e versão estão em docs/skills-log.md.
 - Em 2026-09-27, a configuração do site público saiu da montagem do painel oculto em `Barbearia Site/Aplicativo FULL/SITE-BARB-PROF-UNICO` e ganhou um modal centralizado na engrenagem do calendário (desktop) e no menu do avatar (celular). As três áreas são Página de agendamento, Categorias e Serviços e preços. O fluxo foi conferido com `VITE_MOCK=1`; os contratos de escrita ainda dependem do backend do dev e o mock dos dois frontends não é compartilhado. Ver `docs/superpowers/specs/2026-09-27-configuracoes-site-agendamento.md`.
@@ -83,7 +86,9 @@ Ordem decidida com o usuário em 12/10, depois do relatório geral:
 3. ~~Fechar atendimento junto com o preço histórico~~ — feito em 12/10 (seção
    abaixo), conferido no navegador pelo Agostinho: agendamento 120 concluído com
    Corte + Barba e desconto, total no Financeiro.
-4. **Deploy**, pelo checklist no fim deste arquivo, incluindo publicar o `SITE/`.
+4. **Deploy** — painel, API e bot **no ar em 12/10** (seção "Deploy de 12/10").
+   **Falta a 4d: publicar o `SITE/`** num projeto Vercel próprio (decidido em 12/10),
+   apontando para a API deste e entrando no `CORS_ORIGINS`.
 
 **O Victor precisa trazer a `main` para a `casca-de-secoes`** antes de continuar nela
 — em 12/10 ainda não tinha trazido, e não commitava desde 27/09.
@@ -174,67 +179,25 @@ Rotas que hoje **só existem no mock** e são trabalho do backend:
 Toda rota nova entra em `noPainel()` ou `noSite()`, e ganha uma checagem em
 `ferramentas/verificar-isolamento.mjs`.
 
-## PENDENTE: o deploy (adiado em 08/09/2026)
+## Deploy de 12/10/2026
 
-Tudo abaixo está **pronto e verificado localmente, e NÃO está no ar**. O banco já
-mudou (Fases 1 e 2 aplicadas); o código que sabe usar essas mudanças, não. O que
-segura o sistema funcionando nesse intervalo são os dois dispositivos de transição
-(gatilho + default `barbearia_em_transicao()`).
+Painel, API e bot subiram pela CLI (`npx vercel deploy --prod --yes --scope
+inadequado-3455s-projects`, da raiz). O projeto **não** está ligado ao git: push na
+`main` não publica nada, e o "Redeploy" do painel reconstrói o código **daquele**
+deploy (em 12/10 ele republicou o de 01/09 com as variáveis novas).
 
-### As Fases 3 e 4 agora sobem JUNTAS, com o JWT ligado
+Conferido no ar: log com `"modo":"jwt"`; bundle sem `localhost:3334` e sem token de
+admin; `/api/servicos` sem barbearia → 400; com `lucas-costa`, sem o "Platinado" da
+loja B; `ADMIN_API_TOKEN` antigo → 401; login do dono e painel com dados (agenda,
+dashboard, conversas em 200).
 
-Isto mudou em 08/09 e custa uma quebra se for ignorado: quatro rotas públicas são
-usadas também pelo painel (`/profissionais`, `/servicos`, `agenda-config`,
-`dias-bloqueados`). O painel não manda slug — ele depende da sessão. **Em modo legado
-não há sessão, e essas quatro respondem 400.**
+Dois tropeços, registrados em `REGRAS-APRENDIZADOS/APRENDIZADOS.md`:
 
-Ou seja: `SUPABASE_JWKS_URL` e as variáveis do Supabase deixaram de ser opcionais
-neste deploy. Subir o código sem elas deixa o painel meio quebrado (calendário e
-dashboard funcionam; equipe, serviços e configuração de agenda, não).
-
-Conferido no ar local, nos dois modos.
-
-### A ordem importa, e errá-la derruba o bot
-
-**`BOT_STANDBY=1` tem que entrar na Vercel ANTES do deploy** que exigir o slug nas
-rotas públicas. Motivo: o bot em produção ainda chama `/dias-disponiveis`,
-`/horarios-disponiveis` e `POST /agendamentos` **sem slug nenhum**. Com o slug
-obrigatório e o bot ativo, ele passa a receber 400 em toda consulta de agenda.
-
-Em standby ele não chama nada disso — mas só entra em standby quando a variável
-existir.
-
-### Variáveis a configurar na Vercel (são suas)
-
-| Variável | Onde | Efeito |
-|---|---|---|
-| `BOT_STANDBY=1` | bot | silencia o bot. **Entra primeiro.** |
-| `DATABASE_URL_APP` | calendário | conexão `app_api`, sem bypass de RLS |
-| `SUPABASE_JWKS_URL` | calendário | **liga o modo JWT.** Sem ela, tudo segue no modo legado |
-| `VITE_SUPABASE_URL` | painel | `https://bbcuudayemhjanklfgtr.supabase.co` |
-| `VITE_SUPABASE_ANON_KEY` | painel | chave publicável |
-| ~~`VITE_ADMIN_API_TOKEN`~~ | painel | **APAGAR.** Só sai do bundle quando a variável some do build |
-| ~~`VITE_OWNER_EMAIL` / `VITE_OWNER_PASSWORD`~~ | painel | **APAGAR.** Não são mais lidos |
-
-O JWKS não é segredo e já é conhecido:
-`https://bbcuudayemhjanklfgtr.supabase.co/auth/v1/.well-known/jwks.json`
-
-### Antes disso, no painel do Supabase
-
-1. Authentication → Providers → Email: habilitar (e decidir sobre confirmação de
-   e-mail, que exige SMTP próprio).
-2. Criar o usuário do dono, e me passar o e-mail — falta ligar em
-   `barbearias.user_id`, hoje `null` nas duas lojas.
-3. `alter role app_api password '<senha forte>';` — a senha alimenta o `DATABASE_URL_APP`.
-
-### Depois de subir, conferir no ar
-
-- O log da subida diz `"modo":"jwt"` e não `"modo":"legado"`.
-- Login do painel com e-mail e senha funciona; o `ADMIN_API_TOKEN` antigo é recusado.
-- `GET /api/servicos` **não** devolve mais o serviço "Platinado" (descrição "SÓ DA
-  LOJA B") — é o
-  discriminador que prova o isolamento em produção.
-- Mensagem real no WhatsApp: o bot não responde, mas a conversa aparece no painel.
+- **Não havia `.vercelignore`.** A CLI não lê o `.gitignore`; o `.env` local subiria e o
+  Vite assaria `VITE_CALENDAR_API_URL=localhost:3334` e o token no bundle. Criado.
+- **`DATABASE_URL_APP` foi com o host direto** (só IPv6), e toda rota do painel deu 500
+  com `ENOTFOUND`. Na Vercel é o pooler: usuário `app_api.bbcuudayemhjanklfgtr`, host
+  `aws-0-us-east-2.pooler.supabase.com`, porta 6543.
 
 ### A armadilha para o dia em que o bot voltar
 
@@ -244,18 +207,13 @@ em toda consulta de agenda. O bot volta junto com a Fase 6, não antes.
 
 ### O que continua em aberto
 
-- **Não há autenticação real.** O login do painel é decorativo e o
-  `ADMIN_API_TOKEN` viaja no bundle — a própria CLI da Vercel exigiu marcá-lo como
-  público para aceitar. Riscos 1 e 2 de `AUDITORIA/04-RISCOS.md`. É a Fase 3.
-- **A API do calendário não tem um único teste** — 2.501 linhas, e é onde moram os
-  três dos quatro bugs de 01/09.
-- **Rotacionar antes de produção:** senha do banco, os três tokens de integração e
-  a senha do painel (hoje `123`) apareceram no chat, por decisão consciente de
-  ambiente de teste.
-- O ponytail de `src/db/eventos.ts` **venceu**: a chamada HTTP ao calendário
-  acontece dentro da transação, e a API deixou de estar em localhost.
-- **O site de agendamento existe fora deste repositório** e será adaptado a este
-  modelo no futuro — não é código a escrever do zero.
+- **A API do calendário tem só a verificação ponta a ponta** (`npm run verificar`), não
+  testes de unidade — é onde moraram três dos quatro bugs de 01/09.
+- **Rotacionar antes do primeiro cliente real** (decidido em 12/10): senha do banco
+  (e a do `app_api`), os tokens de integração e a senha do `usuario@teste.com`
+  passaram pelo chat. Junto, criar o dono de verdade e religar a `lucas-costa`.
+- `VITE_ADMIN_API_TOKEN`, `VITE_OWNER_*` foram apagadas da Vercel; o `ADMIN_API_TOKEN`
+  do servidor segue existindo, mas em modo JWT é recusado.
 
 ## Pendências de produto abertas com Victor
 
@@ -268,7 +226,6 @@ em toda consulta de agenda. O bot volta junto com a Fase 6, não antes.
 
 ## Em aberto, fora da etapa
 
-- **Rotacionar antes de produção:** senha do banco, tokens de integração e senha do
-  `app_api` passaram pelo chat, por decisão consciente de ambiente de teste.
+- **Rotacionar antes do primeiro cliente real** — ver "Deploy de 12/10".
 - O ponytail de `BARBEARIA/src/db/eventos.ts` (HTTP dentro da transação) está
   vencido, mas dormente: em standby a chamada não acontece. Volta a importar na Fase 6.

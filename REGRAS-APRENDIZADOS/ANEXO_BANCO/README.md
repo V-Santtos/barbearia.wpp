@@ -169,15 +169,23 @@ não, ela só fala IPv4. O sintoma engana feio: a mesmíssima `DATABASE_URL` que
 De plataforma serverless o endereço é o **pooler** (Supavisor), que tem IPv4:
 
 ```
-postgresql://postgres.bbcuudayemhjanklfgtr:<senha>@aws-1-<regiao>.pooler.supabase.com:6543/postgres
+postgresql://postgres.bbcuudayemhjanklfgtr:<senha>@aws-0-us-east-2.pooler.supabase.com:6543/postgres
 ```
 
 Três diferenças que mordem quem copia por cima da string direta: o usuário vira
 **`postgres.<ref>`** (não `postgres` sozinho), a porta é **6543** (modo transação, o certo
 para serverless — 5432 no pooler é modo sessão, que segura conexão por cliente) e o prefixo
-é **`aws-1`**, não `aws-0`. A senha é a mesma da conexão direta.
+é **`aws-0`** neste projeto. A senha é a mesma da conexão direta.
 
-A região (`us-west-2`) foi descoberta por sondagem, não pelo painel: o pooler responde
+O mesmo vale para o papel `app_api` (`DATABASE_URL_APP`): usuário
+`app_api.bbcuudayemhjanklfgtr`, mesmo host e porta. Testado em 12/10/2026 — conecta, e sem
+sessão enxerga 0 agendamentos (a RLS segurando).
+
+**Corrigido em 12/10/2026:** este anexo dizia `aws-1` e região `us-west-2` — valiam para o
+projeto ANTERIOR. O "barb" (`bbcuudayemhjanklfgtr`) está em `us-east-2` e responde em
+`aws-0`; o `aws-1-us-east-2` devolve `tenant/user ... not found`.
+
+A região (hoje `us-east-2`; era `us-west-2` no projeto anterior) foi descoberta por sondagem, não pelo painel: o pooler responde
 `Tenant or user not found` em toda região que **não** é a do projeto, então dá para varrer
 a lista de regiões tentando conectar até uma aceitar. Vale repetir isso se o projeto mudar
 de região.
