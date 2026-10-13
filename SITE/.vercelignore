@@ -1,0 +1,8 @@
+# A CLI da Vercel envia a pasta inteira e NAO le o .gitignore (ver APRENDIZADOS,
+# 12/10/2026). O `.env.production` sobe de proposito: so tem o endereco publico da API.
+.env
+.env.local
+.env.*.local
+.env.mcp.local
+node_modules
+dist

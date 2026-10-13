@@ -32,3 +32,8 @@ dist-ssr
 .env.*.local
 .env.mcp.local
 
+# Ligacao local com o projeto da Vercel (criada pelo `vercel link`). O `.env.local`
+# que o link baixa (token OIDC) ja cai na regra acima. O `.env.production` e
+# versionado de proposito: so tem o endereco publico da API.
+.vercel
+!.env.production

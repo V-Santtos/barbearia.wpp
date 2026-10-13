@@ -86,9 +86,14 @@ Ordem decidida com o usuário em 12/10, depois do relatório geral:
 3. ~~Fechar atendimento junto com o preço histórico~~ — feito em 12/10 (seção
    abaixo), conferido no navegador pelo Agostinho: agendamento 120 concluído com
    Corte + Barba e desconto, total no Financeiro.
-4. **Deploy** — painel, API e bot **no ar em 12/10** (seção "Deploy de 12/10").
-   **Falta a 4d: publicar o `SITE/`** num projeto Vercel próprio (decidido em 12/10),
-   apontando para a API deste e entrando no `CORS_ORIGINS`.
+4. ~~Deploy~~ — painel, API e bot no ar em 12/10; o site em 13/10, em
+   `https://agendar-barbearia.vercel.app/lucas-costa`, projeto Vercel próprio.
+   Percurso completo conferido pelo Agostinho no ar (agendar pelo site, ver no painel
+   de produção). **Etapa 4 fechada.**
+
+A ordem combinada em 12/10 terminou. Próximos candidatos, sem ordem decidida: os
+links mortos de privacidade/termos no site, a rotação de segredos antes do primeiro
+cliente real, e o `PATCH .../status` que conclui sem fechamento.
 
 **O Victor precisa trazer a `main` para a `casca-de-secoes`** antes de continuar nela
 — em 12/10 ainda não tinha trazido, e não commitava desde 27/09.
@@ -138,8 +143,7 @@ Percurso do cliente testado contra a API local, com as chamadas que o site faz: 
 leituras em 200, agendamento 201 gravado na loja certa, mesmo horário 409, o
 barbeiro da loja A pelo endereço da loja B 404.
 
-**Falta:** o `vercel.json` publicar o site. (A conferência no navegador foi feita em
-29/09 — ver a etapa atual.)
+**Publicado em 13/10/2026** — ver `SITE/AGENTS.md`, "No ar".
 
 ### Fechar atendimento — backend pronto (12/10/2026)
 
@@ -198,6 +202,14 @@ Dois tropeços, registrados em `REGRAS-APRENDIZADOS/APRENDIZADOS.md`:
 - **`DATABASE_URL_APP` foi com o host direto** (só IPv6), e toda rota do painel deu 500
   com `ENOTFOUND`. Na Vercel é o pooler: usuário `app_api.bbcuudayemhjanklfgtr`, host
   `aws-0-us-east-2.pooler.supabase.com`, porta 6543.
+
+### O site (13/10/2026)
+
+Projeto `agendar-barbearia`, deploy pela CLI de dentro de `SITE/`. Um tropeço: a
+`CORS_ORIGINS` foi criada primeiro no projeto do **site**, onde não faz nada; ela vale
+no projeto da **API** (`barbearia-wpp`), e só depois de um novo deploy dele. A CLI
+também acrescentou `.env*` ao `SITE/.gitignore`, o que esconderia o `.env.production`
+— desfeito, com exceção explícita.
 
 ### A armadilha para o dia em que o bot voltar
 

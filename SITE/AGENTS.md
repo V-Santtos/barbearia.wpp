@@ -36,8 +36,23 @@ existia aqui (`AdminDrawer`) foi removida: não era montada por nenhuma rota, e 
   porta 3001 (`CORS_ORIGINS` no `.env` do calendário).
 - `VITE_VISUAL_MOCK=1` roda sem nenhuma chamada de rede, para lapidar interface.
 
+## No ar (13/10/2026)
+
+`https://agendar-barbearia.vercel.app/lucas-costa` — projeto **próprio** na Vercel
+(`agendar-barbearia`), separado do painel. Deploy pela CLI, de dentro desta pasta:
+
+```bash
+npx vercel deploy --prod --yes --scope inadequado-3455s-projects
+```
+
+- A API vem de `.env.production` (versionado; não é segredo).
+- `.vercelignore` próprio: o da raiz não vale quando o deploy parte daqui, e a CLI
+  não lê o `.gitignore`.
+- A API só aceita o site porque o domínio está em `CORS_ORIGINS` **no projeto
+  `barbearia-wpp`** (o da API). Domínio novo do site → entra lá, e a API precisa de
+  um novo deploy para a variável valer.
+
 ## Pendente
 
-- **Deploy:** o `vercel.json` da raiz ainda não publica o site.
 - Os links de "Política de privacidade" e "Termos de uso" apontam para páginas que
   nunca existiram — vinham assim da cópia original.
